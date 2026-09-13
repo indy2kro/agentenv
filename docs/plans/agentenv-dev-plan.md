@@ -46,11 +46,40 @@ problem before any tool-by-tool installation happens.
 ### Tier 0 — the shell itself (prerequisite, not a package)
 Git for Windows already bundles an MSYS2 environment providing `grep`, `sed`,
 `awk`, `find`, `diff`, `tar`, `gzip`, `curl`, `cat`, `ls`, `mkdir`, `rm`, `cp`,
-`mv`, `less` — and git itself is already a near-mandatory dependency for any
-of these agents. The single highest-leverage fix is configuring the agent's
-shell to be Git Bash's `bash.exe` rather than cmd/PowerShell. This is a
-**configuration step**, not an install, and should happen before any tool
-in Tiers 1–3 is even considered on Windows.
+`mv`, `less` — confirmed present and resolving correctly on a real Windows
+machine during Phase 0 (all 14 resolved to `/usr/bin` or `/mingw64/bin`) —
+and git itself is already a near-mandatory dependency for any of these
+agents.
+
+**Open question, not yet settled — do not assume "switch the agent's shell
+to bash.exe" is simply correct:** in practice, several agent harnesses keep
+a native Windows shell (PowerShell/cmd) as the primary execution shell even
+when Git Bash is installed and available, offering a POSIX bash tool as a
+secondary option rather than a full replacement. Plausible reasons, not yet
+confirmed against real agent behavior:
+- **MSYS2 path mangling** — MSYS2's bash auto-converts arguments that look
+  like POSIX absolute paths into Windows paths before an invoked program
+  sees them, which can corrupt arguments that were never meant to be
+  filesystem paths (e.g. a Docker volume flag, a literal string starting
+  with `/`). Workarounds exist (`MSYS_NO_PATHCONV`, `MSYS2_ARG_CONV_EXCL`)
+  but add fragility a harness author may prefer to avoid.
+- **Process-tree control** — reliable "kill this command and everything it
+  spawned after N seconds" is more natural to implement against native
+  Windows Job Objects than against MSYS2's POSIX process emulation layer.
+- **Native Windows tool shims** — many Windows CLI tools ship as `.cmd`/
+  `.bat` wrapper scripts (`npm`, `npx`, etc.); invoking these correctly
+  from bash needs extra handling that calling them from cmd/PowerShell
+  doesn't.
+
+This needs to be **verified per agent in Phase 0** (§8, Task 7 of the Phase
+0 plan), not assumed. The actual Tier 0 fix may turn out to be narrower
+than "make bash.exe the shell" — e.g. "ensure Git Bash's `bin`/`usr/bin`
+directories are on `PATH` so the Tier 1–3 tools and MSYS2 utilities are
+reachable regardless of which shell the agent treats as primary," which
+fits a dual-shell agent model (a native shell for process control + a POSIX
+bash tool for Unix-style scripts) as well as a single-shell one. This is a
+**configuration step** either way, not an install, and should happen before
+any tool in Tiers 1–3 is even considered on Windows.
 
 ### Tier 1 — essential (always installed, "Simple mode" default)
 | Tool | Purpose |
@@ -64,7 +93,8 @@ in Tiers 1–3 is even considered on Windows.
 | Tool | Purpose |
 |---|---|
 | ast-grep (`sg`) | structural/AST-based code search & rewrite — more precise than regex grep for code edits specifically |
-| git-delta | readable, token-friendlier diff output |
+| git-delta | readable, token-friendlier diff output (a `git diff` display pager) |
+| difftastic (`difft`) | structural/syntax-aware diff engine — computes the diff itself at the AST level (catches renames/reformats line-based diffing misses), complements git-delta rather than replacing it |
 | universal-ctags | symbol/definition lookup for code navigation |
 | gh (GitHub CLI) | PR/issue interaction (often already present) |
 
@@ -75,10 +105,16 @@ in Tiers 1–3 is even considered on Windows.
 | bat | syntax-highlighted `cat`; `--plain` gives clean line-numbered reads |
 | eza | modern `ls`/tree view |
 | miller (`mlr`) | CSV/TSV data wrangling |
+| tokei | fast LOC/code-statistics — quick read on codebase size and language mix |
+| hyperfine | command-line benchmarking — for verifying perf-sensitive changes |
+| fzf | fuzzy finder; supports a non-interactive `--filter` mode usable from scripted/agent commands, not just interactive sessions |
+| just | command runner for repo-defined recipes (`justfile`) — consistent discovery/execution of project-defined tasks |
+| watchexec | re-run a command on file change — driving a repeat-on-change dev loop (e.g. auto-rerun tests) |
+| direnv | per-directory environment variables — ensures a project's env config loads automatically in the agent's shell |
 
 ### Availability plan per tier
-- **Tier 0:** detect (is the configured shell already Git Bash / a POSIX shell?) and fix via configuration, not installation. On macOS/Linux this tier is a no-op check.
-- **Tiers 1–3:** installed via mise, same as any custom tool (§7.3) — no separate mechanism needed. Phase 0 must confirm each one resolves cleanly through mise on all three OSes (most are Rust/Go static binaries with standard GitHub release archives, which mise's generic backend handles without a dedicated plugin — but this needs verification per tool, not assumption).
+- **Tier 0:** detect (is the configured shell already Git Bash / a POSIX shell?) and fix via configuration, not installation. **Not a pure no-op on macOS/Linux, as previously assumed:** macOS ships *BSD* `grep`/`sed`/`awk`/`find`/`diff` natively, while Git for Windows' MSYS2 bundle gives Windows the *GNU* variants of the same tools — these are not flag-compatible (e.g. BSD `sed -i` requires an explicit, possibly-empty backup-suffix argument that GNU `sed -i` does not; BSD `grep` lacks GNU's `-P`/PCRE support; BSD `find` lacks `-printf`). Any instruction content or agentenv-authored script that assumes GNU flag behavior will silently misbehave on a real macOS/Linux machine unless Tier 0 also ensures GNU coreutils are what actually resolve on macOS (e.g. via mise/Homebrew's `coreutils`/`gnu-sed`/`gnu-find`), not just "the OS already has these tools." Phase 0 Task 9 verifies this concretely and decides whether Tier 0 needs a macOS-specific GNU-coreutils install step, not just detection.
+- **Tiers 1–3:** installed via mise, same as any custom tool (§7.3) — no separate mechanism needed. Phase 0 must confirm each one resolves cleanly through mise on all three OSes (most are Rust/Go static binaries with standard GitHub release archives, which mise's generic backend handles without a dedicated plugin — but this needs verification per tool, not assumption) **and behaves the same way once installed** — default color/TTY-detection, config file location conventions, case-sensitivity/path-separator handling, and line-ending handling can all differ by OS even when the same binary version is installed everywhere; Phase 0 Task 9 flags any such difference per tool rather than assuming installed == identical.
 
 ## 4. Agent adapter research (confirmed mechanisms)
 
