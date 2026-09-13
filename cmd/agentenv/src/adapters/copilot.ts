@@ -58,7 +58,9 @@ export class CopilotAdapter extends BaseAdapter {
       }
     } catch (err) {
       result.success = false;
-      result.errors.push(`Failed to create config directory: ${err instanceof Error ? err.message : String(err)}`);
+      result.errors.push(
+        `Failed to create config directory: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
 
     // Configure hooks if RTK is enabled
@@ -92,9 +94,13 @@ export class CopilotAdapter extends BaseAdapter {
     }
 
     // GitHub Copilot uses hooks in ~/.copilot/hooks/
-    const hooksDir = path.join(process.env.HOME || process.env.USERPROFILE || '', '.copilot', 'hooks');
+    const hooksDir = path.join(
+      process.env.HOME || process.env.USERPROFILE || '',
+      '.copilot',
+      'hooks',
+    );
     const configPath = path.join(this.configDir, 'config.json');
-    
+
     // RTK hook for Copilot
     // Copilot uses a different hook mechanism - scripts in ~/.copilot/hooks/
     const rtkHookContent = `#!/bin/bash
@@ -110,10 +116,10 @@ exec rtk hook copilot "$@"
         fs.mkdirSync(hooksDir, { recursive: true });
         result.filesCreated.push(hooksDir);
       }
-      
+
       // Create pre-tool-use hook
       const hookPath = path.join(hooksDir, 'pre-tool-use');
-      
+
       if (!fs.existsSync(hookPath)) {
         fs.writeFileSync(hookPath, rtkHookContent);
         // Make executable on Unix-like systems
@@ -136,12 +142,14 @@ exec rtk hook copilot "$@"
           result.message = `RTK hook already configured for Copilot`;
         }
       }
-      
+
       // Ensure hooks are enabled in config.json
       this.ensureHooksEnabled(configPath);
     } catch (err) {
       result.success = false;
-      result.errors.push(`Failed to configure Copilot hooks: ${err instanceof Error ? err.message : String(err)}`);
+      result.errors.push(
+        `Failed to configure Copilot hooks: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
 
     return result;
@@ -156,9 +164,13 @@ exec rtk hook copilot "$@"
       errors: [],
     };
 
-    const hooksDir = path.join(process.env.HOME || process.env.USERPROFILE || '', '.copilot', 'hooks');
+    const hooksDir = path.join(
+      process.env.HOME || process.env.USERPROFILE || '',
+      '.copilot',
+      'hooks',
+    );
     const hookPath = path.join(hooksDir, 'pre-tool-use');
-    
+
     try {
       if (fs.existsSync(hookPath)) {
         const content = fs.readFileSync(hookPath, 'utf-8');
@@ -176,7 +188,9 @@ exec rtk hook copilot "$@"
       }
     } catch (err) {
       result.success = false;
-      result.errors.push(`Failed to cleanup Copilot: ${err instanceof Error ? err.message : String(err)}`);
+      result.errors.push(
+        `Failed to cleanup Copilot: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
 
     result.message = 'GitHub Copilot adapter cleaned up';
@@ -185,11 +199,11 @@ exec rtk hook copilot "$@"
 
   getEnvVars(): Record<string, string> {
     const env: Record<string, string> = {};
-    
+
     if (process.platform === 'win32' && this.config.rtkEnabled) {
       env.SHELL = 'bash.exe';
     }
-    
+
     return env;
   }
 
@@ -210,7 +224,7 @@ exec rtk hook copilot "$@"
         // Check if hooks are enabled
         const content = fs.readFileSync(configPath, 'utf-8');
         const config = JSON.parse(content);
-        
+
         if (!config.features) {
           config.features = {};
         }

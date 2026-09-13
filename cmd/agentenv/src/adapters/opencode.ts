@@ -58,7 +58,9 @@ export class OpenCodeAdapter extends BaseAdapter {
       }
     } catch (err) {
       result.success = false;
-      result.errors.push(`Failed to create config directory: ${err instanceof Error ? err.message : String(err)}`);
+      result.errors.push(
+        `Failed to create config directory: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
 
     // Create opencode.json if it doesn't exist
@@ -70,7 +72,9 @@ export class OpenCodeAdapter extends BaseAdapter {
         result.filesCreated.push(configPath);
       }
     } catch (err) {
-      result.errors.push(`Failed to create opencode.json: ${err instanceof Error ? err.message : String(err)}`);
+      result.errors.push(
+        `Failed to create opencode.json: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
 
     // Configure plugin if RTK is enabled
@@ -105,7 +109,7 @@ export class OpenCodeAdapter extends BaseAdapter {
 
     // OpenCode uses plugins in ~/.config/opencode/plugins/
     const pluginsDir = path.join(this.configDir, 'plugins');
-    
+
     // RTK plugin for OpenCode
     // OpenCode plugins are Node.js scripts
     const rtkPluginContent = `/**
@@ -148,10 +152,10 @@ registerPlugin({
         fs.mkdirSync(pluginsDir, { recursive: true });
         result.filesCreated.push(pluginsDir);
       }
-      
+
       // Create RTK plugin file
       const pluginPath = path.join(pluginsDir, 'rtk-optimizer.js');
-      
+
       if (!fs.existsSync(pluginPath)) {
         fs.writeFileSync(pluginPath, rtkPluginContent);
         result.filesCreated.push(pluginPath);
@@ -170,12 +174,14 @@ registerPlugin({
           result.message = `RTK plugin already configured for OpenCode`;
         }
       }
-      
+
       // Ensure plugin is registered in opencode.json
       this.ensurePluginRegistered();
     } catch (err) {
       result.success = false;
-      result.errors.push(`Failed to configure OpenCode plugin: ${err instanceof Error ? err.message : String(err)}`);
+      result.errors.push(
+        `Failed to configure OpenCode plugin: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
 
     return result;
@@ -192,7 +198,7 @@ registerPlugin({
 
     const pluginsDir = path.join(this.configDir, 'plugins');
     const pluginPath = path.join(pluginsDir, 'rtk-optimizer.js');
-    
+
     try {
       if (fs.existsSync(pluginPath)) {
         const content = fs.readFileSync(pluginPath, 'utf-8');
@@ -210,7 +216,9 @@ registerPlugin({
       }
     } catch (err) {
       result.success = false;
-      result.errors.push(`Failed to cleanup OpenCode: ${err instanceof Error ? err.message : String(err)}`);
+      result.errors.push(
+        `Failed to cleanup OpenCode: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
 
     result.message = 'OpenCode adapter cleaned up';
@@ -219,11 +227,11 @@ registerPlugin({
 
   getEnvVars(): Record<string, string> {
     const env: Record<string, string> = {};
-    
+
     if (process.platform === 'win32' && this.config.rtkEnabled) {
       env.SHELL = 'bash.exe';
     }
-    
+
     return env;
   }
 
@@ -250,32 +258,32 @@ registerPlugin({
    */
   private ensurePluginRegistered(): void {
     const configPath = path.join(this.configDir, 'opencode.json');
-    
+
     try {
       if (!fs.existsSync(configPath)) {
         fs.writeFileSync(configPath, this.generateDefaultConfig());
         return;
       }
-      
+
       const content = fs.readFileSync(configPath, 'utf-8');
       const config = JSON.parse(content);
-      
+
       // Ensure plugins array exists
       if (!config.plugins) {
         config.plugins = [];
       }
-      
+
       // Check if RTK plugin is already registered
       const hasRtkPlugin = config.plugins.some(
-        (p: any) => p.name === 'rtk-optimizer' || p.name === 'rtk'
+        (p: any) => p.name === 'rtk-optimizer' || p.name === 'rtk',
       );
-      
+
       if (!hasRtkPlugin) {
         config.plugins.push({
           name: 'rtk-optimizer',
           enabled: true,
         });
-        
+
         // Ensure plugins feature is enabled
         if (!config.features) {
           config.features = {};
@@ -283,7 +291,7 @@ registerPlugin({
         if (config.features.plugins !== true) {
           config.features.plugins = true;
         }
-        
+
         fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
       }
     } catch {

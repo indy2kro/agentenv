@@ -9,8 +9,21 @@ import * as child_process from 'child_process';
 
 // Well-known POSIX utilities that should be available
 export const POSIX_UTILITIES = [
-  'grep', 'sed', 'awk', 'find', 'diff', 'tar', 'gzip', 'curl',
-  'cat', 'ls', 'mkdir', 'rm', 'cp', 'mv', 'less'
+  'grep',
+  'sed',
+  'awk',
+  'find',
+  'diff',
+  'tar',
+  'gzip',
+  'curl',
+  'cat',
+  'ls',
+  'mkdir',
+  'rm',
+  'cp',
+  'mv',
+  'less',
 ];
 
 // Well-known paths for Git Bash on Windows
@@ -37,18 +50,18 @@ export interface ShellInfo {
 export function detectShell(): ShellInfo {
   const isWindows = process.platform === 'win32';
   const currentShell = determineCurrentShell();
-  
+
   // Check if we're already in a POSIX-compatible environment
-  let isPosixCompatible = false;
+  let isPosixCompatible: boolean;
   let isGitBash = false;
   let gitBashPath: string | undefined;
-  let pathEnvironment = process.env.PATH || '';
+  const pathEnvironment = process.env.PATH || '';
 
   if (isWindows) {
     // Check if we're in Git Bash (MSYS2)
     isGitBash = checkGitBash();
     isPosixCompatible = isGitBash;
-    
+
     // Find Git Bash path
     for (const gitPath of GIT_BASH_PATHS) {
       try {
@@ -60,18 +73,15 @@ export function detectShell(): ShellInfo {
         // Ignore
       }
     }
-    
+
     // Check PATH for Git Bash directories
     if (!isGitBash && gitBashPath) {
-      const gitBinPath = path.join(gitBashPath, '..', 'mingw64', 'bin');
-      const gitUsrBinPath = path.join(gitBashPath, '..', 'usr', 'bin');
-      
       // Check if Git Bash binaries are in PATH
       const pathParts = pathEnvironment.split(path.delimiter);
-      const hasGitInPath = pathParts.some(p => 
-        p.includes('Git') && (p.includes('bin') || p.includes('usr\\bin'))
+      const hasGitInPath = pathParts.some(
+        (p) => p.includes('Git') && (p.includes('bin') || p.includes('usr\\bin')),
       );
-      
+
       if (hasGitInPath) {
         isPosixCompatible = true;
       }
@@ -80,12 +90,10 @@ export function detectShell(): ShellInfo {
     // On Unix-like systems, check for GNU coreutils
     isPosixCompatible = checkGNUCoreutils();
   }
-  
+
   // Check for missing POSIX utilities
-  const missingUtilities = isWindows 
-    ? checkMissingUtilities(isPosixCompatible)
-    : [];
-  
+  const missingUtilities = isWindows ? checkMissingUtilities(isPosixCompatible) : [];
+
   return {
     currentShell,
     isPosixCompatible,
@@ -105,7 +113,7 @@ function determineCurrentShell(): string {
   if (process.platform === 'win32') {
     const comspec = process.env.COMSPEC;
     const shell = process.env.SHELL;
-    
+
     if (shell) {
       // In Git Bash, SHELL points to bash
       if (shell.includes('bash')) {
@@ -113,20 +121,20 @@ function determineCurrentShell(): string {
       }
       return shell;
     }
-    
+
     if (comspec) {
       return comspec;
     }
-    
+
     return 'Unknown Windows shell';
   }
-  
+
   // On Unix-like systems
   const shell = process.env.SHELL;
   if (shell) {
     return shell;
   }
-  
+
   return '/bin/sh';
 }
 
@@ -137,34 +145,34 @@ function checkGitBash(): boolean {
   if (process.platform !== 'win32') {
     return false;
   }
-  
+
   try {
     // Check for MSYS2 environment variable
     if (process.env.MSYSTEM) {
       return true;
     }
-    
+
     // Check for MINGW environment
     if (process.env.MSYS2_ARG_CONV_EXCL) {
       return true;
     }
-    
+
     // Check if bash.exe is in the current process path
     const shell = process.env.SHELL || '';
     if (shell.toLowerCase().includes('bash')) {
       return true;
     }
-    
+
     // Check PATH for Git Bash directories
     const pathEnv = process.env.PATH || '';
     const pathParts = pathEnv.split(';');
-    
+
     for (const gitPath of GIT_BASH_PATHS) {
-      if (pathParts.some(p => p.toLowerCase() === gitPath.toLowerCase())) {
+      if (pathParts.some((p) => p.toLowerCase() === gitPath.toLowerCase())) {
         return true;
       }
     }
-    
+
     return false;
   } catch {
     return false;
@@ -178,7 +186,7 @@ function checkGNUCoreutils(): boolean {
   if (process.platform === 'win32') {
     return false;
   }
-  
+
   try {
     // Check if we have GNU versions of tools
     // BSD vs GNU grep: GNU grep has -P flag for PCRE
@@ -188,7 +196,7 @@ function checkGNUCoreutils(): boolean {
     } catch {
       // Try other indicators
     }
-    
+
     // Check for GNU sed
     try {
       child_process.execSync('sed --version', { stdio: 'ignore' });
@@ -196,7 +204,7 @@ function checkGNUCoreutils(): boolean {
     } catch {
       // Ignore
     }
-    
+
     return false;
   } catch {
     return false;
@@ -210,9 +218,9 @@ function checkMissingUtilities(isPosixCompatible: boolean): string[] {
   if (process.platform !== 'win32' || isPosixCompatible) {
     return [];
   }
-  
+
   const missing: string[] = [];
-  
+
   for (const util of POSIX_UTILITIES) {
     try {
       // Try to find the utility
@@ -225,7 +233,7 @@ function checkMissingUtilities(isPosixCompatible: boolean): string[] {
       }
     }
   }
-  
+
   return missing;
 }
 
@@ -244,7 +252,7 @@ export function getShellConfiguration(shellInfo: ShellInfo): {
       needsConfiguration: false,
     };
   }
-  
+
   // On Windows
   if (shellInfo.isPosixCompatible) {
     return {
@@ -253,7 +261,7 @@ export function getShellConfiguration(shellInfo: ShellInfo): {
       needsConfiguration: false,
     };
   }
-  
+
   // Need to configure Git Bash
   if (shellInfo.gitBashPath) {
     return {
@@ -262,7 +270,7 @@ export function getShellConfiguration(shellInfo: ShellInfo): {
       needsConfiguration: true,
     };
   }
-  
+
   // Git Bash not found
   return {
     shell: shellInfo.currentShell,
@@ -277,10 +285,10 @@ export function generateGitBashPathAddition(gitBashPath: string): string {
   if (process.platform !== 'win32') {
     return '';
   }
-  
+
   const binPath = path.join(gitBashPath, '..', 'mingw64', 'bin');
   const usrBinPath = path.join(gitBashPath, '..', 'usr', 'bin');
-  
+
   return `${binPath};${usrBinPath}`;
 }
 
@@ -288,7 +296,7 @@ export function generateGitBashPathAddition(gitBashPath: string): string {
  * Fix shell configuration for Windows
  * This is a Tier 0 fix - ensures POSIX utilities are available
  */
-export function fixShellConfiguration(baseDir: string = '.'): {
+export function fixShellConfiguration(_baseDir: string = '.'): {
   success: boolean;
   message: string;
   gitBashPath?: string;
@@ -299,9 +307,9 @@ export function fixShellConfiguration(baseDir: string = '.'): {
       message: 'Not applicable on non-Windows systems',
     };
   }
-  
+
   const shellInfo = detectShell();
-  
+
   if (shellInfo.isPosixCompatible) {
     return {
       success: true,
@@ -309,7 +317,7 @@ export function fixShellConfiguration(baseDir: string = '.'): {
       gitBashPath: shellInfo.gitBashPath,
     };
   }
-  
+
   // Try to find Git Bash
   if (!shellInfo.gitBashPath) {
     return {
@@ -317,7 +325,7 @@ export function fixShellConfiguration(baseDir: string = '.'): {
       message: 'Git Bash not found. Please install Git for Windows first.',
     };
   }
-  
+
   // For project scope, we need to configure the agent to use Git Bash
   // This is done through agent-specific configuration
   return {
@@ -341,7 +349,7 @@ export function checkAgentShellConfiguration(agent: string): {
       needsFix: false,
     };
   }
-  
+
   // Agent-specific shell configuration check
   switch (agent) {
     case 'claude_code':
@@ -368,11 +376,11 @@ function checkClaudeCodeShell(): { isConfigured: boolean; shell?: string; needsF
   try {
     const home = process.env.HOME || process.env.USERPROFILE || '';
     const settingsPath = path.join(home, '.claude', 'settings.json');
-    
+
     if (fs.existsSync(settingsPath)) {
       const data = fs.readFileSync(settingsPath, 'utf-8');
       const settings = JSON.parse(data);
-      
+
       if (settings.shell) {
         return {
           isConfigured: true,
@@ -381,7 +389,7 @@ function checkClaudeCodeShell(): { isConfigured: boolean; shell?: string; needsF
         };
       }
     }
-    
+
     return {
       isConfigured: false,
       needsFix: true,
@@ -400,7 +408,7 @@ function checkClaudeCodeShell(): { isConfigured: boolean; shell?: string; needsF
 function checkCodexShell(): { isConfigured: boolean; shell?: string; needsFix: boolean } {
   // Codex CLI respects the SHELL environment variable
   const shell = process.env.SHELL;
-  
+
   if (shell && shell.toLowerCase().includes('bash')) {
     return {
       isConfigured: true,
@@ -408,7 +416,7 @@ function checkCodexShell(): { isConfigured: boolean; shell?: string; needsFix: b
       needsFix: false,
     };
   }
-  
+
   return {
     isConfigured: false,
     needsFix: true,
@@ -421,7 +429,7 @@ function checkCodexShell(): { isConfigured: boolean; shell?: string; needsFix: b
 function checkCopilotShell(): { isConfigured: boolean; shell?: string; needsFix: boolean } {
   // GitHub Copilot CLI respects the SHELL environment variable
   const shell = process.env.SHELL;
-  
+
   if (shell && shell.toLowerCase().includes('bash')) {
     return {
       isConfigured: true,
@@ -429,7 +437,7 @@ function checkCopilotShell(): { isConfigured: boolean; shell?: string; needsFix:
       needsFix: false,
     };
   }
-  
+
   return {
     isConfigured: false,
     needsFix: true,
@@ -443,11 +451,11 @@ function checkOpenCodeShell(): { isConfigured: boolean; shell?: string; needsFix
   try {
     const home = process.env.HOME || process.env.USERPROFILE || '';
     const configPath = path.join(home, '.config', 'opencode', 'opencode.json');
-    
+
     if (fs.existsSync(configPath)) {
       const data = fs.readFileSync(configPath, 'utf-8');
       const config = JSON.parse(data);
-      
+
       if (config.shell) {
         return {
           isConfigured: true,
@@ -456,7 +464,7 @@ function checkOpenCodeShell(): { isConfigured: boolean; shell?: string; needsFix
         };
       }
     }
-    
+
     return {
       isConfigured: false,
       needsFix: true,

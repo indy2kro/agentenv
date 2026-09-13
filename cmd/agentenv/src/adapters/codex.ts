@@ -58,7 +58,9 @@ export class CodexCliAdapter extends BaseAdapter {
       }
     } catch (err) {
       result.success = false;
-      result.errors.push(`Failed to create config directory: ${err instanceof Error ? err.message : String(err)}`);
+      result.errors.push(
+        `Failed to create config directory: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
 
     // Initialize config.toml with hooks enabled
@@ -70,7 +72,9 @@ export class CodexCliAdapter extends BaseAdapter {
         result.filesCreated.push(configPath);
       }
     } catch (err) {
-      result.errors.push(`Failed to create config.toml: ${err instanceof Error ? err.message : String(err)}`);
+      result.errors.push(
+        `Failed to create config.toml: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
 
     // Configure hooks if RTK is enabled
@@ -105,7 +109,7 @@ export class CodexCliAdapter extends BaseAdapter {
 
     const configPath = path.join(this.configDir, 'config.toml');
     const hooksPath = path.join(this.configDir, 'hooks.json');
-    
+
     // Codex CLI uses hooks.json for hook configuration
     // RTK provides built-in support for Codex CLI
     const rtkHooks = {
@@ -126,17 +130,17 @@ export class CodexCliAdapter extends BaseAdapter {
     try {
       // Ensure hooks are enabled in config.toml
       let configContent = this.generateConfigToml();
-      
+
       if (fs.existsSync(configPath)) {
         const existing = fs.readFileSync(configPath, 'utf-8');
         if (!existing.includes('[features]') || !existing.includes('hooks = true')) {
           configContent = this.ensureHooksEnabled(existing);
         }
       }
-      
+
       fs.writeFileSync(configPath, configContent);
       result.filesModified.push(configPath);
-      
+
       // Create hooks.json with RTK hooks
       const hooksContent = JSON.stringify(rtkHooks, null, 2);
       fs.writeFileSync(hooksPath, hooksContent);
@@ -144,7 +148,9 @@ export class CodexCliAdapter extends BaseAdapter {
       result.message = `Configured Codex CLI hooks at ${hooksPath}`;
     } catch (err) {
       result.success = false;
-      result.errors.push(`Failed to configure Codex CLI hooks: ${err instanceof Error ? err.message : String(err)}`);
+      result.errors.push(
+        `Failed to configure Codex CLI hooks: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
 
     return result;
@@ -160,7 +166,7 @@ export class CodexCliAdapter extends BaseAdapter {
     };
 
     const hooksPath = path.join(this.configDir, 'hooks.json');
-    
+
     try {
       if (fs.existsSync(hooksPath)) {
         fs.unlinkSync(hooksPath);
@@ -168,7 +174,9 @@ export class CodexCliAdapter extends BaseAdapter {
       }
     } catch (err) {
       result.success = false;
-      result.errors.push(`Failed to cleanup Codex CLI: ${err instanceof Error ? err.message : String(err)}`);
+      result.errors.push(
+        `Failed to cleanup Codex CLI: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
 
     result.message = 'Codex CLI adapter cleaned up';
@@ -177,12 +185,12 @@ export class CodexCliAdapter extends BaseAdapter {
 
   getEnvVars(): Record<string, string> {
     const env: Record<string, string> = {};
-    
+
     // Codex CLI respects SHELL environment variable
     if (process.platform === 'win32' && this.config.rtkEnabled) {
       env.SHELL = 'bash.exe';
     }
-    
+
     return env;
   }
 
@@ -204,13 +212,13 @@ hooks = true
   private ensureHooksEnabled(existing: string): string {
     let hasFeatures = false;
     let hasHooks = false;
-    
+
     const lines = existing.split('\n');
     const newLines: string[] = [];
-    
+
     for (const line of lines) {
       newLines.push(line);
-      
+
       if (line.includes('[features]')) {
         hasFeatures = true;
       }
@@ -218,7 +226,7 @@ hooks = true
         hasHooks = true;
       }
     }
-    
+
     if (!hasFeatures) {
       newLines.unshift('[features]');
       newLines.unshift('hooks = true');
@@ -232,7 +240,7 @@ hooks = true
         }
       }
     }
-    
+
     return newLines.join('\n');
   }
 }

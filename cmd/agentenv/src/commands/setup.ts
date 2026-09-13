@@ -45,7 +45,9 @@ export const setupCommand = new Command()
     console.log('\nStep 4/4: Configuring...');
     console.log(`  Agents: ${agentChoices}`);
     console.log(`  Tier 1 tools: ripgrep, fd, jq, rtk`);
-    console.log(`  Tier 2 tools: ${installTier2 ? 'ast-grep, git-delta, gh, difftastic, universal-ctags' : 'none'}`);
+    console.log(
+      `  Tier 2 tools: ${installTier2 ? 'ast-grep, git-delta, gh, difftastic, universal-ctags' : 'none'}`,
+    );
     console.log('\n  Generating mise.toml...');
     console.log('  Running mise install...');
     console.log('  Generating AGENTS.md and CLAUDE.md...');

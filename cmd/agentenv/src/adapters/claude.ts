@@ -30,7 +30,7 @@ export class ClaudeCodeAdapter extends BaseAdapter {
       if (fs.existsSync(this.configDir)) {
         return true;
       }
-      
+
       // Check for claude command
       // Note: This is a placeholder - actual detection would need to check the install location
       return false;
@@ -61,7 +61,9 @@ export class ClaudeCodeAdapter extends BaseAdapter {
       }
     } catch (err) {
       result.success = false;
-      result.errors.push(`Failed to create config directory: ${err instanceof Error ? err.message : String(err)}`);
+      result.errors.push(
+        `Failed to create config directory: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
 
     // Initialize settings.json with RTK hooks if enabled
@@ -95,20 +97,17 @@ export class ClaudeCodeAdapter extends BaseAdapter {
     }
 
     const settingsPath = path.join(this.configDir, 'settings.json');
-    
-    // RTK hooks for Claude Code
-    // RTK integrates with Claude Code via session start hooks
+
+    // Claude Code stores hooks by event, then matcher. This matches the
+    // structure written by `rtk init` and preserves existing hook entries.
     const rtkHook = {
-      hook: 'SessionStart',
-      type: 'llm',
-      enabled: true,
-      command: 'rtk',
-      args: ['hook', 'claude'],
+      matcher: 'Bash',
+      hooks: [{ type: 'command', command: 'rtk hook claude' }],
     };
 
     try {
       let settings: any = {};
-      
+
       // Load existing settings if they exist
       if (fs.existsSync(settingsPath)) {
         const content = fs.readFileSync(settingsPath, 'utf-8');
@@ -119,46 +118,50 @@ export class ClaudeCodeAdapter extends BaseAdapter {
           settings = {};
         }
       }
-      
-      // Ensure hooks array exists
-      if (!settings.hooks) {
-        settings.hooks = [];
-      }
-      
+
+      if (!settings.hooks || Array.isArray(settings.hooks)) settings.hooks = {};
+      if (!Array.isArray(settings.hooks.PreToolUse)) settings.hooks.PreToolUse = [];
+
       // Check if RTK hook already exists
-      const hasRtkHook = settings.hooks.some(
-        (h: any) => h.hook === 'SessionStart' && h.command === 'rtk'
+      const hasRtkHook = settings.hooks.PreToolUse.some(
+        (entry: any) =>
+          entry.matcher === 'Bash' &&
+          entry.hooks?.some((hook: any) => hook.command === 'rtk hook claude'),
       );
-      
+
       if (!hasRtkHook) {
-        settings.hooks.push(rtkHook);
+        settings.hooks.PreToolUse.push(rtkHook);
       }
-      
+
       // Save settings
       fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
-      
+
       if (!hasRtkHook) {
         result.filesModified.push(settingsPath);
-        result.message = `Added RTK SessionStart hook to Claude Code settings at ${settingsPath}`;
+        result.message = `Added RTK PreToolUse hook to Claude Code settings at ${settingsPath}`;
       } else {
         result.message = `RTK hook already exists in Claude Code settings`;
       }
     } catch (err) {
       result.success = false;
-      result.errors.push(`Failed to configure Claude Code hooks: ${err instanceof Error ? err.message : String(err)}`);
+      result.errors.push(
+        `Failed to configure Claude Code hooks: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
 
     // Also create CLAUDE.md pointing to AGENTS.md
     const claudeMdPath = path.join(this.config.baseDir, 'CLAUDE.md');
     try {
       const claudeMdContent = this.generateClaudeMdContent();
-      
+
       if (!fs.existsSync(claudeMdPath)) {
         fs.writeFileSync(claudeMdPath, claudeMdContent);
         result.filesCreated.push(claudeMdPath);
       }
     } catch (err) {
-      result.errors.push(`Failed to create CLAUDE.md: ${err instanceof Error ? err.message : String(err)}`);
+      result.errors.push(
+        `Failed to create CLAUDE.md: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
 
     return result;
@@ -174,7 +177,7 @@ export class ClaudeCodeAdapter extends BaseAdapter {
     };
 
     const settingsPath = path.join(this.configDir, 'settings.json');
-    
+
     try {
       if (fs.existsSync(settingsPath)) {
         let settings: any = {};
@@ -184,20 +187,26 @@ export class ClaudeCodeAdapter extends BaseAdapter {
         } catch {
           return result;
         }
-        
+
         // Remove RTK hooks
-        if (settings.hooks) {
-          settings.hooks = settings.hooks.filter(
-            (h: any) => !(h.hook === 'SessionStart' && h.command === 'rtk')
+        if (Array.isArray(settings.hooks?.PreToolUse)) {
+          settings.hooks.PreToolUse = settings.hooks.PreToolUse.filter(
+            (entry: any) =>
+              !(
+                entry.matcher === 'Bash' &&
+                entry.hooks?.some((hook: any) => hook.command === 'rtk hook claude')
+              ),
           );
-          
+
           fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
           result.filesModified.push(settingsPath);
         }
       }
     } catch (err) {
       result.success = false;
-      result.errors.push(`Failed to cleanup Claude Code: ${err instanceof Error ? err.message : String(err)}`);
+      result.errors.push(
+        `Failed to cleanup Claude Code: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
 
     result.message = 'Claude Code adapter cleaned up';
@@ -206,12 +215,12 @@ export class ClaudeCodeAdapter extends BaseAdapter {
 
   getEnvVars(): Record<string, string> {
     const env: Record<string, string> = {};
-    
+
     // Set SHELL to bash.exe on Windows if RTK is enabled
     if (process.platform === 'win32' && this.config.rtkEnabled) {
       env.SHELL = 'bash.exe';
     }
-    
+
     return env;
   }
 

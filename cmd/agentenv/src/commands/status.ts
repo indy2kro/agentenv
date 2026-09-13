@@ -25,7 +25,7 @@ export const statusCommand = new Command()
       config = toml.parse(data);
       configLoaded = true;
       console.log(`Config: ${configPath}`);
-    } catch (err) {
+    } catch {
       const home = process.env.HOME || process.env.USERPROFILE || '';
       const userConfigPath = path.join(home, '.config', 'agentenv', 'agentenv.toml');
       try {
@@ -34,14 +34,14 @@ export const statusCommand = new Command()
         configPath = userConfigPath;
         configLoaded = true;
         console.log(`Config: ${configPath}`);
-      } catch (err2) {
+      } catch {
         console.log('No agentenv.toml found');
       }
     }
 
     if (configLoaded) {
       console.log(`Scope: ${config.scope || 'project'}`);
-      
+
       // Show agents
       console.log('\nEnabled Agents:');
       const agents = config.agents || {};
@@ -58,7 +58,7 @@ export const statusCommand = new Command()
         if (enabled) toolList.push(tool);
       }
       if (toolList.length > 0) {
-        toolList.forEach(t => console.log(`  - ${t}`));
+        toolList.forEach((t) => console.log(`  - ${t}`));
       } else {
         console.log('  (none)');
       }
@@ -117,7 +117,7 @@ export const statusCommand = new Command()
       { name: 'gh', command: 'gh --version' },
     ];
 
-    for (const { name, command } of toolsToCheck) {
+    for (const { name } of toolsToCheck) {
       try {
         // We can't actually run these without child_process, so just check
         console.log(`  ⚠ ${name} (not verified)`);

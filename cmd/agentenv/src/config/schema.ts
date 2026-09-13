@@ -244,8 +244,10 @@ export function loadConfig(configPath?: string): AgentenvConfig {
     const parsed = toml.parse(data) as AgentenvConfig;
     return mergeWithDefaults(parsed);
   } catch (err) {
-    console.error(`Error loading config from ${pathToLoad}: ${err}`);
-    return { ...DEFAULT_CONFIG };
+    throw new Error(
+      `Invalid agentenv configuration at ${pathToLoad}: ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
+    );
   }
 }
 
@@ -258,7 +260,7 @@ export function saveConfig(config: AgentenvConfig, configPath: string): void {
     const tomlString = configToToml(config);
     fs.writeFileSync(configPath, tomlString);
   } catch (err) {
-    throw new Error(`Failed to save config: ${err}`);
+    throw new Error(`Failed to save config: ${err}`, { cause: err });
   }
 }
 
@@ -270,13 +272,14 @@ export function configToToml(config: AgentenvConfig): string {
 
   // Scope
   if (config.scope) {
-    lines.push(`scope = "${config.scope}"`);
+    lines.push(`scope = ${tomlString(config.scope)}`);
   }
 
   // Agents
   if (config.agents) {
     lines.push('\n[agents]');
-    if (config.agents.claude_code !== undefined) lines.push(`claude_code = ${config.agents.claude_code}`);
+    if (config.agents.claude_code !== undefined)
+      lines.push(`claude_code = ${config.agents.claude_code}`);
     if (config.agents.codex_cli !== undefined) lines.push(`codex_cli = ${config.agents.codex_cli}`);
     if (config.agents.copilot !== undefined) lines.push(`copilot = ${config.agents.copilot}`);
     if (config.agents.opencode !== undefined) lines.push(`opencode = ${config.agents.opencode}`);
@@ -286,9 +289,25 @@ export function configToToml(config: AgentenvConfig): string {
   if (config.tools) {
     lines.push('\n[tools]');
     const toolKeys = [
-      'ripgrep', 'fd', 'jq', 'rtk', 'ast_grep', 'git_delta', 'universal_ctags',
-      'gh', 'difftastic', 'yq', 'bat', 'eza', 'miller', 'tokei',
-      'hyperfine', 'fzf', 'just', 'watchexec', 'direnv'
+      'ripgrep',
+      'fd',
+      'jq',
+      'rtk',
+      'ast_grep',
+      'git_delta',
+      'universal_ctags',
+      'gh',
+      'difftastic',
+      'yq',
+      'bat',
+      'eza',
+      'miller',
+      'tokei',
+      'hyperfine',
+      'fzf',
+      'just',
+      'watchexec',
+      'direnv',
     ] as const;
     for (const key of toolKeys) {
       if (config.tools[key as keyof AgentenvConfig['tools']] !== undefined) {
@@ -299,16 +318,17 @@ export function configToToml(config: AgentenvConfig): string {
 
   // Custom tools
   if (config.custom_tools && config.custom_tools.length > 0) {
-    lines.push('\n[[custom_tools]]');
     for (const ct of config.custom_tools) {
-      lines.push(`name = "${ct.name}"`);
-      lines.push(`description = "${ct.description}"`);
-      if (ct.already_installed !== undefined) lines.push(`already_installed = ${ct.already_installed}`);
-      if (ct.mise_source) lines.push(`mise_source = "${ct.mise_source}"`);
-      if (ct.version) lines.push(`version = "${ct.version}"`);
-      if (ct.path_windows) lines.push(`path_windows = "${ct.path_windows}"`);
-      if (ct.path_macos) lines.push(`path_macos = "${ct.path_macos}"`);
-      if (ct.path_linux) lines.push(`path_linux = "${ct.path_linux}"`);
+      lines.push('\n[[custom_tools]]');
+      lines.push(`name = ${tomlString(ct.name)}`);
+      lines.push(`description = ${tomlString(ct.description)}`);
+      if (ct.already_installed !== undefined)
+        lines.push(`already_installed = ${ct.already_installed}`);
+      if (ct.mise_source) lines.push(`mise_source = ${tomlString(ct.mise_source)}`);
+      if (ct.version) lines.push(`version = ${tomlString(ct.version)}`);
+      if (ct.path_windows) lines.push(`path_windows = ${tomlString(ct.path_windows)}`);
+      if (ct.path_macos) lines.push(`path_macos = ${tomlString(ct.path_macos)}`);
+      if (ct.path_linux) lines.push(`path_linux = ${tomlString(ct.path_linux)}`);
     }
   }
 
@@ -318,29 +338,41 @@ export function configToToml(config: AgentenvConfig): string {
     if (config.rtk.enabled !== undefined) lines.push(`enabled = ${config.rtk.enabled}`);
     if (config.rtk.init) {
       lines.push('\n[rtk.init]');
-      if (config.rtk.init.claude_code !== undefined) lines.push(`claude_code = ${config.rtk.init.claude_code}`);
-      if (config.rtk.init.codex_cli !== undefined) lines.push(`codex_cli = ${config.rtk.init.codex_cli}`);
+      if (config.rtk.init.claude_code !== undefined)
+        lines.push(`claude_code = ${config.rtk.init.claude_code}`);
+      if (config.rtk.init.codex_cli !== undefined)
+        lines.push(`codex_cli = ${config.rtk.init.codex_cli}`);
       if (config.rtk.init.copilot !== undefined) lines.push(`copilot = ${config.rtk.init.copilot}`);
-      if (config.rtk.init.opencode !== undefined) lines.push(`opencode = ${config.rtk.init.opencode}`);
+      if (config.rtk.init.opencode !== undefined)
+        lines.push(`opencode = ${config.rtk.init.opencode}`);
     }
   }
 
   // Tier0
   if (config.tier0) {
     lines.push('\n[tier0]');
-    if (config.tier0.check_enabled !== undefined) lines.push(`check_enabled = ${config.tier0.check_enabled}`);
-    if (config.tier0.git_bash_path) lines.push(`git_bash_path = "${config.tier0.git_bash_path}"`);
+    if (config.tier0.check_enabled !== undefined)
+      lines.push(`check_enabled = ${config.tier0.check_enabled}`);
+    if (config.tier0.git_bash_path)
+      lines.push(`git_bash_path = ${tomlString(config.tier0.git_bash_path)}`);
   }
 
   // Generate
   if (config.generate) {
     lines.push('\n[generate]');
-    if (config.generate.marker_start) lines.push(`marker_start = "${config.generate.marker_start}"`);
-    if (config.generate.marker_end) lines.push(`marker_end = "${config.generate.marker_end}"`);
-    if (config.generate.files) lines.push(`files = [${config.generate.files.map(f => `"${f}"`).join(', ')}]`);
+    if (config.generate.marker_start)
+      lines.push(`marker_start = ${tomlString(config.generate.marker_start)}`);
+    if (config.generate.marker_end)
+      lines.push(`marker_end = ${tomlString(config.generate.marker_end)}`);
+    if (config.generate.files)
+      lines.push(`files = [${config.generate.files.map(tomlString).join(', ')}]`);
   }
 
   return lines.join('\n');
+}
+
+function tomlString(value: string): string {
+  return JSON.stringify(value);
 }
 
 /**
@@ -428,7 +460,8 @@ function mergeWithDefaults(config: AgentenvConfig): AgentenvConfig {
   if (config.advanced) {
     result.advanced = {
       default_mode: config.advanced.default_mode ?? DEFAULT_CONFIG.advanced?.default_mode,
-      show_diff_preview: config.advanced.show_diff_preview ?? DEFAULT_CONFIG.advanced?.show_diff_preview,
+      show_diff_preview:
+        config.advanced.show_diff_preview ?? DEFAULT_CONFIG.advanced?.show_diff_preview,
     };
   }
 
@@ -454,19 +487,35 @@ export function getEnabledAgents(config: AgentenvConfig): string[] {
 export function getEnabledTools(config: AgentenvConfig): string[] {
   const tools = config.tools || DEFAULT_CONFIG.tools || {};
   const enabled: string[] = [];
-  
+
   const toolKeys = [
-    'ripgrep', 'fd', 'jq', 'rtk', 'ast_grep', 'git_delta', 'universal_ctags',
-    'gh', 'difftastic', 'yq', 'bat', 'eza', 'miller', 'tokei',
-    'hyperfine', 'fzf', 'just', 'watchexec', 'direnv'
+    'ripgrep',
+    'fd',
+    'jq',
+    'rtk',
+    'ast_grep',
+    'git_delta',
+    'universal_ctags',
+    'gh',
+    'difftastic',
+    'yq',
+    'bat',
+    'eza',
+    'miller',
+    'tokei',
+    'hyperfine',
+    'fzf',
+    'just',
+    'watchexec',
+    'direnv',
   ];
-  
+
   for (const key of toolKeys) {
     if (tools[key as keyof AgentenvConfig['tools']]) {
       enabled.push(key);
     }
   }
-  
+
   // Add custom tools
   if (config.custom_tools) {
     for (const ct of config.custom_tools) {
@@ -475,6 +524,6 @@ export function getEnabledTools(config: AgentenvConfig): string[] {
       }
     }
   }
-  
+
   return enabled;
 }

@@ -39,14 +39,14 @@ export const configureCommand = new Command()
         { name: 'fd [Tier 1 - Essential]', value: 'fd', checked: true },
         { name: 'jq [Tier 1 - Essential]', value: 'jq', checked: true },
         { name: 'rtk [Tier 1 - Essential]', value: 'rtk', checked: true },
-        
+
         // Tier 2
         { name: 'ast-grep (sg) [Tier 2 - AI coding]', value: 'ast-grep', checked: true },
         { name: 'git-delta [Tier 2 - AI coding]', value: 'git-delta', checked: true },
         { name: 'universal-ctags [Tier 2 - AI coding]', value: 'ctags', checked: false },
         { name: 'gh (GitHub CLI) [Tier 2 - AI coding]', value: 'gh', checked: true },
         { name: 'difftastic [Tier 2 - AI coding]', value: 'difftastic', checked: true },
-        
+
         // Tier 3
         { name: 'yq [Tier 3 - Power user]', value: 'yq', checked: false },
         { name: 'bat [Tier 3 - Power user]', value: 'bat', checked: false },
@@ -74,11 +74,11 @@ export const configureCommand = new Command()
       const name = await input({ message: 'Tool name:' });
       const description = await input({ message: 'Description:' });
       const alreadyInstalled = await confirm({ message: 'Already installed?', default: true });
-      
+
       let pathWindows = '';
       let pathMacOS = '';
       let pathLinux = '';
-      
+
       if (alreadyInstalled) {
         pathWindows = await input({ message: 'Windows path (C:\\...):' });
         pathMacOS = await input({ message: 'macOS path (/usr/local/...):' });
@@ -88,7 +88,7 @@ export const configureCommand = new Command()
         const version = await input({ message: 'Version (latest):', default: 'latest' });
         customTools.push({ name, description, miseSource, version });
       }
-      
+
       customTools.push({ name, description, pathWindows, pathMacOS, pathLinux });
     }
 
