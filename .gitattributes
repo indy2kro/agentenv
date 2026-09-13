@@ -1,0 +1,15 @@
+# Normalize line endings to LF in the repository and on checkout,
+# regardless of platform or a contributor's core.autocrlf setting —
+# Prettier's default endOfLine is "lf", so a CRLF checkout on Windows
+# fails `prettier --check` on every file even though the stored blob
+# is correct.
+* text=auto eol=lf
+
+# Windows-only scripts genuinely need CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary-ish/generated content: leave untouched
+*.png binary
+*.jpg binary
+*.ico binary
