@@ -16,8 +16,8 @@ C:\Program Files\Git\usr\bin\bash.exe
 ```
 
 *Note: `where bash` also returned `C:\Windows\System32\bash.exe` and
-`C:\Users\cradu\AppData\Local\Microsoft\WindowsApps\bash.exe`, but the Git for
-Windows installation is the primary one at `C:\Program Files\Git\usr\bin\bash.exe`.*
+`<WindowsApps-bash>`, but the Git for Windows installation is the primary one at
+`C:\Program Files\Git\usr\bin\bash.exe`.*
 
 ### Bundled Tools Available Inside Git Bash
 

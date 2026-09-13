@@ -20,7 +20,7 @@ This document builds on:
 
 **What it writes/changes:**
 - **Hook registration:** Adds a `PreToolUse` hook entry to `~/.claude/settings.json` (or `./.claude/settings.json` for project scope) that invokes `rtk hook claude` before Bash tool calls.
-- **Example from this machine:** The existing `C:\Users\cradu\.claude\settings.json` contains:
+- **Example from this machine:** The existing `~/.claude/settings.json` contains:
   ```json
   "hooks": {
     "PreToolUse": [
