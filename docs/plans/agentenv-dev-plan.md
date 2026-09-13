@@ -165,10 +165,8 @@ writers."
 
 Implementation note: this needs a real interactive terminal UI (menus,
 checkboxes, confirmation screens) that behaves identically on Windows/macOS/Linux
-terminals. Candidate approach: a single static Go binary using a TUI library
-(e.g. `charmbracelet/huh` or `bubbletea`) — no runtime dependency for the
-end user, consistent with keeping setup friction near zero. This is a Phase 0
-decision to confirm, not locked in yet.
+terminals. Implementation uses TypeScript/Node.js with @inquirer/prompts for TUI.
+See ADR 0002 for the final decision on the tech stack.
 
 ### 6.3 Custom binary support
 Users can register tools we don't know about — their own internal CLI, a
@@ -218,20 +216,18 @@ rather than trying to merge edits across five files.
 
 ```
 agentenv/
-├── cmd/agentenv/            # CLI entrypoint (wizard, apply, status)
-├── internal/
-│   ├── config/              # agentenv.toml schema, load/save/diff
-│   ├── shell/                # Tier 0: detect/configure POSIX shell on Windows
-│   ├── adapters/
-│   │   ├── claudecode/      # writes .claude/settings.json hook entries
-│   │   ├── codex/           # writes .codex/config.toml + hooks.json
-│   │   ├── copilot/         # writes ~/.copilot/hooks/*
-│   │   └── opencode/        # writes opencode plugin + config
-│   ├── generate/            # AGENTS.md / CLAUDE.md marker-block writer
-│   └── toolchain/           # mise.toml generation, mise/rtk invocation
-├── templates/
-│   ├── AGENTS.md.tmpl
-│   └── CLAUDE.md.tmpl
+├── cmd/agentenv/            # CLI entrypoint (TypeScript source)
+│   ├── package.json         # npm package configuration
+│   ├── tsconfig.json        # TypeScript compiler configuration
+│   └── src/
+│       ├── index.ts         # Main entrypoint
+│       ├── commands/       # CLI commands (setup, configure, apply, status)
+│       ├── config/          # agentenv.toml schema, load/save/diff
+│       ├── shell/           # Tier 0: detect/configure POSIX shell on Windows
+│       ├── adapters/        # Per-agent adapters (claude, codex, copilot, opencode)
+│       ├── generate/        # AGENTS.md / CLAUDE.md marker-block writer
+│       └── toolchain/       # mise.toml generation, mise/rtk invocation
+├── dist/                   # Compiled JavaScript output (generated)
 ├── docs/
 └── .github/workflows/ci.yml # win/mac/linux matrix
 ```
@@ -243,7 +239,7 @@ agentenv/
 - Confirm each Tier 1–3 tool resolves cleanly through mise on all three OSes (per-tool check, not assumption)
 - Confirm the Tier 0 shell fix: how to detect current shell config per agent, and how to point each agent at Git Bash on Windows
 - Confirm `rtk init` behavior per agent (Claude Code, Codex, Copilot, OpenCode)
-- Decide the CLI implementation language/TUI library
+- **Decided:** CLI tech stack is TypeScript/Node.js with @inquirer/prompts and commander (see ADR 0002)
 - **Output:** validated tool catalog + adapter table, chosen tech stack, a hand-written example `agentenv.toml`
 
 ### Phase 1 — Config core + non-interactive apply
@@ -272,7 +268,8 @@ agentenv/
 - Confirm zero-diff, zero-reinstall behavior on repeated `apply` runs
 
 ### Phase 5 — Distribution & generalization
-- Package `agentenv` as a single-binary release (GitHub Releases) plus a one-line install script per OS
+- Package `agentenv` as an npm package (`npm install -g agentenv`)
+- Publish to npm registry for seamless installation and updates via `npm update -g agentenv`
 - Add a documented "how to add a new agent adapter" guide, so growing beyond the four v1 targets doesn't require touching the core
 - CI matrix (GitHub Actions: windows-latest, macos-latest, ubuntu-latest) running full setup + a smoke test for each of the four agents on every push
 

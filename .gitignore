@@ -2,11 +2,16 @@
 docs/superpowers/
 .superpowers/
 
-# Go build artifacts (populated once the CLI tech stack, ADR 0001, is implemented)
-/agentenv
-/dist/
-*.exe
-*.test
+# Node.js build artifacts
+node_modules/
+*.log
+npm-debug.log*
+
+# TypeScript build output
+cmd/agentenv/dist/
+cmd/agentenv/node_modules/
+
+# OS cruft
 
 # OS cruft
 .DS_Store
