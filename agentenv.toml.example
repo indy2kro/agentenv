@@ -1,0 +1,179 @@
+# agentenv Configuration File (Example)
+# ====================================
+# This is a hand-written example config file that Phase 1 will read as ground truth.
+# It demonstrates the full schema described in docs/plans/agentenv-dev-plan.md §6.3 and §6.4.
+#
+# Place this file at:
+# - Project scope: <repo-root>/agentenv.toml (checked into the repo)
+# - User scope: ~/.config/agentenv/agentenv.toml (global config)
+#
+# Format: TOML (matches mise.toml's format for consistency)
+
+# Scope indicator (optional, defaults to project if in repo, user if in config dir)
+# Valid values: "project", "user"
+scope = "project"
+
+# =============================================================================
+# AGENT CONFIGURATION
+# =============================================================================
+
+[agents]
+# Enable/disable each agent. If an agent is not installed on the machine,
+# agentenv will warn but not fail (graceful degradation).
+claude_code = true
+codex_cli = true
+copilot = true
+opencode = true
+
+# =============================================================================
+# TOOL CATALOG (Tier 1-3)
+# =============================================================================
+# Each tool can be enabled/disabled individually, or use tier-level toggles.
+# If a tool is marked as unavailable (e.g., universal-ctags, tokei on Windows),
+# agentenv will use the fallback strategy (custom tool or skip with warning).
+
+[tools]
+# --- Tier 1: Essential (Simple mode default) ---
+ripgrep = true  # Binary: rg
+fd = true       # Binary: fd
+jq = true       # Binary: jq
+rtk = true      # Binary: rtk (external install on this machine)
+
+# --- Tier 2: AI-coding value-add (on by default in Simple mode) ---
+ast_grep = true      # Binary: sg (note: deprecated name, new binary is ast-grep)
+git_delta = true      # Binary: delta (mise registry name is "delta", not "git-delta")
+# universal-ctags is marked as FAIL in Phase 0 research (Task 1) - no mise registry entry
+# Fallback: use custom_tools section below
+universal_ctags = false  # Disabled by default due to install issues
+
+gh = true         # Binary: gh (GitHub CLI)
+
+# --- Tier 3: Power-user (Advanced mode only) ---
+# Note: difftastic is listed in both Tier 2 and the new tools catalog
+# Here we include it only once under Tier 3 for the example
+difftastic = true    # Binary: difft
+
+# From the expanded catalog (Tasks 3-4):
+yq = true          # Binary: yq
+bat = true         # Binary: bat
+eza = true         # Binary: eza (macOS requires Homebrew or vfox backend)
+
+# miller is the mise registry name; binary is mlr
+miller = true       # Binary: mlr
+
+# Tools that failed validation (Task 3) - disabled by default
+tokei = false       # Requires Rust/cargo toolchain (mise cargo: backend)
+
+# Additional Tier 3 tools
+hyperfine = true    # Binary: hyperfine
+fzf = true         # Binary: fzf (non-interactive --filter mode verified in Task 3)
+just = true        # Binary: just
+watchexec = true   # Binary: watchexec
+direnv = true      # Binary: direnv
+
+# =============================================================================
+# CUSTOM TOOLS
+# =============================================================================
+# Two supported cases per §6.3:
+# 1. Already installed somewhere on the machine - just tell agentenv/rtk about it
+# 2. Installable via mise (mise_source + version)
+#
+# Note: Custom tools flow through the same "capabilities changed → regenerate
+# AGENTS.md / hooks" pipeline as catalog tools - no special-casing downstream.
+
+[[custom_tools]]
+# Example 1: Already installed (per §6.3)
+name = "universal-ctags"
+description = "Code navigation and symbol lookup (universal-ctags)"
+already_installed = true
+# OS-specific paths - agentenv will use the appropriate one for the current OS
+path.windows = "C:\\Program Files\\ctags\\bin\\ctags.exe"
+path.macos = "/usr/local/bin/ctags"
+path.linux = "/usr/bin/ctags"
+
+[[custom_tools]]
+# Example 2: Installable via mise (per §6.3)
+name = "otherthing"
+description = "Example custom tool that publishes GitHub releases mise can use"
+# If already_installed is false or omitted, agentenv will attempt mise install
+mise_source = "github:someorg/otherthing"
+version = "latest"
+# Optional: OS-specific version overrides
+# version.windows = "v1.0.0"
+# version.macos = "v1.2.0"
+# version.linux = "v1.2.0"
+
+# =============================================================================
+# RTK CONFIGURATION
+# =============================================================================
+[rtk]
+# Enable/disable rtk's command rewriting (token-cost reduction)
+enabled = true
+
+# rtk init flags per agent (auto-detected, but can be overridden)
+# If true, agentenv will run `rtk init` for this agent during `apply`
+init.claude_code = true
+init.codex_cli = true
+init.copilot = true
+init.opencode = true
+
+# Custom rtk flags (advanced use)
+# init_flags = ["--global", "--claude-md"]
+
+# =============================================================================
+# TIER 0 SHELL CONFIGURATION
+# =============================================================================
+[tier0]
+# Enable Tier 0 shell detection and fix
+# If enabled, agentenv will check/ensure POSIX tools are available
+# On Windows: ensures Git for Windows' bin/usr/bin are on PATH
+# On macOS: detects BSD vs GNU tools, recommends Homebrew packages
+# On Linux: detects and recommends distro packages
+check_enabled = true
+
+# Windows-specific: path to Git Bash (auto-detected if not set)
+# git_bash_path.windows = "C:\\Program Files\\Git\\usr\\bin\\bash.exe"
+
+# macOS-specific: auto-install Homebrew GNU packages if BSD tools detected
+# install_gnu_tools.macos = true
+
+# =============================================================================
+# GENERATION OPTIONS
+# =============================================================================
+[generate]
+# Regeneration behavior per §6.5:
+# - AGENTS.md/CLAUDE.md/hook files only touch the managed marker-block sections
+# - User-added content in those files survives
+# This section controls that behavior
+
+# Marker blocks for managed content
+marker_start = "<!-- agentenv-managed-start -->"
+marker_end = "<!-- agentenv-managed-end -->"
+
+# Files to generate (relative to scope root)
+generated_files = [
+  "AGENTS.md",
+  "CLAUDE.md",
+  "mise.toml",
+  ".claude/settings.json",
+  ".codex/config.toml",
+  ".codex/hooks.json",
+  ".copilot/hooks/*",
+  "opencode.json",
+]
+
+# =============================================================================
+# ADVANCED OPTIONS
+# =============================================================================
+[advanced]
+# Simple mode: auto-detect agents and tools, minimal prompts
+# Advanced mode: full picker, custom binaries, scope choice, review screen
+# This setting is used by `agentenv setup` and `agentenv configure`
+default_mode = "simple"
+
+# Show diff preview before writing during `configure`
+show_diff_preview = true
+
+# Idempotency: running `apply` twice with no config change produces zero file diffs
+# This is enforced by agentenv, not a user option
+# idempotent = true  # Always true, not configurable
