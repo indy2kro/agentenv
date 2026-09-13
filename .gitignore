@@ -1,6 +1,7 @@
 # Superpowers planning/execution workspace (not part of the shipped project)
 docs/superpowers/
 .superpowers/
+.worktrees/
 
 # Node.js build artifacts
 node_modules/
