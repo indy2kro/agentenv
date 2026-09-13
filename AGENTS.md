@@ -24,3 +24,11 @@ together, so the SHA-pinning rule above and Dependabot are meant to work
 together, not in tension. Once the CLI tech stack is decided
 (`docs/decisions/0001-cli-tech-stack.md`) and its module manifest exists,
 add that ecosystem (e.g. `gomod`) to `dependabot.yml` too.
+
+## Remote operations
+
+`origin` (`github.com/indy2kro/agentenv`) is a real, shared GitHub remote —
+not a local-only sandbox. Never run `git push`, `git pull`, or `git fetch`
+unless the human you're working with explicitly asks for it. If your local
+branch and `origin` have diverged, stop and surface that rather than
+resolving it yourself.
