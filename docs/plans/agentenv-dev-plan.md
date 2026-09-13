@@ -1,0 +1,269 @@
+# agentenv — Development Plan
+
+## 1. Goal
+
+Give AI coding agents a consistent, capable shell environment on Windows,
+macOS, and Linux, with minimal setup friction and without us maintaining any
+dev tools ourselves.
+
+**Minimum required targets (v1, must work day one):**
+- Claude Code
+- OpenAI Codex CLI
+- GitHub Copilot (CLI / Chat)
+- OpenCode
+
+**Design constraint:** the core (tool installation, instruction content,
+config format) must stay agent-agnostic. Support for any additional agent
+(Cursor, Gemini CLI, Windsurf, Cline, etc.) should be addable later as a new
+*adapter*, not a redesign — see §6.
+
+We remain a thin orchestration + config layer on top of existing OSS:
+
+- **[mise](https://mise.jdx.dev)** — cross-platform tool installer/version manager. Installs pinned CLI tools per OS from their own upstream releases/registries.
+- **[rtk](https://github.com/rtk-ai/rtk)** — hook-based command proxy that rewrites `grep`/`find`/etc. to faster equivalents and trims output for token cost, with native init support for multiple agents.
+- **[AGENTS.md](https://agents.md)** — the emerging cross-tool standard for repo-level agent instructions, now under Linux Foundation (Agentic AI Foundation) governance. Codex CLI, GitHub Copilot, and OpenCode all read it natively. Claude Code does not read it natively yet, so it needs its own `CLAUDE.md` that simply points at `AGENTS.md`.
+
+The one thing we *do* build is a small **interactive CLI** (`agentenv`) — an
+orchestrator, not a tool reimplementation. It never installs anything itself;
+it only drives mise/rtk and writes config files.
+
+## 2. Non-goals
+
+- Not building our own binary installer or package manager.
+- Not re-hosting or forking any CLI tool.
+- Not silently auto-upgrading tool versions mid-session.
+- Not maintaining per-OS shell scripts by hand — cross-OS install logic stays in mise.
+- Not inventing a new instructions-file format where a standard (AGENTS.md) already covers it.
+
+## 3. Tool catalog & the Windows problem
+
+The recurring pain (grep/jq/etc. being "there" on Linux/Mac and "not really"
+on Windows) has one root cause underneath it: on Linux/Mac these tools are
+part of the OS; on Windows, cmd.exe/PowerShell have no equivalent shell
+environment at all. Fixing that at the shell layer removes most of the
+problem before any tool-by-tool installation happens.
+
+### Tier 0 — the shell itself (prerequisite, not a package)
+Git for Windows already bundles an MSYS2 environment providing `grep`, `sed`,
+`awk`, `find`, `diff`, `tar`, `gzip`, `curl`, `cat`, `ls`, `mkdir`, `rm`, `cp`,
+`mv`, `less` — and git itself is already a near-mandatory dependency for any
+of these agents. The single highest-leverage fix is configuring the agent's
+shell to be Git Bash's `bash.exe` rather than cmd/PowerShell. This is a
+**configuration step**, not an install, and should happen before any tool
+in Tiers 1–3 is even considered on Windows.
+
+### Tier 1 — essential (always installed, "Simple mode" default)
+| Tool | Purpose |
+|---|---|
+| ripgrep (`rg`) | fast/smart text search — what most agents call under the hood anyway |
+| fd | fast, friendly file finding |
+| jq | JSON querying — agents constantly parse tool output as JSON |
+| rtk | command rewriting + token-cost reduction, wired into agent hooks |
+
+### Tier 2 — AI-coding value-add (on by default, single toggle to skip)
+| Tool | Purpose |
+|---|---|
+| ast-grep (`sg`) | structural/AST-based code search & rewrite — more precise than regex grep for code edits specifically |
+| git-delta | readable, token-friendlier diff output |
+| universal-ctags | symbol/definition lookup for code navigation |
+| gh (GitHub CLI) | PR/issue interaction (often already present) |
+
+### Tier 3 — power-user (Advanced mode picker only)
+| Tool | Purpose |
+|---|---|
+| yq | YAML/TOML querying, jq's counterpart |
+| bat | syntax-highlighted `cat`; `--plain` gives clean line-numbered reads |
+| eza | modern `ls`/tree view |
+| miller (`mlr`) | CSV/TSV data wrangling |
+
+### Availability plan per tier
+- **Tier 0:** detect (is the configured shell already Git Bash / a POSIX shell?) and fix via configuration, not installation. On macOS/Linux this tier is a no-op check.
+- **Tiers 1–3:** installed via mise, same as any custom tool (§7.3) — no separate mechanism needed. Phase 0 must confirm each one resolves cleanly through mise on all three OSes (most are Rust/Go static binaries with standard GitHub release archives, which mise's generic backend handles without a dedicated plugin — but this needs verification per tool, not assumption).
+
+## 4. Agent adapter research (confirmed mechanisms)
+
+Each agent has its own instructions-file convention and its own
+hook/plugin mechanism. This table is the basis for the adapter design and
+should be re-verified at the start of Phase 0, since these tools evolve fast.
+
+| Agent | Instructions file | Hook / extensibility mechanism |
+|---|---|---|
+| Claude Code | `CLAUDE.md` (does not read AGENTS.md natively yet — workaround: one line pointing to it) | `~/.claude/settings.json` or `./.claude/settings.json`, JSON hook arrays (`SessionStart`, `PreToolUse`, etc.) — this is what rtk already wires into |
+| Codex CLI | `AGENTS.md` (native) | `~/.codex/config.toml` (`[features] hooks = true`) and/or `~/.codex/hooks.json` / `<repo>/.codex/hooks.json`; supports `SessionStart`, `PreToolUse`, `UserPromptSubmit`, etc. |
+| GitHub Copilot (CLI/Chat) | `AGENTS.md` (native) + optional `.github/copilot-instructions.md` | Hook files under `~/.copilot/hooks/`; config under `~/.config/github-copilot/config.json` |
+| OpenCode | `AGENTS.md` (native) | Plugin-based, not declarative JSON — small script dropped in `~/.config/opencode/plugins/`, config in `opencode.json`/`opencode.jsonc` |
+
+Implication for design: **instructions content is one shared asset**
+(`AGENTS.md`, generated once), but **hook registration is per-agent code**,
+so the adapter layer is really "one shared content generator + N small hook
+writers."
+
+## 5. Architecture
+
+| Layer | Responsibility | Owned by |
+|---|---|---|
+| Shell foundation | Ensure a POSIX-capable shell is what the agent actually executes in (Tier 0) | us (detection + config), Git for Windows (the actual bundle) |
+| Install/normalize tools | Resolve + install pinned CLI tools per OS/arch (Tiers 1–3) | mise |
+| Rewrite/optimize commands at runtime | Hook into tool calls, swap in faster binaries, cut token cost | rtk |
+| Shared instructions content | One `AGENTS.md` (+ thin `CLAUDE.md` pointer) | us (generated, not hand-maintained) |
+| Per-agent hook registration | Translate our "capabilities changed" event into each agent's native hook format | us (adapters, §4) |
+| Interactive setup/reconfigure | Simple vs. advanced wizard, persistent config, custom binaries | us (the `agentenv` CLI) |
+
+## 6. The `agentenv` CLI
+
+### 6.1 Commands
+- `agentenv setup` — first-run interactive wizard (see 6.2)
+- `agentenv configure` — re-run the wizard later, pre-filled with current config, to add/remove tools, agents, or custom binaries
+- `agentenv apply` — non-interactive: read the config file and (re)generate everything (mise.toml, AGENTS.md/CLAUDE.md, per-agent hooks). Used by `setup`/`configure` internally, and directly in CI or scripted installs
+- `agentenv status` — show what's installed, what's configured, what's out of sync (including Tier 0 shell status)
+
+### 6.2 Interactive wizard flow
+- **Simple mode** (default, one keypress): checks/fixes Tier 0 shell config on Windows, auto-detects which of the four target agents are installed, installs Tier 1 (and Tier 2 unless declined via the single toggle), wires hooks for whichever agents were detected. Done.
+- **Advanced mode**: step-by-step —
+  1. Select which agents to configure (checkbox list, pre-checked = detected ones)
+  2. Select which tools to include, full Tier 1–3 picker (checkbox list, pre-checked = Tier 1+2 defaults)
+  3. Add custom binaries (see 6.3), any number
+  4. Choose scope: project-level config (checked into the repo) vs. user/global-level
+  5. Choose whether rtk's command-rewriting is enabled or tools are installed "raw"
+  6. Review screen showing the resulting config diff before writing anything
+
+Implementation note: this needs a real interactive terminal UI (menus,
+checkboxes, confirmation screens) that behaves identically on Windows/macOS/Linux
+terminals. Candidate approach: a single static Go binary using a TUI library
+(e.g. `charmbracelet/huh` or `bubbletea`) — no runtime dependency for the
+end user, consistent with keeping setup friction near zero. This is a Phase 0
+decision to confirm, not locked in yet.
+
+### 6.3 Custom binary support
+Users can register tools we don't know about — their own internal CLI, a
+niche tool not in our catalog, etc. Two supported cases:
+
+```toml
+# already installed somewhere on the machine — just tell agentenv/rtk about it
+[[custom_tools]]
+name = "mytool"
+description = "Internal linter wrapper"
+already_installed = true
+path.windows = "C:\\tools\\mytool.exe"
+path.macos   = "/usr/local/bin/mytool"
+path.linux   = "/usr/local/bin/mytool"
+
+# installable via mise (e.g. it publishes GitHub releases mise's generic backend can use)
+[[custom_tools]]
+name = "otherthing"
+mise_source = "github:someorg/otherthing"
+version = "latest"
+```
+Custom tools flow through the same "capabilities changed → regenerate
+AGENTS.md / hooks" pipeline as catalog tools — no special-casing downstream.
+
+### 6.4 Config file format and location
+
+Single source of truth: **`agentenv.toml`**, committed to the repo (project
+scope) or under a user config dir (global scope, e.g. `~/.config/agentenv/`).
+
+Reasoning for TOML over YAML/INI:
+- Matches `mise.toml`'s own format — one less format for users/contributors to context-switch between
+- Unlike INI, supports nested arrays-of-tables cleanly (needed for `custom_tools`, per-agent enablement)
+- Unlike YAML, no indentation-sensitivity foot-guns in a file that may get hand-edited
+
+`agentenv.toml` is the master file; `mise.toml`, `AGENTS.md`, `CLAUDE.md`,
+and the per-agent hook files are all **generated outputs** of `agentenv apply`,
+not hand-edited directly. This is what makes `agentenv configure` safe to
+re-run at any time — it always regenerates from one authoritative source
+rather than trying to merge edits across five files.
+
+### 6.5 Re-configuration semantics
+- `agentenv configure` diffs the new answers against the existing `agentenv.toml`, shows exactly what will change (tools added/removed, agents added/removed, custom binaries changed, Tier 0 shell status) before writing
+- Regeneration of `AGENTS.md`/`CLAUDE.md`/hook files only touches the managed marker-block sections, never the rest of the file, so user-added content in those files survives
+- `agentenv apply` is idempotent: running it twice with no config change produces zero file diffs and does not reinstall anything already present
+
+## 7. Repo structure (proposed)
+
+```
+agentenv/
+├── cmd/agentenv/            # CLI entrypoint (wizard, apply, status)
+├── internal/
+│   ├── config/              # agentenv.toml schema, load/save/diff
+│   ├── shell/                # Tier 0: detect/configure POSIX shell on Windows
+│   ├── adapters/
+│   │   ├── claudecode/      # writes .claude/settings.json hook entries
+│   │   ├── codex/           # writes .codex/config.toml + hooks.json
+│   │   ├── copilot/         # writes ~/.copilot/hooks/*
+│   │   └── opencode/        # writes opencode plugin + config
+│   ├── generate/            # AGENTS.md / CLAUDE.md marker-block writer
+│   └── toolchain/           # mise.toml generation, mise/rtk invocation
+├── templates/
+│   ├── AGENTS.md.tmpl
+│   └── CLAUDE.md.tmpl
+├── docs/
+└── .github/workflows/ci.yml # win/mac/linux matrix
+```
+
+## 8. Phased roadmap
+
+### Phase 0 — Research & validation (no code)
+- Re-verify the agent adapter table in §4 against current agent versions (these tools move fast)
+- Confirm each Tier 1–3 tool resolves cleanly through mise on all three OSes (per-tool check, not assumption)
+- Confirm the Tier 0 shell fix: how to detect current shell config per agent, and how to point each agent at Git Bash on Windows
+- Confirm `rtk init` behavior per agent (Claude Code, Codex, Copilot, OpenCode)
+- Decide the CLI implementation language/TUI library
+- **Output:** validated tool catalog + adapter table, chosen tech stack, a hand-written example `agentenv.toml`
+
+### Phase 1 — Config core + non-interactive apply
+- Implement `agentenv.toml` schema (load/save/validate/diff)
+- Implement Tier 0 shell detection/fix on Windows
+- Implement `agentenv apply`: config → `mise.toml` generation → `mise install` → AGENTS.md/CLAUDE.md marker-block generation
+- Implement the Claude Code adapter first (best-documented hook system, closes the loop end-to-end fastest)
+- **Acceptance:** hand-writing an `agentenv.toml` and running `apply` produces a working Claude Code environment, including a fixed Windows shell, on all three OSes
+
+### Phase 2 — Remaining v1 adapters
+- Codex CLI adapter (config.toml / hooks.json)
+- GitHub Copilot adapter (`~/.copilot/hooks/`)
+- OpenCode adapter (plugin script + opencode.json)
+- **Acceptance:** one `agentenv.toml` with all four agents enabled produces correct, working configs for each, verified manually per agent
+
+### Phase 3 — Interactive wizard
+- `agentenv setup` (Simple mode: Tier 0 fix + auto-detect + Tier 1/2 defaults, one confirmation)
+- Advanced path within the wizard (agent picker, full tool picker, custom binaries, scope choice, review-before-write screen)
+- `agentenv configure` (re-run, pre-filled, diffed)
+- **Acceptance:** a first-time Windows user gets a fully working setup — including the shell fix — in under a minute in Simple mode; an advanced user can add a custom binary and re-run without disturbing existing config
+
+### Phase 4 — Safety, idempotency, transparency
+- Marker-block-only regeneration (never full-file overwrite) for AGENTS.md/CLAUDE.md and per-agent hook files
+- `agentenv status` command showing drift between config and actual machine state
+- A visible log of what rtk rewrote/what hooks fired, so behavior isn't silently invisible to the developer
+- Confirm zero-diff, zero-reinstall behavior on repeated `apply` runs
+
+### Phase 5 — Distribution & generalization
+- Package `agentenv` as a single-binary release (GitHub Releases) plus a one-line install script per OS
+- Add a documented "how to add a new agent adapter" guide, so growing beyond the four v1 targets doesn't require touching the core
+- CI matrix (GitHub Actions: windows-latest, macos-latest, ubuntu-latest) running full setup + a smoke test for each of the four agents on every push
+
+## 9. Testing strategy
+
+- CI matrix across the three OSes × four agents is the primary safety net
+- Smoke test per agent: run `agentenv apply`, then confirm the agent's own config/hook files parse and contain the expected entries (not a full end-to-end agent session, just config correctness)
+- Idempotency test: run `apply` twice, assert no file changes and no reinstall attempts on the second run
+- Windows-specific test: confirm Tier 0 detection correctly identifies a missing/misconfigured shell and that the fix actually results in the agent executing through Git Bash
+- Manual periodic re-check of the adapter table (§4) and tool catalog (§3), since both are moving targets
+
+## 10. Risks & mitigations
+
+| Risk | Mitigation |
+|---|---|
+| Agent hook mechanisms change or are undocumented/unstable (esp. Copilot, OpenCode, which are newer/less standardized than Claude Code's) | Isolate all agent-specific logic in its own adapter module; a breaking change touches one adapter, not the core |
+| AGENTS.md adoption gaps (an agent's AGENTS.md support lags or is partial) | CLAUDE.md-style pointer-file pattern as a fallback for any agent that doesn't yet read AGENTS.md natively |
+| Git for Windows not installed at all (rare, but possible on a fresh machine) | Tier 0 check should detect this explicitly and prompt to install Git for Windows first, rather than silently failing later on missing grep/sed/etc. |
+| A catalog tool doesn't resolve cleanly through mise on one OS | Verified per-tool in Phase 0 before it's promoted into the default profile; falls back to "custom tool" treatment (manual path) if unresolved |
+| mise or rtk introduces a breaking change | Pin versions in generated `mise.toml`; bump deliberately, never automatically |
+| Scope creep — wizard/config work pulls us toward building our own installer | Non-goals in §2 stay authoritative; the CLI only ever calls out to mise/rtk, never replaces them |
+| Custom-binary config drifting from what's actually on a user's disk | `agentenv status` surfaces drift explicitly rather than silently failing |
+
+## 11. Success criteria
+
+- One command (`agentenv setup`) gets a new machine — including a fresh Windows box — to a working state for all four target agents, in Simple mode
+- Advanced users can add a custom binary and reconfigure without hand-editing five different files
+- AGENTS.md/CLAUDE.md content stays short and stable regardless of how many tools are configured
+- Adding a fifth agent later requires only a new adapter module, no core changes
+- Zero custom binaries/installers maintained by us for the underlying dev tools — mise and rtk still do all of that
