@@ -3,12 +3,11 @@
 **Status:** Accepted  
 **Date:** 2026-09-13  
 **Author:** Cristian Radu <indy2kro@gmail.com>  
-**Supersedes:** ADR 0001 (0001-cli-tech-stack.md)  
 **Related:** `docs/plans/agentenv-dev-plan.md` §6.2
 
 ## Context
 
-ADR 0001 originally selected **Go + charmbracelet/huh** as the CLI tech stack, with the primary constraint being "zero runtime dependency for end users" — the goal was a single static binary that could be distributed without requiring users to install a runtime.
+Initially, the CLI tech stack was considered to be Go + charmbracelet/huh, with the primary constraint being "zero runtime dependency for end users" — the goal was a single static binary that could be distributed without requiring users to install a runtime.
 
 However, during Phase 0 research and validation, a critical observation emerged: **all four v1 target agents (Claude Code, Codex CLI, GitHub Copilot, OpenCode) already require Node.js 18+ to be installed on the user's machine.**
 
@@ -44,7 +43,7 @@ This means that **requiring Node.js as a runtime dependency for `agentenv` does 
 | Package management | ✅ npm handles dependencies automatically | ✅ Go modules, but manual binary builds |
 | Ecoystem for TUI libraries | ✅ Mature (@inquirer/prompts, ink, etc.) | ✅ Mature (charmbracelet/huh, bubbletea) |
 
-**TypeScript wins on practical grounds:** The runtime dependency criterion (the primary reason Go was chosen in ADR 0001) is **moot** because all target agents already require Node.js. Therefore, the only difference is developer ergonomics, and TypeScript provides:
+**TypeScript wins on practical grounds:** The runtime dependency criterion (the primary reason Go was initially chosen) is **moot** because all target agents already require Node.js. Therefore, the only difference is developer ergonomics, and TypeScript provides:
 
 1. **Easier distribution**: `npm install -g agentenv` is simpler than downloading and managing binary releases per OS/arch
 2. **Automatic updates**: `npm update -g agentenv` handles version upgrades seamlessly
@@ -95,7 +94,7 @@ This means that **requiring Node.js as a runtime dependency for `agentenv` does 
 
 ### Alternative 2: Rust + Ratatui (Original Alternative)
 
-**Rejected because:** Same as ADR 0001 — Rust satisfies the single-binary/zero-dependency criterion, but the criterion is moot. Additionally, Rust has contributor friction (requires cargo toolchain) compared to Node.js/npm.
+**Rejected because:** Same reasoning as the original Go decision — Rust satisfies the single-binary/zero-dependency criterion, but the criterion is moot. Additionally, Rust has contributor friction (requires cargo toolchain) compared to Node.js/npm.
 
 ### Alternative 3: Node.js + Ink
 
@@ -145,11 +144,9 @@ This decision **does not** lock in:
 - [toml npm package](https://www.npmjs.com/package/toml)
 - [TypeScript](https://www.typescriptlang.org/)
 - [npm documentation](https://docs.npmjs.com/)
-- [ADR 0001 (Superseded)](./0001-cli-tech-stack.md)
-
 ## Migration Notes
 
-This ADR supersedes ADR 0001. The Go-based implementation in `cmd/agentenv/` (if any was started) should be replaced with the TypeScript implementation. The directory structure changes from Go conventions to Node.js/TypeScript conventions:
+The Go-based implementation in `cmd/agentenv/` (if any was started) should be replaced with the TypeScript implementation. The directory structure changes from Go conventions to Node.js/TypeScript conventions:
 
 ```
 # Old (Go) - Superseded

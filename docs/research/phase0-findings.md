@@ -194,16 +194,17 @@ scripts) is fully supported by ensuring Git Bash tools are reachable via `PATH`.
 
 ---
 
-## 6. Chosen Tech Stack (Task 8 — ADR 0001)
+## 6. Chosen Tech Stack
 
 | Component | Choice | Version | Rationale |
 |---|---|---|---|
-| Language | Go (Golang) | 1.21+ | Single static binary, no runtime dependency |
-| TUI Library | charmbracelet/huh | v2.0.3+ | Declarative form/wizard primitives, cross-platform |
-| Build Command | `go build -o agentenv ./cmd/agentenv` | N/A | Produces single static binary |
-| Import Paths | `charm.land/huh/v2` | v2 | Vanity paths (migrated March 2026) |
+| Language | TypeScript (Node.js) | 5.0+ | Leverages Node.js (already required by all v1 agents) |
+| TUI Library | @inquirer/prompts | ^1.0.0 | Declarative form/wizard primitives, cross-platform |
+| CLI Framework | commander | ^12.0.0 | Simple API, TypeScript support, subcommand support |
+| Config Parser | toml | ^3.0.0 | TOML parsing for agentenv.toml config files |
+| Build Command | `npm run build` | N/A | Compiles TypeScript to JavaScript |
 
-**Decision File:** `docs/decisions/0001-cli-tech-stack.md`
+**Decision File:** `docs/decisions/0002-cli-tech-stack.md`
 
 **Alternatives Considered and Rejected:**
 - Go + Bubble Tea v2: More low-level, requires manual form state management
@@ -274,7 +275,7 @@ scripts) is fully supported by ensuring Git Bash tools are reachable via `PATH`.
 | Re-verified agent adapter table | `docs/research/agent-adapters.md` | ✅ Complete |
 | Confirmed `rtk init` behavior | `docs/research/rtk-init-behavior.md` | ✅ Complete |
 | Confirmed Tier 0 shell fix | `docs/research/tier0-shell-fix.md` | ✅ Complete |
-| Chosen tech stack | `docs/decisions/0001-cli-tech-stack.md` | ✅ Complete |
+| Chosen tech stack | `docs/decisions/0002-cli-tech-stack.md` | ✅ Complete |
 | Per-OS behavioral parity | `docs/research/tool-behavior-parity.md` | ✅ Complete |
 | **Example `agentenv.toml`** | *To be created by Task 10 Step 3* | ⏳ Pending |
 | **Consolidated findings** | `docs/research/phase0-findings.md` | ✅ **This document** |
