@@ -1,0 +1,13 @@
+# Superpowers planning/execution workspace (not part of the shipped project)
+docs/superpowers/
+.superpowers/
+
+# Go build artifacts (populated once the CLI tech stack, ADR 0001, is implemented)
+/agentenv
+/dist/
+*.exe
+*.test
+
+# OS cruft
+.DS_Store
+Thumbs.db
