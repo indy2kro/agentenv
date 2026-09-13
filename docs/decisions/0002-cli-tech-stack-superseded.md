@@ -2,7 +2,7 @@
 
 **Status:** Accepted  
 **Date:** 2026-09-13  
-**Author:** Cristian Radu  
+**Author:** Cristian Radu <indy2kro@gmail.com>  
 **Supersedes:** ADR 0001 (0001-cli-tech-stack.md)  
 **Related:** `docs/plans/agentenv-dev-plan.md` §6.2
 

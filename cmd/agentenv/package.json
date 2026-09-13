@@ -25,7 +25,7 @@
     "mise",
     "rtk"
   ],
-  "author": "Cristian Radu <cristian.radu@email.com>",
+  "author": "Cristian Radu <indy2kro@gmail.com>",
   "license": "MIT",
   "dependencies": {
     "@inquirer/prompts": "^1.0.0",

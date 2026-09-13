@@ -1,9 +1,14 @@
 # ADR 0001: CLI Implementation Language and TUI Library
 
-**Status:** Accepted  
+**Status:** Superseded by ADR 0002  
 **Date:** 2026-09-13  
 **Author:** Mistral Vibe (research phase)  
 **Related:** `docs/plans/agentenv-dev-plan.md` §6.2
+
+> **This ADR has been superseded by [ADR 0002](./0002-cli-tech-stack-superseded.md).**
+>
+> The decision to use Go + Huh v2 was reversed in favor of TypeScript/Node.js with @inquirer/prompts.
+> See ADR 0002 for the current tech stack decision.
 
 ## Context
 
