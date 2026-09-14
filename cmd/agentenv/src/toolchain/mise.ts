@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as child_process from 'child_process';
 import { AgentenvConfig, TOOL_TIERS } from '../config/schema.js';
+import { FALLBACK_REQUIRED_TOOLS, requiresFallback } from './fallbacks.js';
 
 // Tool to mise name mappings
 export const MISE_TOOL_NAMES: Record<string, string> = {
@@ -30,6 +31,10 @@ export const MISE_TOOL_NAMES: Record<string, string> = {
   watchexec: 'watchexec',
   direnv: 'direnv',
 };
+
+// Tools that cannot be installed via mise and require fallback
+// Based on Phase 0 findings: universal-ctags and tokei are not in mise registry
+export { FALLBACK_REQUIRED_TOOLS, requiresFallback };
 
 export interface MiseTool {
   name: string;
@@ -87,6 +92,10 @@ export function generateMiseToml(
   const allEnabledTools = [...tier1Tools, ...tier2Tools, ...tier3Tools];
 
   for (const toolKey of allEnabledTools) {
+    // Skip tools that require fallback installation (not in mise registry)
+    if (requiresFallback(toolKey)) {
+      continue;
+    }
     const miseName = MISE_TOOL_NAMES[toolKey] || toolKey;
     const version = PINNED_TOOL_VERSIONS[miseName] || 'latest';
     lines.push(`${miseName} = "${version}"`);
@@ -144,6 +153,10 @@ export function getToolsToInstall(config: AgentenvConfig): Array<{
 
   for (const key of toolKeys) {
     if (tools[key]) {
+      // Skip tools that require fallback installation (not in mise registry)
+      if (requiresFallback(key)) {
+        continue;
+      }
       const miseName = MISE_TOOL_NAMES[key] || key;
       result.push({
         name: key,

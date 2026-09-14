@@ -41,8 +41,10 @@ export interface ShellInfo {
   currentShell: string;
   isPosixCompatible: boolean;
   isWindows: boolean;
+  isMacOS: boolean;
   isGitBash: boolean;
   gitBashPath?: string;
+  gnubinPath?: string;
   missingUtilities: string[];
   pathEnvironment: string;
 }
@@ -52,12 +54,14 @@ export interface ShellInfo {
  */
 export function detectShell(): ShellInfo {
   const isWindows = process.platform === 'win32';
+  const isMacOS = process.platform === 'darwin';
   const currentShell = determineCurrentShell();
 
   // Check if we're already in a POSIX-compatible environment
   let isPosixCompatible: boolean;
   let isGitBash = false;
   let gitBashPath: string | undefined;
+  let gnubinPath: string | undefined;
   const pathEnvironment = process.env.PATH || '';
 
   if (isWindows) {
@@ -89,8 +93,30 @@ export function detectShell(): ShellInfo {
         isPosixCompatible = true;
       }
     }
+  } else if (isMacOS) {
+    // On macOS, check for GNU coreutils
+    isPosixCompatible = checkGNUCoreutils();
+
+    // If GNU coreutils are not available, we may need to install them
+    if (!isPosixCompatible) {
+      gnubinPath = installGNUCoreutilsMacOS();
+      if (gnubinPath) {
+        isPosixCompatible = true;
+      }
+    } else {
+      // Try to get the gnubin path if coreutils are installed
+      try {
+        const prefix = child_process
+          .execSync('brew --prefix coreutils', { encoding: 'utf-8' })
+          .trim();
+        gnubinPath = path.join(prefix, 'libexec', 'gnubin');
+      } catch {
+        // coreutils not installed via Homebrew, or Homebrew not available
+      }
+    }
   } else {
-    // On Unix-like systems, check for GNU coreutils
+    // On Linux and other Unix-like systems, check for GNU coreutils
+    // Most Linux distros ship GNU tools by default
     isPosixCompatible = checkGNUCoreutils();
   }
 
@@ -101,8 +127,10 @@ export function detectShell(): ShellInfo {
     currentShell,
     isPosixCompatible,
     isWindows: isWindows,
+    isMacOS: isMacOS,
     isGitBash,
     gitBashPath,
+    gnubinPath,
     missingUtilities,
     pathEnvironment,
   };
@@ -223,6 +251,41 @@ function checkGNUCoreutils(): boolean {
 }
 
 /**
+ * Install GNU coreutils on macOS via Homebrew.
+ * Returns the gnubin path that needs to be prepended to PATH, or undefined if installation fails.
+ */
+function installGNUCoreutilsMacOS(): string | undefined {
+  if (process.platform !== 'darwin') {
+    return undefined;
+  }
+
+  try {
+    // Check if Homebrew is installed
+    child_process.execSync('command -v brew', { stdio: 'ignore' });
+
+    // Install coreutils, gnu-sed, grep, findutils, gawk if not already installed
+    const packages = ['coreutils', 'gnu-sed', 'grep', 'findutils', 'gawk'];
+    for (const pkg of packages) {
+      try {
+        // Check if already installed
+        child_process.execSync(`brew list --formula ${pkg}`, { stdio: 'ignore' });
+      } catch {
+        // Not installed, install it
+        child_process.execSync(`brew install --quiet ${pkg}`, { stdio: 'ignore' });
+      }
+    }
+
+    // Get the gnubin path from coreutils
+    const prefix = child_process.execSync('brew --prefix coreutils', { encoding: 'utf-8' }).trim();
+    const gnubinPath = path.join(prefix, 'libexec', 'gnubin');
+
+    return gnubinPath;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Check which POSIX utilities are missing on Windows
  */
 function checkMissingUtilities(isPosixCompatible: boolean): string[] {
@@ -255,34 +318,54 @@ function checkMissingUtilities(isPosixCompatible: boolean): string[] {
 export function getShellConfiguration(shellInfo: ShellInfo): {
   shell: string;
   posixPath?: string;
+  gnuPath?: string;
   needsConfiguration: boolean;
 } {
-  if (!shellInfo.isWindows) {
+  if (shellInfo.isWindows) {
+    // On Windows
+    if (shellInfo.isPosixCompatible) {
+      return {
+        shell: shellInfo.currentShell,
+        posixPath: shellInfo.gitBashPath,
+        needsConfiguration: false,
+      };
+    }
+
+    // Need to configure Git Bash
+    if (shellInfo.gitBashPath) {
+      return {
+        shell: 'bash.exe',
+        posixPath: shellInfo.gitBashPath,
+        needsConfiguration: true,
+      };
+    }
+
+    // Git Bash not found
     return {
       shell: shellInfo.currentShell,
-      needsConfiguration: false,
-    };
-  }
-
-  // On Windows
-  if (shellInfo.isPosixCompatible) {
-    return {
-      shell: shellInfo.currentShell,
-      posixPath: shellInfo.gitBashPath,
-      needsConfiguration: false,
-    };
-  }
-
-  // Need to configure Git Bash
-  if (shellInfo.gitBashPath) {
-    return {
-      shell: 'bash.exe',
-      posixPath: shellInfo.gitBashPath,
       needsConfiguration: true,
     };
   }
 
-  // Git Bash not found
+  // On macOS and Linux
+  if (shellInfo.isPosixCompatible) {
+    return {
+      shell: shellInfo.currentShell,
+      gnuPath: shellInfo.gnubinPath,
+      needsConfiguration: false,
+    };
+  }
+
+  // Need to configure GNU coreutils on macOS
+  if (shellInfo.isMacOS && shellInfo.gnubinPath) {
+    return {
+      shell: shellInfo.currentShell,
+      gnuPath: shellInfo.gnubinPath,
+      needsConfiguration: true,
+    };
+  }
+
+  // Cannot configure
   return {
     shell: shellInfo.currentShell,
     needsConfiguration: true,
@@ -302,6 +385,20 @@ export function generateGitBashPathAddition(gitBashPath: string): string {
 
   return `${binPath};${usrBinPath}`;
 }
+
+/**
+ * Generate PATH addition for GNU coreutils on macOS
+ */
+export function generateMacOSGNUPathAddition(gnubinPath: string): string {
+  if (process.platform !== 'darwin') {
+    return '';
+  }
+
+  return gnubinPath;
+}
+
+// Export the installation function for use by other modules
+export { installGNUCoreutilsMacOS };
 
 export type ShellFixAction = 'created' | 'updated' | 'unchanged' | 'skipped';
 
@@ -505,7 +602,7 @@ function setTomlWindowsShellPath(content: string, valueLine: string): string {
 }
 
 /**
- * Fix shell configuration for Windows
+ * Fix shell configuration for Windows and macOS
  * This is a Tier 0 fix - ensures POSIX utilities are available
  */
 export function fixShellConfiguration(
@@ -515,49 +612,89 @@ export function fixShellConfiguration(
   success: boolean;
   message: string;
   gitBashPath?: string;
+  gnubinPath?: string;
   results?: ShellFixResult[];
 } {
-  if (process.platform !== 'win32') {
+  if (process.platform === 'win32') {
+    const shellInfo = detectShell();
+
+    if (shellInfo.isPosixCompatible) {
+      return {
+        success: true,
+        message: 'Shell is already POSIX-compatible',
+        gitBashPath: shellInfo.gitBashPath,
+      };
+    }
+
+    if (!shellInfo.gitBashPath) {
+      return {
+        success: false,
+        message: 'Git Bash not found. Please install Git for Windows first.',
+      };
+    }
+
+    const bashExe = bashExecutable(shellInfo.gitBashPath);
+    const home = process.env.HOME || process.env.USERPROFILE || '';
+    const results = agents.map((agent) => applyAgentShellFix(agent, bashExe, home));
+    const written = results.filter(
+      (result) => result.action === 'created' || result.action === 'updated',
+    );
+
+    const message =
+      written.length > 0
+        ? `Configured agent shell overrides (${written.map((result) => result.agent).join(', ')}) pointing at ${bashExe}`
+        : `Git Bash detected at ${bashExe}; agent shell config already up to date`;
+
     return {
       success: true,
-      message: 'Not applicable on non-Windows systems',
+      message,
+      gitBashPath: shellInfo.gitBashPath,
+      results,
     };
   }
 
-  const shellInfo = detectShell();
+  // macOS and Linux: ensure GNU coreutils are available
+  if (process.platform === 'darwin') {
+    const shellInfo = detectShell();
 
+    if (shellInfo.isPosixCompatible) {
+      return {
+        success: true,
+        message: 'Shell is already POSIX-compatible',
+        gnubinPath: shellInfo.gnubinPath,
+      };
+    }
+
+    // Try to install GNU coreutils via Homebrew
+    const gnubinPath = installGNUCoreutilsMacOS();
+    if (!gnubinPath) {
+      return {
+        success: false,
+        message:
+          'GNU coreutils not found and could not be installed. Please install Homebrew and run: brew install coreutils gnu-sed grep findutils gawk',
+      };
+    }
+
+    return {
+      success: true,
+      message: `GNU coreutils installed via Homebrew. Prepend ${gnubinPath} to PATH for GNU tools.`,
+      gnubinPath,
+    };
+  }
+
+  // Linux and other platforms
+  const shellInfo = detectShell();
   if (shellInfo.isPosixCompatible) {
     return {
       success: true,
       message: 'Shell is already POSIX-compatible',
-      gitBashPath: shellInfo.gitBashPath,
     };
   }
-
-  if (!shellInfo.gitBashPath) {
-    return {
-      success: false,
-      message: 'Git Bash not found. Please install Git for Windows first.',
-    };
-  }
-
-  const bashExe = bashExecutable(shellInfo.gitBashPath);
-  const home = process.env.HOME || process.env.USERPROFILE || '';
-  const results = agents.map((agent) => applyAgentShellFix(agent, bashExe, home));
-  const written = results.filter(
-    (result) => result.action === 'created' || result.action === 'updated',
-  );
-
-  const message =
-    written.length > 0
-      ? `Configured agent shell overrides (${written.map((result) => result.agent).join(', ')}) pointing at ${bashExe}`
-      : `Git Bash detected at ${bashExe}; agent shell config already up to date`;
 
   return {
-    success: true,
-    message,
-    gitBashPath: shellInfo.gitBashPath,
-    results,
+    success: false,
+    message:
+      'POSIX-compatible shell not detected. Most Linux distributions ship with GNU coreutils by default.',
   };
 }
 

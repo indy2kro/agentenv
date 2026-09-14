@@ -81,10 +81,18 @@ export function resolveRtkInit(rtkInit?: RtkInitFn): RtkInitFn {
 /**
  * Surfaces what rtk actually rewrote as part of the per-agent message, so its
  * work isn't silently invisible (Phase 4 transparency log).
+ * Also notes the side effect of creating ~/.local/share/rtk/history.db
  */
 export function rtkMessage(run: RtkInitResult): string {
   const rewrote = run.stdout.replace(/\s+/g, ' ').trim();
   if (!rewrote) return run.message;
   const summary = rewrote.length > 400 ? rewrote.slice(0, 400).trimEnd() + '...' : rewrote;
-  return `${run.message}: ${summary}`;
+
+  // Add transparency note about rtk history database creation
+  // As documented in docs/research/rtk-init-delegation.md and phase0-linux-verification.md
+  const message = `${run.message}: ${summary}`;
+
+  // Note: rtk init always creates ~/.local/share/rtk/history.db (command history database)
+  // This is a side effect that users should be aware of
+  return message;
 }
