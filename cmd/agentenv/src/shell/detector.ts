@@ -5,6 +5,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import * as winPath from 'path/win32';
 import * as child_process from 'child_process';
 import { AGENT_KEYS } from '../config/schema.js';
 import type { AgentKey } from '../config/schema.js';
@@ -306,16 +307,18 @@ export interface ShellFixResult {
 /**
  * Resolve the full path to bash.exe from a detected Git Bash directory.
  * Handles both the `usr\bin` form and the plain `bin` form Git for Windows ships.
+ * Uses win32 path semantics so the result is correct regardless of host OS
+ * (the tests exercise this on Linux CI).
  */
 export function bashExecutable(gitBashPath: string): string {
-  const parent = path.dirname(gitBashPath);
-  if (path.basename(gitBashPath).toLowerCase() === 'bin') {
-    if (path.basename(parent).toLowerCase() === 'usr') {
-      return path.join(gitBashPath, 'bash.exe');
+  const parent = winPath.dirname(gitBashPath);
+  if (winPath.basename(gitBashPath).toLowerCase() === 'bin') {
+    if (winPath.basename(parent).toLowerCase() === 'usr') {
+      return winPath.join(gitBashPath, 'bash.exe');
     }
-    return path.join(parent, 'usr', 'bin', 'bash.exe');
+    return winPath.join(parent, 'usr', 'bin', 'bash.exe');
   }
-  return path.join(gitBashPath, 'bash.exe');
+  return winPath.join(gitBashPath, 'bash.exe');
 }
 
 /**
