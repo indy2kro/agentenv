@@ -34,7 +34,7 @@ This means that **requiring Node.js as a runtime dependency for `agentenv` does 
 
 | Criterion | TypeScript/Node.js | Go (original choice) |
 |---|---|---|
-| Runtime dependency | ⚠️ Node 18+ required | ✅ Zero dependency (static binary) |
+| Runtime dependency | ⚠️ Node 22.13+ required (floor: deps `@inquirer/prompts ^20.17/^22.13/23.5+`, `commander >=22.12`, `toml >=20`) | ✅ Zero dependency (static binary) |
 | Additional burden on users | ❌ **None** (already required by all v1 agents) | ✅ None |
 | Distribution | ✅ `npm install -g agentenv`, updates via `npm update -g` | ✅ Single binary, GitHub releases |
 | Cross-platform (Windows/macOS/Linux) | ✅ First-class support | ✅ First-class support |
@@ -113,9 +113,9 @@ This means that **requiring Node.js as a runtime dependency for `agentenv` does 
 
 ### Negative / Trade-offs
 
-1. **Runtime dependency**: Users need Node.js 18+ installed. **Mitigation:** This is already required by all v1 target agents, so there is no additional burden.
+1. **Runtime dependency**: Users need Node.js 22.13+ installed (deps `>=18.0.0` claim was corrected after the dependency floor rose with `commander`/`@inquirer/prompts`). **Mitigation:** Already required by all v1 target agents, so there is no additional burden.
 2. **Larger install footprint**: npm global packages include node_modules with all dependencies. **Mitigation:** Acceptable — modern systems have plenty of disk space, and the user experience is better.
-3. **Version conflicts**: If users have old Node.js versions, they may need to upgrade. **Mitigation:** We specify `engines: { node: ">=18.0.0" }` in package.json, and npm will warn on incompatible versions.
+3. **Version conflicts**: If users have old Node.js versions, they may need to upgrade. **Mitigation:** We specify `engines: { node: ">=22.13.0" }` in package.json, and npm will warn on incompatible versions.
 4. **Slower startup**: Node.js CLI tools have a slight startup overhead compared to Go binaries. **Mitigation:** This is negligible for our use case (a configuration tool that runs infrequently).
 
 ### Locked-In Decisions
