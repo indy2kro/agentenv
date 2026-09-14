@@ -45,18 +45,52 @@ The current adapters, however, hand-write the hook files:
 3. **Keep all hand-written:** only viable if every hand-written format is
    verified against the real rtk output for the pinned rtk version.
 
+## Verified Findings (rtk 0.42.4, 2026-09-14)
+
+Queried via `rtk init --help` and `rtk init --<agent> --dry-run -v` (in a
+throwaway HOME; no files written). This machine has `rtk 0.42.4` on PATH
+from mise.
+
+`rtk init` flags for our four agents:
+
+| Flag | Behavior (dry-run) | Matches current adapter? |
+|---|---|---|
+| `--agent claude` (default) | Patches `~/.claude/settings.json` with the `PreToolUse` `rtk hook claude` entry | ✅ yes — adapter already writes this exact structure |
+| `--codex` | Creates project `RTK.md` + patches `AGENTS.md` — **no hooks.json, no config.toml patching** | ❌ no — adapter writes `~/.codex/hooks.json` + `[features] hooks` |
+| `--copilot` | Writes `.github/copilot-instructions.md` + `.github/hooks/rtk-rewrite.json` (VS Code/CLI `PreToolUse` + `preToolUse`) | ❌ no — adapter writes `~/.copilot/hooks/pre-tool-use` shell script |
+| `--opencode` | Installs OpenCode plugin (in addition to Claude) | ⚠️ untested dry-run; flag exists |
+
+Other relevant flags: `--agent <cursor|windsurf|cline|kilocode|antigravity|pi|hermes>`,
+`--gemini`, `--show`, `--claude-md` (legacy), `--hook-only`, `--auto-patch`,
+`--no-patch`, `--uninstall`, `--dry-run`.
+
+Consequences:
+
+1. **Codex and Copilot hand-written hooks do not match real rtk.** rtk's Codex
+   path is intentionally *hook-free* (AGENTS.md + RTK.md pattern), and its
+   Copilot path targets the VS Code/CLI `.github/hooks/` mechanism rather than
+   a `~/.copilot/hooks/pre-tool-use` script. Per §2's constraint, agentenv
+   should stop hand-writing these and delegate.
+2. **Recommendation: option 2** — keep the Claude hook (verified match, tested),
+   and for Codex/Copilot invoke `rtk init --codex` / `--copilot` (and
+   `--opencode` for OpenCode) from the adapters when `rtk.enabled`. The hooks
+   rtk writes are project-scoped (`.codex` via RTK.md in project, `.github/`),
+   so agentenv scopes them naturally per project.
+3. `rtk init` is prompt-y by default (`--auto-patch`/`--no-patch` control the
+   settings.json ask); the adapters should pass `--dry-run` to report intent
+   in `status`/`configure` without writing, or run with the patch flags for
+   non-interactive apply.
+
 ## What to Verify in Phase 2
 
 On each OS, after `mise install` makes `rtk` available:
 
 1. Run `rtk init <agent>` for each target agent and diff the written files
-   against what the adapter currently writes.
+   against what the adapter currently writes — largely **done above**; the
+   remaining gap is the OpenCode plugin file rtk actually generates.
 2. Confirm `rtk init` is idempotent / safe to re-run.
-3. Confirm the exact flag names for Codex (`--codex`), Copilot (`--copilot`),
-   OpenCode (`--opencode`) and whether an agent selection flag (`--agent`)
-   should be used instead for any of them.
-4. Decide option 1–3 above and record the decision back in
-   `docs/plans/agentenv-dev-plan.md` Phase 2.
+3. Decide the delegation boundary (see Options below) and record the decision
+   back in `docs/plans/agentenv-dev-plan.md` Phase 2.
 
 ## Related
 
