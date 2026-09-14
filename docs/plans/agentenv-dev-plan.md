@@ -319,6 +319,45 @@ agentenv/
   `b5da678`). Remaining: `npm publish` (needs npm credentials on this
   machine).
 
+### Phase 6 — Optional upstream integrations
+
+- Add an `integrations` config section (`agentenv.toml`), disabled by
+  default, plus a small `IntegrationAdapter` contract parallel to the
+  per-agent adapters (§6 architecture table), for third-party
+  skill/methodology integrations installed through their own documented
+  native mechanisms — never vendored, never a second plugin runtime. Full
+  design: `docs/superpowers/specs/2026-09-14-optional-integrations-design.md`
+  (local planning doc, not committed — see that file's own repo if you need
+  it regenerated). Implementation plan:
+  `docs/superpowers/plans/2026-09-14-superpowers-integration.md` (same
+  caveat).
+- First integration: Superpowers (`github:obra/superpowers`). Only Claude
+  Code has a documented, non-interactive, ref-pinnable installer
+  (`claude plugin marketplace add` / `claude plugin install`); the other
+  three v1 agents report `unsupported` with manual-install hints — see
+  `docs/research/superpowers-install-mechanisms.md`.
+- `gh` gains authenticated/unauthenticated/unknown reporting in
+  `agentenv status` via `gh auth status --hostname github.com`; agentenv
+  never manages GitHub credentials.
+- **Status: in progress — Tasks 1–3 of 7 landed, Tasks 4–7 not started.**
+  Merged so far (`cmd/agentenv/src/config/schema.ts`,
+  `cmd/agentenv/src/toolchain/gh.ts`, `cmd/agentenv/src/integrations/`):
+  the full `integrations.superpowers` config schema (defaults, validation,
+  TOML round-trip, diff reporting), the read-only `gh` auth probe module,
+  and the `IntegrationAdapter` contract + `SuperpowersAdapter` — all tested,
+  all inert. **Not yet done:** wiring any of it into `agentenv apply`
+  (install step), `agentenv status` (Integrations section + `gh` auth line),
+  `agentenv setup`/`configure` (preserve existing settings, Advanced-mode
+  opt-in step), or the README/docs updates. Until that wiring lands, setting
+  `integrations.superpowers.enabled = true` in `agentenv.toml` parses and
+  validates cleanly but has **no effect** — nothing installs, nothing is
+  reported. Do not tell users this feature works yet.
+- **Acceptance (not yet met):** `agentenv apply` with
+  `integrations.superpowers.enabled = true` and `allow_hooks = true`
+  installs Superpowers for Claude Code idempotently; `agentenv status` shows
+  its state; `setup`/`configure` preserve and (Advanced mode only) offer
+  explicit opt-in.
+
 ## 9. Testing strategy
 
 - CI matrix across the three OSes × four agents is the primary safety net
