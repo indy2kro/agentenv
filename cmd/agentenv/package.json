@@ -3,8 +3,21 @@
   "version": "0.1.0",
   "description": "CLI for configuring a consistent, capable shell environment for AI coding agents",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "bin": {
     "agentenv": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/indy2kro/agentenv.git"
   },
   "scripts": {
     "build": "tsc",

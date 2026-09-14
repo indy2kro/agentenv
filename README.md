@@ -13,13 +13,15 @@ Full design and rationale: [`docs/plans/agentenv-dev-plan.md`](docs/plans/agente
 
 ## Status
 
-Phase 0 (research & validation) is complete. Phase 1 (config core +
-non-interactive `apply`, Tier 0 shell fix, Claude Code adapter) is
-implemented and under active hardening; Phase 2 (Codex/Copilot/OpenCode
-adapters) is scaffolded with test coverage. The CLI lives in
-[`cmd/agentenv/`](cmd/agentenv/README.md). See `docs/plans/agentenv-dev-plan.md`
-§8 for the phase roadmap, and `docs/research/` / `docs/decisions/` for the
-validated findings behind it.
+Phase 0 (research & validation) is complete. Phases 1–4 are implemented:
+config core + non-interactive `apply` (idempotent, zero-diff), Tier 0 shell
+fix, all four adapters (Claude hand-written, Codex/Copilot/OpenCode delegated
+to `rtk init`), the interactive wizard (`setup`/`configure`), and `status`
+drift reporting. Phase 5 (npm packaging) is underway: `agentenv` is
+publisable (`npm pack` clean) and installable via `npm install -g agentenv`.
+The CLI lives in [`cmd/agentenv/`](cmd/agentenv/README.md). See
+`docs/plans/agentenv-dev-plan.md` §8 for the phase roadmap, and
+`docs/research/` / `docs/decisions/` for the validated findings behind it.
 
 ## Repo layout
 

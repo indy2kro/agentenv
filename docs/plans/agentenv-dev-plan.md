@@ -303,6 +303,11 @@ agentenv/
 - Publish to npm registry for seamless installation and updates via `npm update -g agentenv`
 - Add a documented "how to add a new agent adapter" guide, so growing beyond the four v1 targets doesn't require touching the core
 - CI matrix (GitHub Actions: windows-latest, macos-latest, ubuntu-latest) running full setup + a smoke test for each of the four agents on every push
+- **Status:** npm packaging prepared — `files`/`types`/`publishConfig`/`repository`
+  metadata, `LICENSE` (MIT), and a package `README.md` added; `npm pack` is
+  clean (70 kB, dist only) and a temp-prefix `npm install -g` +
+  `agentenv --help`/`status` verified end-to-end. Remaining: publish step,
+  adapter guide, CI smoke per agent.
 
 ## 9. Testing strategy
 
