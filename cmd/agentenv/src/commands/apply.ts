@@ -26,6 +26,14 @@ export interface ApplyResult {
   errors: string[];
 }
 
+export interface ApplyOptions {
+  /**
+   * Skip ensuring/installing via mise. Used by tests and any caller that
+   * only wants file generation (e.g. CI too fast, or a dry-run apply).
+   */
+  skipMiseInstall?: boolean;
+}
+
 function adaptersFor(config: AgentenvConfig, baseDir: string): BaseAdapter[] {
   const adapterConfig = { enabled: true, baseDir, rtkEnabled: config.rtk?.enabled === true };
   const adapters: BaseAdapter[] = [];
@@ -40,6 +48,7 @@ function adaptersFor(config: AgentenvConfig, baseDir: string): BaseAdapter[] {
 export async function applyConfiguration(
   config: AgentenvConfig,
   baseDir: string,
+  options: ApplyOptions = {},
 ): Promise<ApplyResult> {
   const messages: string[] = [];
   const errors: string[] = [];
@@ -67,7 +76,7 @@ export async function applyConfiguration(
     );
   }
 
-  if (errors.length === 0) {
+  if (errors.length === 0 && !options.skipMiseInstall) {
     const mise = ensureMiseInstalled();
     if (!mise.success) {
       errors.push(mise.message);

@@ -282,10 +282,12 @@ agentenv/
 - **Status:** `agentenv status` implemented (config path/validation, Tier 0
   shell state, per-agent installed/configured with drift flags, per-tool
   PATH drift via `resolveBinary`, custom-tool disk checks, generated-file
-  markers). Hook files are already written merge-only (adapter + Tier 0
-  preserve user content). Remaining: rtk rewrote-log (Phase 2 research
-  dependency) and an automated zero-reinstall integration test across the
-  full `apply` pipeline (currently covered per-file by unit tests).
+  markers). Hook files are written merge-only (adapter + Tier 0 preserve user
+  content — Codex `config.toml`/`hooks.json` now merge instead of
+  overwriting). `apply` gained a `skipMiseInstall` option, and
+  `src/commands/apply.test.ts` proves zero-diff on repeated applies plus
+  user-content preservation. Remaining: rtk rewrote-log (Phase 2 research
+  dependency).
 
 ### Phase 5 — Distribution & generalization
 - Package `agentenv` as an npm package (`npm install -g agentenv`)

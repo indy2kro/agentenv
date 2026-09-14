@@ -103,42 +103,64 @@ export class CodexCliAdapter extends BaseAdapter {
     const configPath = path.join(this.configDir, 'config.toml');
     const hooksPath = path.join(this.configDir, 'hooks.json');
 
-    // Codex CLI uses hooks.json for hook configuration
-    // RTK provides built-in support for Codex CLI
+    // Codex CLI uses hooks.json for hook configuration.
+    // RTK provides built-in support for Codex CLI.
     const rtkHooks = {
-      SessionStart: [
-        {
-          command: 'rtk',
-          args: ['hook', 'codex'],
-        },
-      ],
-      PreToolUse: [
-        {
-          command: 'rtk',
-          args: ['rewrite', '--tool', '{tool_name}'],
-        },
-      ],
+      SessionStart: {
+        command: 'rtk',
+        args: ['hook', 'codex'],
+      },
+      PreToolUse: {
+        command: 'rtk',
+        args: ['rewrite', '--tool', '{tool_name}'],
+      },
     };
+    const isRtkEntry = (
+      entry: Record<string, unknown>,
+      expected: Record<string, unknown>,
+    ): boolean =>
+      entry.command === expected.command &&
+      JSON.stringify(entry.args) === JSON.stringify(expected.args);
 
     try {
-      // Ensure hooks are enabled in config.toml
-      let configContent = this.generateConfigToml();
-
-      if (fs.existsSync(configPath)) {
+      // config.toml: create when missing, otherwise only ensure
+      // `[features] hooks = true` — never clobber user sections.
+      if (!fs.existsSync(configPath)) {
+        fs.writeFileSync(configPath, this.generateConfigToml());
+        result.filesCreated.push(configPath);
+      } else {
         const existing = fs.readFileSync(configPath, 'utf-8');
         if (!existing.includes('[features]') || !existing.includes('hooks = true')) {
-          configContent = this.ensureHooksEnabled(existing);
+          fs.writeFileSync(configPath, this.ensureHooksEnabled(existing));
+          result.filesModified.push(configPath);
         }
       }
 
-      fs.writeFileSync(configPath, configContent);
-      result.filesModified.push(configPath);
+      // hooks.json: merge rtk hooks into the existing file, preserving any
+      // user hooks. Only write when something actually changed.
+      let hooks: Record<string, Array<Record<string, unknown>>> = {};
+      if (fs.existsSync(hooksPath)) {
+        hooks = JSON.parse(fs.readFileSync(hooksPath, 'utf-8'));
+      }
 
-      // Create hooks.json with RTK hooks
-      const hooksContent = JSON.stringify(rtkHooks, null, 2);
-      fs.writeFileSync(hooksPath, hooksContent);
-      result.filesCreated.push(hooksPath);
-      result.message = `Configured Codex CLI hooks at ${hooksPath}`;
+      let changed = false;
+      for (const [event, rtkEntry] of Object.entries(rtkHooks) as Array<
+        [string, Record<string, unknown>]
+      >) {
+        const entries = hooks[event];
+        const list = Array.isArray(entries) ? entries : [];
+        if (!list.some((entry) => isRtkEntry(entry, rtkEntry))) {
+          list.push({ ...rtkEntry });
+          changed = true;
+        }
+        hooks[event] = list;
+      }
+
+      if (changed) {
+        fs.writeFileSync(hooksPath, JSON.stringify(hooks, null, 2));
+        result.filesModified.push(hooksPath);
+      }
+      result.message = `Configured Codex CLI rtk hooks (${hooksPath})`;
     } catch (err) {
       result.success = false;
       result.errors.push(
