@@ -33,7 +33,7 @@
   "author": "Cristian Radu <indy2kro@gmail.com>",
   "license": "MIT",
   "dependencies": {
-    "@inquirer/prompts": "^1.0.0",
+    "@inquirer/prompts": "^8.7.2",
     "commander": "^15.0.0",
     "toml": "^3.0.0"
   },
