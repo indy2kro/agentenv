@@ -262,6 +262,15 @@ agentenv/
   against a real rtk install**. Decide delegation vs. hand-written hooks per
   agent during Phase 2 (see `docs/research/rtk-init-delegation.md`), matching
   whichever rtk actually writes, before marking the adapters accepted.
+- **Status:** delegation decision made and implemented. Verified against real
+  `rtk 0.42.4`: `rtk init --codex` writes project `RTK.md` + patches
+  `AGENTS.md` (no hooks at all), `--copilot` writes `.github/copilot-instructions.md`
+  + `.github/hooks/rtk-rewrite.json`, and opencode is global-only
+  (`rtk init -g --opencode`, writes `~/.config/opencode/plugins/rtk.ts`). The
+  Codex/Copilot/OpenCode adapters now delegate to `rtk init` with those flags
+  (injectable runner for CI; Claude adapter stays hand-written since it is the
+  exact hook shape rtk produces). `agentenv status` drift checks follow the
+  delegated file locations. `apply` remains zero-diff on re-runs.
 - **Acceptance:** one `agentenv.toml` with all four agents enabled produces correct, working configs for each, verified manually per agent
 
 ### Phase 3 — Interactive wizard

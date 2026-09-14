@@ -1,12 +1,15 @@
 /**
  * Codex CLI Adapter
- * Handles Codex CLI-specific configuration and hook setup
+ * Handles Codex CLI-specific configuration and hook setup.
+ * Hook wiring delegates to `rtk init --codex` (verified against rtk 0.42.4),
+ * which writes RTK.md + AGENTS.md instead of a hand-rolled hooks.json.
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import { BaseAdapter, AdapterConfig, AdapterResult } from './base.js';
 import { isAgentInstalled } from './detect.js';
+import { RTK_INIT_FLAGS, resolveRtkInit } from '../toolchain/rtk.js';
 
 export class CodexCliAdapter extends BaseAdapter {
   private configDir: string;
@@ -56,12 +59,11 @@ export class CodexCliAdapter extends BaseAdapter {
       );
     }
 
-    // Initialize config.toml with hooks enabled
+    // Create config.toml when missing (baseline; never clobber user content)
     const configPath = path.join(this.configDir, 'config.toml');
     try {
       if (!fs.existsSync(configPath)) {
-        const configContent = this.generateConfigToml();
-        fs.writeFileSync(configPath, configContent);
+        fs.writeFileSync(configPath, this.generateConfigToml());
         result.filesCreated.push(configPath);
       }
     } catch (err) {
@@ -100,102 +102,32 @@ export class CodexCliAdapter extends BaseAdapter {
       return result;
     }
 
-    const configPath = path.join(this.configDir, 'config.toml');
-    const hooksPath = path.join(this.configDir, 'hooks.json');
+    // rtk init --codex writes RTK.md and patches AGENTS.md in the project dir.
+    const flags = RTK_INIT_FLAGS.codex_cli;
+    const rtkMdPath = path.join(this.config.baseDir, 'RTK.md');
+    const existed = fs.existsSync(rtkMdPath);
 
-    // Codex CLI uses hooks.json for hook configuration.
-    // RTK provides built-in support for Codex CLI.
-    const rtkHooks = {
-      SessionStart: {
-        command: 'rtk',
-        args: ['hook', 'codex'],
-      },
-      PreToolUse: {
-        command: 'rtk',
-        args: ['rewrite', '--tool', '{tool_name}'],
-      },
-    };
-    const isRtkEntry = (
-      entry: Record<string, unknown>,
-      expected: Record<string, unknown>,
-    ): boolean =>
-      entry.command === expected.command &&
-      JSON.stringify(entry.args) === JSON.stringify(expected.args);
-
-    try {
-      // config.toml: create when missing, otherwise only ensure
-      // `[features] hooks = true` — never clobber user sections.
-      if (!fs.existsSync(configPath)) {
-        fs.writeFileSync(configPath, this.generateConfigToml());
-        result.filesCreated.push(configPath);
-      } else {
-        const existing = fs.readFileSync(configPath, 'utf-8');
-        if (!existing.includes('[features]') || !existing.includes('hooks = true')) {
-          fs.writeFileSync(configPath, this.ensureHooksEnabled(existing));
-          result.filesModified.push(configPath);
-        }
-      }
-
-      // hooks.json: merge rtk hooks into the existing file, preserving any
-      // user hooks. Only write when something actually changed.
-      let hooks: Record<string, Array<Record<string, unknown>>> = {};
-      if (fs.existsSync(hooksPath)) {
-        hooks = JSON.parse(fs.readFileSync(hooksPath, 'utf-8'));
-      }
-
-      let changed = false;
-      for (const [event, rtkEntry] of Object.entries(rtkHooks) as Array<
-        [string, Record<string, unknown>]
-      >) {
-        const entries = hooks[event];
-        const list = Array.isArray(entries) ? entries : [];
-        if (!list.some((entry) => isRtkEntry(entry, rtkEntry))) {
-          list.push({ ...rtkEntry });
-          changed = true;
-        }
-        hooks[event] = list;
-      }
-
-      if (changed) {
-        fs.writeFileSync(hooksPath, JSON.stringify(hooks, null, 2));
-        result.filesModified.push(hooksPath);
-      }
-      result.message = `Configured Codex CLI rtk hooks (${hooksPath})`;
-    } catch (err) {
+    const run = resolveRtkInit(this.config.rtkInit)(flags, this.config.baseDir);
+    if (run.success) {
+      if (!existed && fs.existsSync(rtkMdPath)) result.filesCreated.push(rtkMdPath);
+      result.message = run.message;
+    } else {
       result.success = false;
-      result.errors.push(
-        `Failed to configure Codex CLI hooks: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      result.errors.push(run.message + (run.stderr ? `: ${run.stderr.trim()}` : ''));
     }
 
     return result;
   }
 
   async cleanup(): Promise<AdapterResult> {
-    const result: AdapterResult = {
+    // RTK.md/AGENTS.md are owned by rtk; nothing to remove on our side.
+    return {
       success: true,
-      message: '',
+      message: 'Codex CLI adapter cleaned up',
       filesCreated: [],
       filesModified: [],
       errors: [],
     };
-
-    const hooksPath = path.join(this.configDir, 'hooks.json');
-
-    try {
-      if (fs.existsSync(hooksPath)) {
-        fs.unlinkSync(hooksPath);
-        result.filesModified.push(hooksPath);
-      }
-    } catch (err) {
-      result.success = false;
-      result.errors.push(
-        `Failed to cleanup Codex CLI: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-
-    result.message = 'Codex CLI adapter cleaned up';
-    return result;
   }
 
   getEnvVars(): Record<string, string> {
@@ -219,43 +151,5 @@ hooks = true
 [tools]
 # Tools will be provided by rtk and mise
 `;
-  }
-
-  /**
-   * Ensure hooks are enabled in existing config
-   */
-  private ensureHooksEnabled(existing: string): string {
-    let hasFeatures = false;
-    let hasHooks = false;
-
-    const lines = existing.split('\n');
-    const newLines: string[] = [];
-
-    for (const line of lines) {
-      newLines.push(line);
-
-      if (line.includes('[features]')) {
-        hasFeatures = true;
-      }
-      if (line.includes('hooks')) {
-        hasHooks = true;
-      }
-    }
-
-    if (!hasFeatures) {
-      newLines.unshift('[features]');
-      newLines.unshift('hooks = true');
-      newLines.unshift('');
-    } else if (!hasHooks) {
-      // Add hooks line after [features]
-      for (let i = 0; i < newLines.length; i++) {
-        if (newLines[i].includes('[features]')) {
-          newLines.splice(i + 1, 0, 'hooks = true');
-          break;
-        }
-      }
-    }
-
-    return newLines.join('\n');
   }
 }

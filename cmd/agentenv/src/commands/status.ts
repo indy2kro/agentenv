@@ -15,18 +15,23 @@ import type { AgentKey, AgentenvConfig, CustomTool } from '../config/schema.js';
 import { findConfigPath, resolveScopeDir } from '../config/scopes.js';
 import { detectShell } from '../shell/detector.js';
 
-const AGENT_CONFIG_FILES: Record<AgentKey, { label: string; check: () => string }> = {
-  claude_code: {
-    label: 'Claude Code',
-    check: () => path.join(homeDir(), '.claude', 'settings.json'),
-  },
-  codex_cli: { label: 'Codex CLI', check: () => path.join(homeDir(), '.codex', 'config.toml') },
-  copilot: { label: 'GitHub Copilot', check: () => path.join(homeDir(), '.copilot', 'hooks') },
-  opencode: {
-    label: 'OpenCode',
-    check: () => path.join(homeDir(), '.config', 'opencode', 'opencode.json'),
-  },
-};
+const AGENT_CONFIG_FILES: Record<AgentKey, { label: string; check: (baseDir: string) => string }> =
+  {
+    claude_code: {
+      label: 'Claude Code',
+      check: () => path.join(homeDir(), '.claude', 'settings.json'),
+    },
+    // These are written by `rtk init` in the project dir / global plugin dir.
+    codex_cli: { label: 'Codex CLI', check: (baseDir) => path.join(baseDir, 'RTK.md') },
+    copilot: {
+      label: 'GitHub Copilot',
+      check: (baseDir) => path.join(baseDir, '.github', 'copilot-instructions.md'),
+    },
+    opencode: {
+      label: 'OpenCode',
+      check: () => path.join(homeDir(), '.config', 'opencode', 'plugins', 'rtk.ts'),
+    },
+  };
 
 function homeDir(): string {
   return process.env.HOME || process.env.USERPROFILE || '';
@@ -118,7 +123,7 @@ export const statusCommand = new Command()
     for (const agent of enabledAgents) {
       const meta = AGENT_CONFIG_FILES[agent];
       const installed = isAgentInstalled(agent);
-      const configured = fs.existsSync(meta.check());
+      const configured = fs.existsSync(meta.check(baseDir));
       const drift = installed && !configured;
       console.log(
         `  ${meta.label.padEnd(16)} installed: ${installed ? 'yes' : 'no'}   ` +

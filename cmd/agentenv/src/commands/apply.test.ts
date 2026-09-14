@@ -5,15 +5,68 @@ import * as os from 'os';
 import * as path from 'path';
 import { applyConfiguration } from './apply.js';
 import type { AgentenvConfig } from '../config/schema.js';
+import type { RtkInitFn } from '../toolchain/rtk.js';
+
+interface RtkCall {
+  args: string[];
+  cwd: string;
+}
+
+/**
+ * Fake `rtk init` mirroring verified rtk 0.42.4 output files, deterministic so
+ * a second apply is byte-identical.
+ */
+function fakeRtkInit(): { fn: RtkInitFn; calls: RtkCall[] } {
+  const calls: RtkCall[] = [];
+  const fn: RtkInitFn = (args, cwd) => {
+    calls.push({ args, cwd });
+    const joined = args.join(' ');
+    if (joined === '--codex --auto-patch') {
+      fs.writeFileSync(
+        path.join(cwd, 'RTK.md'),
+        '# RTK (Codex CLI)\n\nAlways prefix shell commands with `rtk`.\n',
+      );
+    } else if (joined === '--copilot --auto-patch') {
+      fs.mkdirSync(path.join(cwd, '.github', 'hooks'), { recursive: true });
+      fs.writeFileSync(
+        path.join(cwd, '.github', 'copilot-instructions.md'),
+        '# Copilot instructions\n',
+      );
+      fs.writeFileSync(
+        path.join(cwd, '.github', 'hooks', 'rtk-rewrite.json'),
+        `{
+  "version": 1,
+  "hooks": {
+    "PreToolUse": [
+      {
+        "type": "command",
+        "command": "rtk hook copilot",
+        "cwd": ".",
+        "timeout": 5
+      }
+    ]
+  }
+}
+`,
+      );
+    } else if (joined === '-g --opencode --auto-patch') {
+      const home = process.env.HOME || process.env.USERPROFILE || '';
+      const pluginsDir = path.join(home, '.config', 'opencode', 'plugins');
+      fs.mkdirSync(pluginsDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(pluginsDir, 'rtk.ts'),
+        '// rtk opencode plugin\nexport const plugin = {};\n',
+      );
+    }
+    return { success: true, message: `rtk init ${joined} succeeded`, stdout: '', stderr: '' };
+  };
+  return { fn, calls };
+}
 
 function tempDir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
 
-/**
- * Snapshot every file under the given roots as content strings keyed by path.
- * Used to prove a second `apply` produces byte-identical output.
- */
 function snapshot(roots: string[]): Map<string, string> {
   const snap = new Map<string, string>();
   for (const root of roots) {
@@ -59,39 +112,74 @@ describe('apply pipeline', () => {
     else process.env.USERPROFILE = originalUserProfile;
   });
 
-  it('generates all expected files', async () => {
+  it('generates all expected files and delegates each agent to rtk init once', async () => {
     const home = tempDir('agentenv-home-');
     const base = tempDir('agentenv-base-');
     process.env.HOME = home;
     process.env.USERPROFILE = home;
+    const rtk = fakeRtkInit();
 
-    const result = await applyConfiguration(CONFIG, base, { skipMiseInstall: true });
+    const result = await applyConfiguration(CONFIG, base, {
+      skipMiseInstall: true,
+      rtkInit: rtk.fn,
+    });
     assert.equal(result.success, true, result.errors.join('; '));
 
+    // agentenv-generated baseline + instructions
     for (const file of ['mise.toml', 'AGENTS.md', 'CLAUDE.md']) {
       assert.ok(fs.existsSync(path.join(base, file)), `missing ${file}`);
     }
-    for (const file of [
-      path.join(home, '.claude', 'settings.json'),
-      path.join(home, '.codex', 'config.toml'),
-      path.join(home, '.codex', 'hooks.json'),
-      path.join(home, '.config', 'opencode', 'opencode.json'),
-    ]) {
-      assert.ok(fs.existsSync(file), `missing ${file}`);
-    }
+    assert.ok(
+      fs.existsSync(path.join(home, '.claude', 'settings.json')),
+      'missing claude settings',
+    );
+    assert.ok(fs.existsSync(path.join(home, '.codex', 'config.toml')), 'missing codex config');
+
+    // rtk-delegated outputs
+    assert.ok(fs.existsSync(path.join(base, 'RTK.md')), 'missing RTK.md (codex)');
+    assert.ok(
+      fs.existsSync(path.join(base, '.github', 'copilot-instructions.md')),
+      'missing copilot instructions',
+    );
+    assert.ok(
+      fs.existsSync(path.join(base, '.github', 'hooks', 'rtk-rewrite.json')),
+      'missing copilot hook config',
+    );
+    assert.ok(
+      fs.existsSync(path.join(home, '.config', 'opencode', 'plugins', 'rtk.ts')),
+      'missing opencode plugin',
+    );
+
+    // exactly one delegation per agent with the verified flags
+    assert.deepEqual(
+      rtk.calls.sort((a, b) => a.args[0].localeCompare(b.args[0])).map((c) => c.args),
+      [
+        ['--codex', '--auto-patch'],
+        ['--copilot', '--auto-patch'],
+        ['-g', '--opencode', '--auto-patch'],
+      ],
+    );
+    assert.ok(rtk.calls.every((c) => c.cwd === base));
   });
 
-  it('is idempotent: a second apply changes nothing on disk', async () => {
+  it('is idempotent: a second apply changes nothing on disk and re-delegates safely', async () => {
     const home = tempDir('agentenv-home-');
     const base = tempDir('agentenv-base-');
     process.env.HOME = home;
     process.env.USERPROFILE = home;
+    const rtk = fakeRtkInit();
 
-    const first = await applyConfiguration(CONFIG, base, { skipMiseInstall: true });
+    const first = await applyConfiguration(CONFIG, base, {
+      skipMiseInstall: true,
+      rtkInit: rtk.fn,
+    });
     assert.equal(first.success, true, first.errors.join('; '));
     const before = snapshot([base, home]);
 
-    const second = await applyConfiguration(CONFIG, base, { skipMiseInstall: true });
+    const second = await applyConfiguration(CONFIG, base, {
+      skipMiseInstall: true,
+      rtkInit: rtk.fn,
+    });
     assert.equal(second.success, true, second.errors.join('; '));
     const afterMap = snapshot([base, home]);
 
@@ -106,37 +194,49 @@ describe('apply pipeline', () => {
         `content differs for ${beforeSorted[i]?.[0]}`,
       );
     }
+    assert.deepEqual(rtk.calls.length, 6, 'both applies delegated once per agent');
   });
 
-  it('preserves user content in codex config.toml and hooks.json across applies', async () => {
+  it('preserves user content in codex config.toml across applies', async () => {
     const home = tempDir('agentenv-home-');
     const base = tempDir('agentenv-base-');
     process.env.HOME = home;
     process.env.USERPROFILE = home;
+    const rtk = fakeRtkInit();
 
     const codexDir = path.join(home, '.codex');
     fs.mkdirSync(codexDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(codexDir, 'config.toml'),
-      '[model]\nwire_api = true\n\n[features]\nhooks = true\n',
-    );
-    fs.writeFileSync(
-      path.join(codexDir, 'hooks.json'),
-      JSON.stringify({ PreToolUse: [{ command: 'my-user-hook', args: ['x'] }] }),
-    );
+    const userConfig = '[model]\nwire_api = true\n';
+    fs.writeFileSync(path.join(codexDir, 'config.toml'), userConfig);
 
-    const first = await applyConfiguration(CONFIG, base, { skipMiseInstall: true });
-    assert.equal(first.success, true, first.errors.join('; '));
+    const result = await applyConfiguration(CONFIG, base, {
+      skipMiseInstall: true,
+      rtkInit: rtk.fn,
+    });
+    assert.equal(result.success, true, result.errors.join('; '));
 
-    const configToml = fs.readFileSync(path.join(codexDir, 'config.toml'), 'utf-8');
-    assert.match(configToml, /\[model\]/);
-    assert.match(configToml, /wire_api = true/);
+    // initialize() only creates config.toml when missing — user content survives
+    assert.equal(fs.readFileSync(path.join(codexDir, 'config.toml'), 'utf-8'), userConfig);
+  });
 
-    const hooks = JSON.parse(fs.readFileSync(path.join(codexDir, 'hooks.json'), 'utf-8'));
-    assert.deepEqual(hooks.PreToolUse.filter((h: any) => h.command === 'my-user-hook').length, 1);
-    assert.equal(
-      hooks.PreToolUse.filter((h: any) => h.command === 'rtk' && h.args?.[0] === 'rewrite').length,
-      1,
-    );
+  it('does not delegate any rtk init when rtk is disabled', async () => {
+    const home = tempDir('agentenv-home-');
+    const base = tempDir('agentenv-base-');
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    const rtk = fakeRtkInit();
+
+    const config: AgentenvConfig = {
+      ...CONFIG,
+      rtk: { ...CONFIG.rtk!, enabled: false },
+    };
+
+    const result = await applyConfiguration(config, base, {
+      skipMiseInstall: true,
+      rtkInit: rtk.fn,
+    });
+    assert.equal(result.success, true, result.errors.join('; '));
+    assert.equal(rtk.calls.length, 0);
+    assert.equal(fs.existsSync(path.join(base, 'RTK.md')), false);
   });
 });

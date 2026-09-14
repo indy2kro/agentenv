@@ -3,10 +3,14 @@
  * Defines the common interface for all agent adapters
  */
 
+import type { RtkInitFn } from '../toolchain/rtk.js';
+
 export interface AdapterConfig {
   enabled: boolean;
   baseDir: string;
   rtkEnabled?: boolean;
+  /** Injectable `rtk init` runner; defaults to the real rtk binary. */
+  rtkInit?: RtkInitFn;
 }
 
 export interface AdapterResult {

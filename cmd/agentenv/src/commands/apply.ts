@@ -13,6 +13,7 @@ import { resolveScopeDir } from '../config/scopes.js';
 import type { AgentenvConfig } from '../config/schema.js';
 import { generateInstructionFiles, updateWithMarkers } from '../generate/agentsmd.js';
 import { fixShellConfiguration } from '../shell/detector.js';
+import type { RtkInitFn } from '../toolchain/rtk.js';
 import {
   ensureMiseInstalled,
   generateMiseToml,
@@ -32,10 +33,21 @@ export interface ApplyOptions {
    * only wants file generation (e.g. CI too fast, or a dry-run apply).
    */
   skipMiseInstall?: boolean;
+  /** Injectable `rtk init` runner (tests pass a stub). */
+  rtkInit?: RtkInitFn;
 }
 
-function adaptersFor(config: AgentenvConfig, baseDir: string): BaseAdapter[] {
-  const adapterConfig = { enabled: true, baseDir, rtkEnabled: config.rtk?.enabled === true };
+function adaptersFor(
+  config: AgentenvConfig,
+  baseDir: string,
+  options: ApplyOptions,
+): BaseAdapter[] {
+  const adapterConfig = {
+    enabled: true,
+    baseDir,
+    rtkEnabled: config.rtk?.enabled === true,
+    rtkInit: options.rtkInit,
+  };
   const adapters: BaseAdapter[] = [];
   if (config.agents?.claude_code) adapters.push(new ClaudeCodeAdapter(adapterConfig));
   if (config.agents?.codex_cli) adapters.push(new CodexCliAdapter(adapterConfig));
@@ -99,7 +111,7 @@ export async function applyConfiguration(
     (update.success ? messages : errors).push(update.message);
   }
 
-  for (const adapter of adaptersFor(config, baseDir)) {
+  for (const adapter of adaptersFor(config, baseDir, options)) {
     const result = await adapter.initialize();
     if (result.success) messages.push(`${adapter.getName()}: ${result.message}`);
     else errors.push(`${adapter.getName()}: ${result.errors.join('; ') || result.message}`);
