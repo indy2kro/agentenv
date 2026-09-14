@@ -22,8 +22,8 @@ Dependabot (`.github/dependabot.yml`) keeps the `github-actions` ecosystem
 current — it opens PRs that bump the pinned SHA and its version comment
 together, so the SHA-pinning rule above and Dependabot are meant to work
 together, not in tension. Once the CLI tech stack is decided
-(`docs/decisions/0001-cli-tech-stack.md`) and its module manifest exists,
-add that ecosystem (e.g. `gomod`) to `dependabot.yml` too.
+(`docs/decisions/0002-cli-tech-stack.md`) and its module manifest exists,
+add that ecosystem (e.g. `npm`) to `dependabot.yml` too.
 
 ## Remote operations
 
