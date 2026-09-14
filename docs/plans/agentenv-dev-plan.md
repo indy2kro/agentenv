@@ -253,6 +253,15 @@ agentenv/
 - Codex CLI adapter (config.toml / hooks.json)
 - GitHub Copilot adapter (`~/.copilot/hooks/`)
 - OpenCode adapter (plugin script + opencode.json)
+- **Open question (research before Phase 2 acceptance):** the first-cut
+  adapters hand-write their hook/plugin files. `docs/research/phase0-findings.md`
+  §9 instead recommends calling `rtk init <agent>` per agent, so agentenv
+  "only ever calls out to mise/rtk, never replaces them" (§2). The Claude Code
+  hook is written in the exact shape `rtk init` produces and is covered by a
+  test; the Copilot and OpenCode hook formats are hand-rolled and **unverified
+  against a real rtk install**. Decide delegation vs. hand-written hooks per
+  agent during Phase 2 (see `docs/research/rtk-init-delegation.md`), matching
+  whichever rtk actually writes, before marking the adapters accepted.
 - **Acceptance:** one `agentenv.toml` with all four agents enabled produces correct, working configs for each, verified manually per agent
 
 ### Phase 3 — Interactive wizard
