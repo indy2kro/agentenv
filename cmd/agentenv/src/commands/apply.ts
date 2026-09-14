@@ -7,7 +7,8 @@ import {
   OpenCodeAdapter,
 } from '../adapters/index.js';
 import type { BaseAdapter } from '../adapters/index.js';
-import { loadConfig } from '../config/schema.js';
+import { getEnabledAgents, loadConfig, validateConfig } from '../config/schema.js';
+import type { AgentKey } from '../config/schema.js';
 import type { AgentenvConfig } from '../config/schema.js';
 import { generateInstructionFiles, updateWithMarkers } from '../generate/agentsmd.js';
 import { fixShellConfiguration } from '../shell/detector.js';
@@ -43,8 +44,16 @@ export async function applyConfiguration(
   const errors: string[] = [];
 
   if (config.tier0?.check_enabled !== false) {
-    const tier0 = fixShellConfiguration(baseDir);
+    const enabledAgents = getEnabledAgents(config) as AgentKey[];
+    const tier0 = fixShellConfiguration(baseDir, enabledAgents);
     (tier0.success ? messages : errors).push(`Tier 0: ${tier0.message}`);
+    if (tier0.success && tier0.results) {
+      for (const result of tier0.results) {
+        (result.action === 'skipped' ? messages : messages).push(
+          `  ${result.agent}: ${result.message}`,
+        );
+      }
+    }
   }
 
   const misePath = path.join(baseDir, 'mise.toml');
@@ -98,6 +107,14 @@ export const applyCommand = new Command()
       config = loadConfig();
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));
+      process.exitCode = 1;
+      return;
+    }
+
+    const report = validateConfig(config);
+    for (const warning of report.warnings) console.log(`warning: ${warning}`);
+    if (report.errors.length > 0) {
+      for (const error of report.errors) console.error(`error: ${error}`);
       process.exitCode = 1;
       return;
     }

@@ -86,10 +86,12 @@ direnv = true      # Binary: direnv
 name = "universal-ctags"
 description = "Code navigation and symbol lookup (universal-ctags)"
 already_installed = true
-# OS-specific paths - agentenv will use the appropriate one for the current OS
-path.windows = "C:\\Program Files\\ctags\\bin\\ctags.exe"
-path.macos = "/usr/local/bin/ctags"
-path.linux = "/usr/bin/ctags"
+# Both dotted (path.windows) and flat (path_windows) key forms are accepted;
+# agentenv normalizes the dotted form at load time.
+path_windows = "C:\\Program Files\\ctags\\bin\\ctags.exe"   # flat form
+path.windows  = "C:\\Program Files\\ctags\\bin\\ctags.exe"  # dotted form (docs §6.3)
+path_macos = "/usr/local/bin/ctags"
+path_linux = "/usr/bin/ctags"
 
 [[custom_tools]]
 # Example 2: Installable via mise (per §6.3)
@@ -98,7 +100,7 @@ description = "Example custom tool that publishes GitHub releases mise can use"
 # If already_installed is false or omitted, agentenv will attempt mise install
 mise_source = "github:someorg/otherthing"
 version = "latest"
-# Optional: OS-specific version overrides
+# version may also be a per-OS table; agentenv picks the current platform's value
 # version.windows = "v1.0.0"
 # version.macos = "v1.2.0"
 # version.linux = "v1.2.0"
@@ -126,16 +128,17 @@ init.opencode = true
 [tier0]
 # Enable Tier 0 shell detection and fix
 # If enabled, agentenv will check/ensure POSIX tools are available
-# On Windows: ensures Git for Windows' bin/usr/bin are on PATH
+# On Windows: ensures each configured agent's shell override points at Git Bash
+#   and that Git for Windows' bin/usr/bin are on PATH
 # On macOS: detects BSD vs GNU tools, recommends Homebrew packages
 # On Linux: detects and recommends distro packages
 check_enabled = true
 
 # Windows-specific: path to Git Bash (auto-detected if not set)
-# git_bash_path.windows = "C:\\Program Files\\Git\\usr\\bin\\bash.exe"
+# git_bash_path = "C:\\Program Files\\Git\\usr\\bin\\bash.exe"
 
-# macOS-specific: auto-install Homebrew GNU packages if BSD tools detected
-# install_gnu_tools.macos = true
+# macOS-specific: auto-install Homebrew GNU packages if BSD tools detected (future work)
+# install_gnu_tools_macos = true
 
 # =============================================================================
 # GENERATION OPTIONS
@@ -151,7 +154,7 @@ marker_start = "<!-- agentenv-managed-start -->"
 marker_end = "<!-- agentenv-managed-end -->"
 
 # Files to generate (relative to scope root)
-generated_files = [
+files = [
   "AGENTS.md",
   "CLAUDE.md",
   "mise.toml",

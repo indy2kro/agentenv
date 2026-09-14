@@ -6,6 +6,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { BaseAdapter, AdapterConfig, AdapterResult } from './base.js';
+import { isAgentInstalled } from './detect.js';
 
 export class OpenCodeAdapter extends BaseAdapter {
   private configDir: string;
@@ -25,15 +26,7 @@ export class OpenCodeAdapter extends BaseAdapter {
   }
 
   isInstalled(): boolean {
-    try {
-      // Check for OpenCode config directory
-      if (fs.existsSync(this.configDir)) {
-        return true;
-      }
-      return false;
-    } catch {
-      return false;
-    }
+    return isAgentInstalled('opencode');
   }
 
   async initialize(): Promise<AdapterResult> {

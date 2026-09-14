@@ -6,6 +6,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { BaseAdapter, AdapterConfig, AdapterResult } from './base.js';
+import { isAgentInstalled } from './detect.js';
 
 export class CodexCliAdapter extends BaseAdapter {
   private configDir: string;
@@ -25,15 +26,7 @@ export class CodexCliAdapter extends BaseAdapter {
   }
 
   isInstalled(): boolean {
-    try {
-      // Check for Codex config directory
-      if (fs.existsSync(this.configDir)) {
-        return true;
-      }
-      return false;
-    } catch {
-      return false;
-    }
+    return isAgentInstalled('codex_cli');
   }
 
   async initialize(): Promise<AdapterResult> {

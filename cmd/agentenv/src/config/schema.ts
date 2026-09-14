@@ -132,6 +132,33 @@ export const DEFAULT_CONFIG: AgentenvConfig = {
   },
 };
 
+// Known agent keys for validation
+export const AGENT_KEYS = ['claude_code', 'codex_cli', 'copilot', 'opencode'] as const;
+export type AgentKey = (typeof AGENT_KEYS)[number];
+
+// Known tool keys for validation
+export const TOOL_KEYS: Array<keyof NonNullable<AgentenvConfig['tools']>> = [
+  'ripgrep',
+  'fd',
+  'jq',
+  'rtk',
+  'ast_grep',
+  'git_delta',
+  'universal_ctags',
+  'gh',
+  'difftastic',
+  'yq',
+  'bat',
+  'eza',
+  'miller',
+  'tokei',
+  'hyperfine',
+  'fzf',
+  'just',
+  'watchexec',
+  'direnv',
+];
+
 // Tool tiers for categorization
 export const TOOL_TIERS: Record<string, number> = {
   // Tier 1 - essential
@@ -242,7 +269,7 @@ export function loadConfig(configPath?: string): AgentenvConfig {
   try {
     const data = fs.readFileSync(pathToLoad, 'utf-8');
     const parsed = toml.parse(data) as AgentenvConfig;
-    return mergeWithDefaults(parsed);
+    return mergeWithDefaults(normalizeConfig(parsed));
   } catch (err) {
     throw new Error(
       `Invalid agentenv configuration at ${pathToLoad}: ${err instanceof Error ? err.message : String(err)}`,
@@ -479,6 +506,248 @@ export function getEnabledAgents(config: AgentenvConfig): string[] {
   if (agents.copilot) enabled.push('copilot');
   if (agents.opencode) enabled.push('opencode');
   return enabled;
+}
+
+/**
+ * Normalize a config parsed from TOML into the canonical schema shape.
+ * Accepts the dotted `path.windows` / `version.windows` forms used in the
+ * docs example (§6.3) and flattens them to the `path_windows` keys the rest
+ * of the pipeline expects.
+ */
+function normalizeConfig(config: AgentenvConfig): AgentenvConfig {
+  if (!Array.isArray(config.custom_tools)) {
+    return config;
+  }
+
+  const normalized = {
+    ...config,
+    custom_tools: config.custom_tools.map((ct) => {
+      const result: CustomTool = { ...ct };
+
+      const paths = (ct as unknown as { path?: Partial<Record<string, string>> }).path;
+      if (paths && typeof paths === 'object') {
+        if (paths.windows) result.path_windows = paths.windows;
+        if (paths.macos) result.path_macos = paths.macos;
+        if (paths.linux) result.path_linux = paths.linux;
+      }
+
+      const versions = (ct as unknown as { version?: string | Record<string, string> }).version;
+      if (versions && typeof versions === 'object' && !Array.isArray(versions)) {
+        result.version = versions[process.platform as string] as string;
+      }
+
+      return result;
+    }),
+  };
+
+  return normalized;
+}
+
+/**
+ * Validate a config and report problems, separating hard errors from warnings.
+ * The CLI refuses to proceed when there are errors; warnings are surfaced but
+ * non-fatal (e.g. a catalog tool that mise cannot install from its registry).
+ */
+export function validateConfig(config: AgentenvConfig): {
+  errors: string[];
+  warnings: string[];
+} {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  if (config.scope !== undefined && config.scope !== 'project' && config.scope !== 'user') {
+    errors.push(`scope must be "project" or "user", got "${String(config.scope)}"`);
+  }
+
+  const agents = config.agents ?? {};
+  for (const key of Object.keys(agents)) {
+    if (!(AGENT_KEYS as readonly string[]).includes(key)) {
+      errors.push(`Unknown agent "${key}"`);
+    }
+  }
+
+  const tools = (config.tools ?? {}) as Record<string, boolean | undefined>;
+  for (const key of Object.keys(tools)) {
+    if (!(TOOL_KEYS as readonly string[]).includes(key)) {
+      errors.push(`Unknown tool "${key}"`);
+    }
+  }
+
+  if (Array.isArray(config.custom_tools)) {
+    for (const ct of config.custom_tools) {
+      if (!ct.name) {
+        errors.push('A custom tool entry is missing its "name"');
+      } else if (ct.already_installed && !ct.path_windows && !ct.path_macos && !ct.path_linux) {
+        warnings.push(
+          `custom tool "${ct.name}" is marked already_installed but has no OS path set`,
+        );
+      }
+    }
+  }
+
+  // Tools Phase 0 flagged as not resolvable from the mise registry.
+  const registryGapNote: Record<string, string> = {
+    universal_ctags: 'not in the mise registry; add a custom_tools fallback',
+    tokei: 'not in the mise registry; add a custom_tools fallback or local toolchain',
+  };
+  for (const [tool, note] of Object.entries(registryGapNote)) {
+    if (tools[tool]) {
+      warnings.push(`${tool}: ${note}`);
+    }
+  }
+
+  return { errors, warnings };
+}
+
+export type DiffKind = 'added' | 'removed' | 'changed';
+
+export interface ConfigDiffEntry {
+  kind: DiffKind;
+  key: string;
+  oldValue?: unknown;
+  newValue?: unknown;
+}
+
+/**
+ * Structurally diff two configs for the pre-write review in `agentenv
+ * configure` and for drift reporting in `agentenv status` (§6.5).
+ * Tools/agents flip toggles as added/removed; scalar settings as changed.
+ */
+export function diffConfigs(
+  oldConfig: AgentenvConfig,
+  newConfig: AgentenvConfig,
+): ConfigDiffEntry[] {
+  const entries: ConfigDiffEntry[] = [];
+  const oldAgents = oldConfig.agents ?? {};
+  const newAgents = newConfig.agents ?? {};
+  const oldTools = (oldConfig.tools ?? {}) as Record<string, boolean | undefined>;
+  const newTools = (newConfig.tools ?? {}) as Record<string, boolean | undefined>;
+
+  if (oldConfig.scope !== newConfig.scope) {
+    entries.push({
+      kind: 'changed',
+      key: 'scope',
+      oldValue: oldConfig.scope,
+      newValue: newConfig.scope,
+    });
+  }
+
+  for (const key of AGENT_KEYS) {
+    const oldValue = oldAgents[key] === true;
+    const newValue = newAgents[key] === true;
+    if (oldValue !== newValue) {
+      entries.push({
+        kind: newValue ? 'added' : 'removed',
+        key: `agents.${key}`,
+        oldValue: oldValue,
+        newValue: newValue,
+      });
+    }
+  }
+
+  for (const key of TOOL_KEYS) {
+    const oldValue = oldTools[key] === true;
+    const newValue = newTools[key] === true;
+    if (oldValue !== newValue) {
+      entries.push({
+        kind: newValue ? 'added' : 'removed',
+        key: `tools.${key}`,
+        oldValue: oldValue,
+        newValue: newValue,
+      });
+    }
+  }
+
+  diffCustomTools(oldConfig.custom_tools ?? [], newConfig.custom_tools ?? [], entries);
+
+  diffNestedSettings(
+    [
+      ['rtk.enabled', oldConfig.rtk?.enabled, newConfig.rtk?.enabled],
+      ['rtk.init.claude_code', oldConfig.rtk?.init?.claude_code, newConfig.rtk?.init?.claude_code],
+      ['rtk.init.codex_cli', oldConfig.rtk?.init?.codex_cli, newConfig.rtk?.init?.codex_cli],
+      ['rtk.init.copilot', oldConfig.rtk?.init?.copilot, newConfig.rtk?.init?.copilot],
+      ['rtk.init.opencode', oldConfig.rtk?.init?.opencode, newConfig.rtk?.init?.opencode],
+      ['tier0.check_enabled', oldConfig.tier0?.check_enabled, newConfig.tier0?.check_enabled],
+      ['tier0.git_bash_path', oldConfig.tier0?.git_bash_path, newConfig.tier0?.git_bash_path],
+      ['generate.marker_start', oldConfig.generate?.marker_start, newConfig.generate?.marker_start],
+      ['generate.marker_end', oldConfig.generate?.marker_end, newConfig.generate?.marker_end],
+      ['generate.files', jsonOr(oldConfig.generate?.files), jsonOr(newConfig.generate?.files)],
+      ['advanced.default_mode', oldConfig.advanced?.default_mode, newConfig.advanced?.default_mode],
+      [
+        'advanced.show_diff_preview',
+        oldConfig.advanced?.show_diff_preview,
+        newConfig.advanced?.show_diff_preview,
+      ],
+    ],
+    entries,
+  );
+
+  return entries;
+}
+
+function diffCustomTools(
+  oldTools: CustomTool[],
+  newTools: CustomTool[],
+  entries: ConfigDiffEntry[],
+): void {
+  const byName = (tools: CustomTool[]) =>
+    new Map<string, CustomTool>(tools.map((tool) => [tool.name, tool]));
+
+  const oldByName = byName(oldTools);
+  const newByName = byName(newTools);
+
+  for (const [name, oldTool] of oldByName) {
+    if (!newByName.has(name)) {
+      entries.push({ kind: 'removed', key: `custom_tools.${name}`, oldValue: oldTool });
+    }
+  }
+
+  for (const [name, newTool] of newByName) {
+    if (!oldByName.has(name)) {
+      entries.push({ kind: 'added', key: `custom_tools.${name}`, newValue: newTool });
+    }
+  }
+
+  for (const [name, oldTool] of oldByName) {
+    if (!newByName.has(name)) continue;
+
+    const newTool = newByName.get(name)!;
+    const fields: Array<[string, unknown, unknown]> = [
+      ['description', oldTool.description, newTool.description],
+      ['already_installed', oldTool.already_installed, newTool.already_installed],
+      ['mise_source', oldTool.mise_source, newTool.mise_source],
+      ['version', oldTool.version, newTool.version],
+      ['path_windows', oldTool.path_windows, newTool.path_windows],
+      ['path_macos', oldTool.path_macos, newTool.path_macos],
+      ['path_linux', oldTool.path_linux, newTool.path_linux],
+    ];
+
+    for (const [field, oldValue, newValue] of fields) {
+      if (oldValue !== newValue) {
+        entries.push({
+          kind: 'changed',
+          key: `custom_tools.${name}.${field}`,
+          oldValue,
+          newValue,
+        });
+      }
+    }
+  }
+}
+
+function jsonOr(value: unknown): string | undefined {
+  return value === undefined ? undefined : JSON.stringify(value);
+}
+
+function diffNestedSettings(
+  pairs: Array<[string, unknown, unknown]>,
+  entries: ConfigDiffEntry[],
+): void {
+  for (const [key, oldValue, newValue] of pairs) {
+    if (oldValue !== newValue) {
+      entries.push({ kind: 'changed', key, oldValue, newValue });
+    }
+  }
 }
 
 /**

@@ -13,11 +13,16 @@ Full design and rationale: [`docs/plans/agentenv-dev-plan.md`](docs/plans/agente
 
 ## Status
 
-Phase 0 (research & validation) in progress. See `docs/research/` and
-`docs/decisions/` as they land.
+Phase 0 (research & validation) is complete. Phase 1 (config core +
+non-interactive `apply`, Tier 0 shell fix, Claude Code adapter) is
+implemented and under active hardening; Phase 2 (Codex/Copilot/OpenCode
+adapters) is scaffolded with test coverage. The CLI lives in
+[`cmd/agentenv/`](cmd/agentenv/README.md). See `docs/plans/agentenv-dev-plan.md`
+§8 for the phase roadmap, and `docs/research/` / `docs/decisions/` for the
+validated findings behind it.
 
 ## Repo layout
 
-See `docs/plans/agentenv-dev-plan.md` §7 for the full proposed structure;
-each `internal/` and `cmd/` subdirectory has its own `README.md` stub
-describing what it will own and which phase populates it.
+See `docs/plans/agentenv-dev-plan.md` §7 for the full structure. The active
+implementation is `cmd/agentenv/` (TypeScript CLI); `internal/` and
+`templates/` are stubs awaiting their phase.

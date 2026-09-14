@@ -31,4 +31,17 @@ describe('managed instruction blocks', () => {
 
     assert.equal(fs.readFileSync(filePath, 'utf8'), `before\n${start}\nnew\n${end}\nafter\n`);
   });
+
+  it('is idempotent: an identical re-apply makes no changes', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-markers-'));
+    const filePath = path.join(directory, 'AGENTS.md');
+    const content = `${start}\nmanaged\n${end}\n`;
+    fs.writeFileSync(filePath, content);
+
+    const result = updateWithMarkers(filePath, content, start, end);
+
+    assert.equal(result.success, true);
+    assert.equal(result.updated, false);
+    assert.equal(fs.readFileSync(filePath, 'utf8'), content);
+  });
 });

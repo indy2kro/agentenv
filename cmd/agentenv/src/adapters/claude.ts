@@ -6,6 +6,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { BaseAdapter, AdapterConfig, AdapterResult } from './base.js';
+import { isAgentInstalled } from './detect.js';
 
 export class ClaudeCodeAdapter extends BaseAdapter {
   private configDir: string;
@@ -25,18 +26,7 @@ export class ClaudeCodeAdapter extends BaseAdapter {
   }
 
   isInstalled(): boolean {
-    try {
-      // Check for Claude Code config directory
-      if (fs.existsSync(this.configDir)) {
-        return true;
-      }
-
-      // Check for claude command
-      // Note: This is a placeholder - actual detection would need to check the install location
-      return false;
-    } catch {
-      return false;
-    }
+    return isAgentInstalled('claude_code');
   }
 
   async initialize(): Promise<AdapterResult> {

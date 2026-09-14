@@ -6,6 +6,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as child_process from 'child_process';
+import { AGENT_KEYS } from '../config/schema.js';
+import type { AgentKey } from '../config/schema.js';
 
 // Well-known POSIX utilities that should be available
 export const POSIX_UTILITIES = [
@@ -292,14 +294,217 @@ export function generateGitBashPathAddition(gitBashPath: string): string {
   return `${binPath};${usrBinPath}`;
 }
 
+export type ShellFixAction = 'created' | 'updated' | 'unchanged' | 'skipped';
+
+export interface ShellFixResult {
+  agent: AgentKey;
+  file: string;
+  action: ShellFixAction;
+  message: string;
+}
+
+/**
+ * Resolve the full path to bash.exe from a detected Git Bash directory.
+ * Handles both the `usr\bin` form and the plain `bin` form Git for Windows ships.
+ */
+export function bashExecutable(gitBashPath: string): string {
+  const parent = path.dirname(gitBashPath);
+  if (path.basename(gitBashPath).toLowerCase() === 'bin') {
+    if (path.basename(parent).toLowerCase() === 'usr') {
+      return path.join(gitBashPath, 'bash.exe');
+    }
+    return path.join(parent, 'usr', 'bin', 'bash.exe');
+  }
+  return path.join(gitBashPath, 'bash.exe');
+}
+
+/**
+ * Apply the per-agent Tier 0 shell override for one agent, per
+ * docs/research/tier0-shell-fix.md:
+ * - claude_code: env.CLAUDE_CODE_GIT_BASH_PATH in ~/.claude/settings.json
+ * - codex_cli:   [windows] shell_path in ~/.codex/config.toml
+ * - opencode:    shell + defaultShell in ~/.config/opencode/opencode.json
+ * - copilot:     no per-file override exists (SHELL env var); skipped
+ *
+ * Existing user content is preserved; files are only written when a fix is
+ * actually needed, so repeated runs degrade to "unchanged".
+ */
+export function applyAgentShellFix(agent: AgentKey, bashExe: string, home: string): ShellFixResult {
+  switch (agent) {
+    case 'claude_code':
+      return patchClaudeShellFix(bashExe, home);
+    case 'codex_cli':
+      return patchCodexShellFix(bashExe, home);
+    case 'opencode':
+      return patchOpenCodeShellFix(bashExe, home);
+    case 'copilot':
+      return {
+        agent,
+        file: '',
+        action: 'skipped',
+        message: 'GitHub Copilot follows the SHELL env var; Git Bash bin dirs on PATH cover this',
+      };
+  }
+}
+
+function patchClaudeShellFix(bashExe: string, home: string): ShellFixResult {
+  const file = path.join(home, '.claude', 'settings.json');
+  let settings: Record<string, unknown>;
+
+  if (!fs.existsSync(file)) {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(
+      file,
+      JSON.stringify({ env: { CLAUDE_CODE_GIT_BASH_PATH: bashExe } }, null, 2),
+    );
+    return {
+      agent: 'claude_code',
+      file,
+      action: 'created',
+      message: `Set CLAUDE_CODE_GIT_BASH_PATH in ${file}`,
+    };
+  }
+
+  try {
+    settings = JSON.parse(fs.readFileSync(file, 'utf-8')) as Record<string, unknown>;
+  } catch {
+    return {
+      agent: 'claude_code',
+      file,
+      action: 'skipped',
+      message: `${file} is not valid JSON; refusing to modify it`,
+    };
+  }
+
+  const env = (settings.env ?? {}) as Record<string, unknown>;
+  const bashKey = 'CLAUDE_CODE_GIT_BASH_PATH';
+  if (env[bashKey] === bashExe) {
+    return { agent: 'claude_code', file, action: 'unchanged', message: `Already set in ${file}` };
+  }
+
+  env[bashKey] = bashExe;
+  settings.env = env;
+  fs.writeFileSync(file, JSON.stringify(settings, null, 2));
+  return {
+    agent: 'claude_code',
+    file,
+    action: 'updated',
+    message: `Set CLAUDE_CODE_GIT_BASH_PATH in ${file}`,
+  };
+}
+
+function patchCodexShellFix(bashExe: string, home: string): ShellFixResult {
+  const file = path.join(home, '.codex', 'config.toml');
+  const valueLine = `shell_path = ${JSON.stringify(bashExe)}`;
+
+  if (!fs.existsSync(file)) {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, `[windows]\n${valueLine}\n`);
+    return {
+      agent: 'codex_cli',
+      file,
+      action: 'created',
+      message: `Set [windows] shell_path in ${file}`,
+    };
+  }
+
+  const original = fs.readFileSync(file, 'utf-8');
+  const updated = setTomlWindowsShellPath(original, valueLine);
+  if (updated === original) {
+    return { agent: 'codex_cli', file, action: 'unchanged', message: `Already set in ${file}` };
+  }
+
+  fs.writeFileSync(file, updated);
+  return {
+    agent: 'codex_cli',
+    file,
+    action: 'updated',
+    message: `Set [windows] shell_path in ${file}`,
+  };
+}
+
+function patchOpenCodeShellFix(bashExe: string, home: string): ShellFixResult {
+  const file = path.join(home, '.config', 'opencode', 'opencode.json');
+
+  if (!fs.existsSync(file)) {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify({ shell: bashExe, defaultShell: bashExe }, null, 2));
+    return {
+      agent: 'opencode',
+      file,
+      action: 'created',
+      message: `Set shell/defaultShell in ${file}`,
+    };
+  }
+
+  let config: Record<string, unknown>;
+  try {
+    config = JSON.parse(fs.readFileSync(file, 'utf-8')) as Record<string, unknown>;
+  } catch {
+    return {
+      agent: 'opencode',
+      file,
+      action: 'skipped',
+      message: `${file} is not valid JSON; refusing to modify it`,
+    };
+  }
+
+  if (config.shell === bashExe && config.defaultShell === bashExe) {
+    return { agent: 'opencode', file, action: 'unchanged', message: `Already set in ${file}` };
+  }
+
+  config.shell = bashExe;
+  config.defaultShell = bashExe;
+  fs.writeFileSync(file, JSON.stringify(config, null, 2));
+  return {
+    agent: 'opencode',
+    file,
+    action: 'updated',
+    message: `Set shell/defaultShell in ${file}`,
+  };
+}
+
+/**
+ * Rewrite a Codex config.toml so [windows] contains shell_path = valueLine.
+ * Returns the original content when no change is needed.
+ */
+function setTomlWindowsShellPath(content: string, valueLine: string): string {
+  const lines = content.split(/\r?\n/);
+  let windowsSectionIndex = -1;
+  let shellPathIndex = -1;
+
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    if (trimmed === '[windows]') windowsSectionIndex = i;
+    if (/^shell_path\s*=/.test(trimmed)) shellPathIndex = i;
+  }
+
+  if (windowsSectionIndex === -1) {
+    return `${content.replace(/\s+$/, '')}\n\n[windows]\n${valueLine}\n`;
+  }
+
+  if (shellPathIndex !== -1) {
+    if (lines[shellPathIndex].trim() === valueLine) return content;
+    lines[shellPathIndex] = valueLine;
+    return lines.join('\n');
+  }
+
+  lines.splice(windowsSectionIndex + 1, 0, valueLine);
+  return lines.join('\n');
+}
+
 /**
  * Fix shell configuration for Windows
  * This is a Tier 0 fix - ensures POSIX utilities are available
  */
-export function fixShellConfiguration(_baseDir: string = '.'): {
+export function fixShellConfiguration(
+  _baseDir: string = '.',
+  agents: AgentKey[] = [...AGENT_KEYS],
+): {
   success: boolean;
   message: string;
   gitBashPath?: string;
+  results?: ShellFixResult[];
 } {
   if (process.platform !== 'win32') {
     return {
@@ -318,7 +523,6 @@ export function fixShellConfiguration(_baseDir: string = '.'): {
     };
   }
 
-  // Try to find Git Bash
   if (!shellInfo.gitBashPath) {
     return {
       success: false,
@@ -326,12 +530,23 @@ export function fixShellConfiguration(_baseDir: string = '.'): {
     };
   }
 
-  // For project scope, we need to configure the agent to use Git Bash
-  // This is done through agent-specific configuration
+  const bashExe = bashExecutable(shellInfo.gitBashPath);
+  const home = process.env.HOME || process.env.USERPROFILE || '';
+  const results = agents.map((agent) => applyAgentShellFix(agent, bashExe, home));
+  const written = results.filter(
+    (result) => result.action === 'created' || result.action === 'updated',
+  );
+
+  const message =
+    written.length > 0
+      ? `Configured agent shell overrides (${written.map((result) => result.agent).join(', ')}) pointing at ${bashExe}`
+      : `Git Bash detected at ${bashExe}; agent shell config already up to date`;
+
   return {
     success: true,
-    message: 'Git Bash detected. Agent configuration will be updated to use it.',
+    message,
     gitBashPath: shellInfo.gitBashPath,
+    results,
   };
 }
 
