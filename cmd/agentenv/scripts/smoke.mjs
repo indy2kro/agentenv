@@ -54,41 +54,16 @@ const env = { ...process.env, HOME: home, USERPROFILE: home };
 const applyArgs = REAL ? ['apply'] : ['apply', '--skip-mise-install'];
 if (!REAL) env.AGENTENV_RTK_BIN = stub;
 
-// Real rtk/mise live under the temp HOME's mise data dir on Unix (shims at
-// ~/.local/share/mise/shims). `mise env` prints the exact bin dirs mise will
-// populate after `apply` runs `mise install`; prepend them so the delegated
-// `rtk init` resolves on PATH (required in the full-setup CI mode).
+// Real rtk lives in the temp HOME's mise data dir on Unix (shims at
+// ~/.local/share/mise/shims). `apply` runs `mise install` before delegating,
+// so prepending that deterministic shim dir lets `rtk init` resolve on PATH
+// (verified against mise 2026.9 on ubuntu: install drops a shim exactly there).
 if (REAL) {
-  const dirs = miseBinPaths(home, project) ?? [];
-  if (dirs.length === 0) {
-    dirs.push(path.join(home, '.local', 'share', 'mise', 'shims'));
-    dirs.push(path.join(home, '.local', 'bin'));
-  }
-  env.PATH = [...dirs, env.PATH ?? ''].filter(Boolean).join(path.delimiter);
-}
-
-function miseBinPaths(home, cwd) {
-  let out;
-  try {
-    const subEnv = { ...process.env, HOME: home, USERPROFILE: home };
-    out = execFileSync('mise', ['env'], { cwd, env: subEnv, encoding: 'utf-8' });
-  } catch {
-    return null;
-  }
-  const single = out.indexOf("'");
-  const dbl = out.indexOf('"');
-  const start = single === -1 ? dbl : dbl === -1 ? single : Math.min(single, dbl);
-  if (start === -1) return null;
-  const quote = out[start];
-  const close = out.indexOf(quote, start + 1);
-  if (close === -1) return null;
-  let value = out.slice(start + 1, close);
-  const marker = value.indexOf('$PATH');
-  if (marker !== -1) value = value.slice(0, marker);
-  return value
-    .split(path.delimiter)
-    .map((dir) => dir.trim())
-    .filter((dir) => dir.length > 0);
+  env.PATH = [
+    path.join(home, '.local', 'share', 'mise', 'shims'),
+    path.join(home, '.local', 'bin'),
+    env.PATH ?? '',
+  ].join(path.delimiter);
 }
 
 function run(args, cwd) {
