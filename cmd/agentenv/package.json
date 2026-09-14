@@ -25,6 +25,8 @@
     "start": "ts-node src/index.ts",
     "dev": "ts-node-dev src/index.ts",
     "test": "npm run build && node dist/config/schema.test.js && node dist/config/scopes.test.js && node dist/generate/agentsmd.test.js && node dist/adapters/claude.test.js && node dist/adapters/adapters.test.js && node dist/adapters/detect.test.js && node dist/shell/detector.test.js && node dist/toolchain/mise.test.js && node dist/wizard/build.test.js && node dist/commands/apply.test.js",
+    "smoke": "npm run build && node scripts/smoke.mjs",
+    "smoke:real": "npm run build && node scripts/smoke.mjs --real",
     "lint": "eslint src --max-warnings 0",
     "lint:fix": "eslint src --fix",
     "format": "prettier --write src",

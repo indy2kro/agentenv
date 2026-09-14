@@ -46,6 +46,16 @@ export interface MiseConfig {
 }
 
 /**
+ * Tools agentenv invokes directly are pinned to versions we have verified;
+ * everything else resolves to latest. rtk is invoked by agentenv's delegation
+ * (its `init` flags are the hook contract), moves fast, and must stay pinned —
+ * bump deliberately per plan §10.
+ */
+export const PINNED_TOOL_VERSIONS: Record<string, string> = {
+  rtk: '0.49.0',
+};
+
+/**
  * Generate mise.toml content from agentenv config
  */
 export function generateMiseToml(
@@ -78,7 +88,7 @@ export function generateMiseToml(
 
   for (const toolKey of allEnabledTools) {
     const miseName = MISE_TOOL_NAMES[toolKey] || toolKey;
-    const version = 'latest';
+    const version = PINNED_TOOL_VERSIONS[miseName] || 'latest';
     lines.push(`${miseName} = "${version}"`);
   }
 

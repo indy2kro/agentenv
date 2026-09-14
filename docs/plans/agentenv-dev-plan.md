@@ -303,11 +303,16 @@ agentenv/
 - Publish to npm registry for seamless installation and updates via `npm update -g agentenv`
 - Add a documented "how to add a new agent adapter" guide, so growing beyond the four v1 targets doesn't require touching the core
 - CI matrix (GitHub Actions: windows-latest, macos-latest, ubuntu-latest) running full setup + a smoke test for each of the four agents on every push
-- **Status:** npm packaging prepared — `files`/`types`/`publishConfig`/`repository`
+- **Status:** npm packaging done — `files`/`types`/`publishConfig`/`repository`
   metadata, `LICENSE` (MIT), and a package `README.md` added; `npm pack` is
   clean (70 kB, dist only) and a temp-prefix `npm install -g` +
-  `agentenv --help`/`status` verified end-to-end. Remaining: publish step,
-  adapter guide, CI smoke per agent.
+  `agentenv --help`/`status` verified end-to-end. CI smoke now runs in two
+  layers: a deterministic stub-mode smoke in `ci.yml` on every push (rtk
+  through `AGENTENV_RTK_BIN` + `--skip-mise-install`) and a full-setup real
+  smoke in `.github/workflows/smoke.yml` (3-OS, mise installs the pinned
+  tools, real `rtk init`) on `main` pushes + `workflow_dispatch`. Adapter
+  guide written (`docs/guides/adding-an-adapter.md`). Remaining: `npm
+  publish`, then confirm the smoke.yml job is green on all three OSes.
 
 ## 9. Testing strategy
 

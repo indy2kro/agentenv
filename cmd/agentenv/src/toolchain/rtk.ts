@@ -20,16 +20,20 @@ export interface RtkInitResult {
  */
 export type RtkInitFn = (args: string[], cwd: string) => RtkInitResult;
 
-/** rtk init args per agent, matching `rtk 0.42.4` (verified, see research doc). */
+/** rtk init args per agent, verified against rtk 0.42.4 and 0.49.0. */
 export const RTK_INIT_FLAGS: Record<string, string[]> = {
-  codex_cli: ['--codex', '--auto-patch'],
-  copilot: ['--copilot', '--auto-patch'],
-  opencode: ['-g', '--opencode', '--auto-patch'],
+  codex_cli: ['--codex'],
+  copilot: ['--copilot'],
+  opencode: ['-g', '--opencode'],
 };
 
 const defaultRtkInit: RtkInitFn = (args, cwd) => {
-  const rtkPath = resolveBinary('rtk');
-  if (!rtkPath) {
+  // Testing escape hatch: point at a stub `rtk` program (run via node) that
+  // writes the files a real `rtk init` would, so the full CLI pipeline can be
+  // exercised in CI without installing rtk.
+  const stub = process.env.AGENTENV_RTK_BIN;
+  const rtkPath = stub ? process.execPath : resolveBinary('rtk');
+  if (!stub && !rtkPath) {
     return {
       success: false,
       message:
@@ -39,8 +43,11 @@ const defaultRtkInit: RtkInitFn = (args, cwd) => {
     };
   }
 
+  const cmd = stub ? process.execPath : (rtkPath as string);
+  const cmdArgs = stub ? [stub, 'init', ...args] : ['init', ...args];
+
   try {
-    const result = child_process.spawnSync(rtkPath, ['init', ...args], {
+    const result = child_process.spawnSync(cmd, cmdArgs, {
       cwd,
       encoding: 'utf-8',
       stdio: 'pipe',

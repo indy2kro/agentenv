@@ -37,3 +37,5 @@ jobs:
         run: npm run format:check
       - name: Test
         run: npm test
+      - name: Smoke (full CLI pipeline, stub rtk)
+        run: npm run smoke

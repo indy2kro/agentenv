@@ -22,16 +22,16 @@ function fakeRtkInit(): { fn: RtkInitFn; calls: RtkCall[] } {
   const fn: RtkInitFn = (args, cwd) => {
     calls.push({ args, cwd });
     const joined = args.join(' ');
-    if (joined === '--codex --auto-patch') {
+    if (joined === '--codex') {
       fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK\n\nToken-optimized CLI proxy.\n');
-    } else if (joined === '--copilot --auto-patch') {
+    } else if (joined === '--copilot') {
       fs.mkdirSync(path.join(cwd, '.github', 'hooks'), { recursive: true });
       fs.writeFileSync(path.join(cwd, '.github', 'copilot-instructions.md'), '# Copilot\n');
       fs.writeFileSync(
         path.join(cwd, '.github', 'hooks', 'rtk-rewrite.json'),
         '{"version":1,"hooks":{"PreToolUse":[{"command":"rtk hook copilot"}]}}\n',
       );
-    } else if (joined === '-g --opencode --auto-patch') {
+    } else if (joined === '-g --opencode') {
       const home = process.env.HOME || process.env.USERPROFILE || '';
       const dir = path.join(home, '.config', 'opencode', 'plugins');
       fs.mkdirSync(dir, { recursive: true });
@@ -79,7 +79,7 @@ describe('Codex CLI adapter', () => {
       assert.equal(fs.existsSync(path.join(home, '.codex', 'hooks.json')), false);
       // Delegated RTK.md written in the project dir
       assert.equal(fs.existsSync(path.join(home, 'RTK.md')), true);
-      assert.deepEqual(rtk.calls, [{ args: ['--codex', '--auto-patch'], cwd: home }]);
+      assert.deepEqual(rtk.calls, [{ args: ['--codex'], cwd: home }]);
     });
   });
 
@@ -118,7 +118,7 @@ describe('GitHub Copilot adapter', () => {
       assert.equal(result.success, true);
       assert.equal(fs.existsSync(path.join(home, '.github', 'copilot-instructions.md')), true);
       assert.equal(fs.existsSync(path.join(home, '.github', 'hooks', 'rtk-rewrite.json')), true);
-      assert.deepEqual(rtk.calls, [{ args: ['--copilot', '--auto-patch'], cwd: home }]);
+      assert.deepEqual(rtk.calls, [{ args: ['--copilot'], cwd: home }]);
     });
   });
 
@@ -163,7 +163,7 @@ describe('OpenCode adapter', () => {
         fs.existsSync(path.join(home, '.config', 'opencode', 'plugins', 'rtk-optimizer.js')),
         false,
       );
-      assert.deepEqual(rtk.calls, [{ args: ['-g', '--opencode', '--auto-patch'], cwd: home }]);
+      assert.deepEqual(rtk.calls, [{ args: ['-g', '--opencode'], cwd: home }]);
     });
   });
 

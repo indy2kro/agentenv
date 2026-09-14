@@ -123,7 +123,8 @@ export async function applyConfiguration(
 export const applyCommand = new Command()
   .name('apply')
   .description('Non-interactive: read config and generate everything')
-  .action(async () => {
+  .option('--skip-mise-install', 'skip mise install (files only; for CI/dry-run)')
+  .action(async (options: { skipMiseInstall?: boolean }) => {
     let config: AgentenvConfig;
     try {
       config = loadConfig();
@@ -142,7 +143,9 @@ export const applyCommand = new Command()
     }
 
     const baseDir = resolveScopeDir(config.scope);
-    const result = await applyConfiguration(config, baseDir);
+    const result = await applyConfiguration(config, baseDir, {
+      skipMiseInstall: options.skipMiseInstall === true,
+    });
     for (const message of result.messages) console.log(message);
     for (const error of result.errors) console.error(error);
     if (!result.success) process.exitCode = 1;

@@ -21,12 +21,12 @@ function fakeRtkInit(): { fn: RtkInitFn; calls: RtkCall[] } {
   const fn: RtkInitFn = (args, cwd) => {
     calls.push({ args, cwd });
     const joined = args.join(' ');
-    if (joined === '--codex --auto-patch') {
+    if (joined === '--codex') {
       fs.writeFileSync(
         path.join(cwd, 'RTK.md'),
         '# RTK (Codex CLI)\n\nAlways prefix shell commands with `rtk`.\n',
       );
-    } else if (joined === '--copilot --auto-patch') {
+    } else if (joined === '--copilot') {
       fs.mkdirSync(path.join(cwd, '.github', 'hooks'), { recursive: true });
       fs.writeFileSync(
         path.join(cwd, '.github', 'copilot-instructions.md'),
@@ -49,7 +49,7 @@ function fakeRtkInit(): { fn: RtkInitFn; calls: RtkCall[] } {
 }
 `,
       );
-    } else if (joined === '-g --opencode --auto-patch') {
+    } else if (joined === '-g --opencode') {
       const home = process.env.HOME || process.env.USERPROFILE || '';
       const pluginsDir = path.join(home, '.config', 'opencode', 'plugins');
       fs.mkdirSync(pluginsDir, { recursive: true });
@@ -153,11 +153,7 @@ describe('apply pipeline', () => {
     // exactly one delegation per agent with the verified flags
     assert.deepEqual(
       rtk.calls.sort((a, b) => a.args[0].localeCompare(b.args[0])).map((c) => c.args),
-      [
-        ['--codex', '--auto-patch'],
-        ['--copilot', '--auto-patch'],
-        ['-g', '--opencode', '--auto-patch'],
-      ],
+      [['--codex'], ['--copilot'], ['-g', '--opencode']],
     );
     assert.ok(rtk.calls.every((c) => c.cwd === base));
   });

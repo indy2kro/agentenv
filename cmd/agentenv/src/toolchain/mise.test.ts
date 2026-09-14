@@ -4,6 +4,11 @@ import { generateMiseToml } from './mise.js';
 import { DEFAULT_CONFIG } from '../config/schema.js';
 
 describe('mise.toml generation', () => {
+  it('pins rtk (invoked directly by agentenv) to a verified version', () => {
+    const output = generateMiseToml(DEFAULT_CONFIG, []);
+    assert.match(output, /rtk = "0\.49\.0"/);
+  });
+
   it('is deterministic for an identical config', () => {
     const first = generateMiseToml(DEFAULT_CONFIG, []);
     const second = generateMiseToml(DEFAULT_CONFIG, []);
