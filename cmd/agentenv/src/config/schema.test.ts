@@ -4,7 +4,13 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import toml from 'toml';
-import { configToToml, diffConfigs, loadConfig, validateConfig } from './schema.js';
+import {
+  configToToml,
+  diffConfigs,
+  loadConfig,
+  resolveIntegrationScope,
+  validateConfig,
+} from './schema.js';
 import type { AgentenvConfig, CustomTool } from './schema.js';
 
 describe('configuration persistence', () => {
@@ -148,5 +154,100 @@ describe('configuration diff', () => {
   it('produces an empty diff for identical configs', () => {
     const config: AgentenvConfig = { scope: 'project', tools: { ripgrep: true } };
     assert.deepEqual(diffConfigs(config, config), []);
+  });
+});
+
+describe('integrations config', () => {
+  it('defaults Superpowers to disabled with the documented source/ref', () => {
+    const config = loadConfig(undefined);
+    assert.equal(config.integrations?.superpowers?.enabled, false);
+    assert.equal(config.integrations?.superpowers?.source, 'github:obra/superpowers');
+    assert.equal(config.integrations?.superpowers?.ref, 'v6.3.0');
+    assert.equal(config.integrations?.superpowers?.allow_hooks, false);
+    assert.equal(config.integrations?.superpowers?.allow_external_requests, false);
+    assert.deepEqual(config.integrations?.superpowers?.agents, [
+      'claude_code',
+      'codex_cli',
+      'copilot',
+      'opencode',
+    ]);
+  });
+
+  it('round-trips integrations.superpowers through configToToml/loadConfig', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-config-'));
+    const configPath = path.join(directory, 'agentenv.toml');
+    const content = configToToml({
+      integrations: {
+        superpowers: {
+          enabled: true,
+          source: 'github:obra/superpowers',
+          ref: 'v7.0.0',
+          scope: 'user',
+          agents: ['claude_code'],
+          allow_hooks: true,
+          allow_external_requests: false,
+        },
+      },
+    });
+    fs.writeFileSync(configPath, content);
+
+    const loaded = loadConfig(configPath);
+    assert.equal(loaded.integrations?.superpowers?.enabled, true);
+    assert.equal(loaded.integrations?.superpowers?.ref, 'v7.0.0');
+    assert.equal(loaded.integrations?.superpowers?.scope, 'user');
+    assert.deepEqual(loaded.integrations?.superpowers?.agents, ['claude_code']);
+    assert.equal(loaded.integrations?.superpowers?.allow_hooks, true);
+  });
+
+  it('rejects an unknown key under [integrations]', () => {
+    const report = validateConfig({
+      integrations: {
+        not_a_real_integration: { enabled: true },
+      } as unknown as AgentenvConfig['integrations'],
+    });
+    assert.ok(report.errors.some((error) => error.includes('Unknown integration')));
+  });
+
+  it('rejects an unknown agent name in integrations.superpowers.agents', () => {
+    const report = validateConfig({
+      integrations: {
+        superpowers: { enabled: true, agents: ['claude_code', 'not_an_agent'] as never },
+      },
+    });
+    assert.ok(report.errors.some((error) => error.includes('unknown agent')));
+  });
+
+  it('rejects an invalid integrations.superpowers.scope', () => {
+    const report = validateConfig({
+      integrations: { superpowers: { enabled: true, scope: 'global' as never } },
+    });
+    assert.ok(report.errors.some((error) => error.includes('integrations.superpowers.scope')));
+  });
+
+  it('rejects an empty ref and warns (not errors) on a floating ref', () => {
+    const empty = validateConfig({ integrations: { superpowers: { enabled: true, ref: '' } } });
+    assert.ok(empty.errors.some((error) => error.includes('ref')));
+
+    const floating = validateConfig({
+      integrations: { superpowers: { enabled: true, ref: 'main' } },
+    });
+    assert.equal(floating.errors.length, 0);
+    assert.ok(floating.warnings.some((warning) => warning.includes('floating')));
+  });
+
+  it('reports a diff entry when integrations.superpowers.enabled flips', () => {
+    const before: AgentenvConfig = { integrations: { superpowers: { enabled: false } } };
+    const after: AgentenvConfig = { integrations: { superpowers: { enabled: true } } };
+    const diff = diffConfigs(before, after);
+    assert.ok(diff.some((entry) => entry.key === 'integrations.superpowers.enabled'));
+  });
+
+  it('resolveIntegrationScope falls back to the top-level scope when unset', () => {
+    assert.equal(resolveIntegrationScope({ scope: 'user' }, { enabled: true }), 'user');
+    assert.equal(
+      resolveIntegrationScope({ scope: 'user' }, { enabled: true, scope: 'project' }),
+      'project',
+    );
+    assert.equal(resolveIntegrationScope({}, undefined), 'project');
   });
 });

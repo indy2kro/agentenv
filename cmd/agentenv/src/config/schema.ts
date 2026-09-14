@@ -44,6 +44,20 @@ export interface AdvancedConfig {
   show_diff_preview?: boolean;
 }
 
+export interface IntegrationConfig {
+  enabled?: boolean;
+  source?: string;
+  ref?: string;
+  scope?: 'project' | 'user';
+  agents?: AgentKey[];
+  allow_hooks?: boolean;
+  allow_external_requests?: boolean;
+}
+
+export interface IntegrationsConfig {
+  superpowers?: IntegrationConfig;
+}
+
 export interface AgentenvConfig {
   scope?: 'project' | 'user';
   agents?: {
@@ -78,6 +92,7 @@ export interface AgentenvConfig {
   tier0?: Tier0Config;
   generate?: GenerateConfig;
   advanced?: AdvancedConfig;
+  integrations?: IntegrationsConfig;
 }
 
 // Default configuration values
@@ -130,11 +145,25 @@ export const DEFAULT_CONFIG: AgentenvConfig = {
     marker_end: '<!-- agentenv-managed-end -->',
     files: ['AGENTS.md', 'CLAUDE.md'],
   },
+  integrations: {
+    superpowers: {
+      enabled: false,
+      source: 'github:obra/superpowers',
+      ref: 'v6.3.0',
+      agents: ['claude_code', 'codex_cli', 'copilot', 'opencode'],
+      allow_hooks: false,
+      allow_external_requests: false,
+    },
+  },
 };
 
 // Known agent keys for validation
 export const AGENT_KEYS = ['claude_code', 'codex_cli', 'copilot', 'opencode'] as const;
 export type AgentKey = (typeof AGENT_KEYS)[number];
+
+// Known integration keys for validation
+export const INTEGRATION_KEYS = ['superpowers'] as const;
+export type IntegrationKey = (typeof INTEGRATION_KEYS)[number];
 
 // Known tool keys for validation
 export const TOOL_KEYS: Array<keyof NonNullable<AgentenvConfig['tools']>> = [
@@ -395,6 +424,22 @@ export function configToToml(config: AgentenvConfig): string {
       lines.push(`files = [${config.generate.files.map(tomlString).join(', ')}]`);
   }
 
+  // Integrations
+  if (config.integrations?.superpowers) {
+    const superpowers = config.integrations.superpowers;
+    lines.push('\n[integrations.superpowers]');
+    if (superpowers.enabled !== undefined) lines.push(`enabled = ${superpowers.enabled}`);
+    if (superpowers.source) lines.push(`source = ${tomlString(superpowers.source)}`);
+    if (superpowers.ref) lines.push(`ref = ${tomlString(superpowers.ref)}`);
+    if (superpowers.scope) lines.push(`scope = ${tomlString(superpowers.scope)}`);
+    if (superpowers.agents)
+      lines.push(`agents = [${superpowers.agents.map(tomlString).join(', ')}]`);
+    if (superpowers.allow_hooks !== undefined)
+      lines.push(`allow_hooks = ${superpowers.allow_hooks}`);
+    if (superpowers.allow_external_requests !== undefined)
+      lines.push(`allow_external_requests = ${superpowers.allow_external_requests}`);
+  }
+
   return lines.join('\n');
 }
 
@@ -480,6 +525,36 @@ function mergeWithDefaults(config: AgentenvConfig): AgentenvConfig {
       marker_start: config.generate.marker_start ?? DEFAULT_CONFIG.generate?.marker_start,
       marker_end: config.generate.marker_end ?? DEFAULT_CONFIG.generate?.marker_end,
       files: config.generate.files ?? DEFAULT_CONFIG.generate?.files,
+    };
+  }
+
+  // Merge integrations
+  if (config.integrations) {
+    result.integrations = {
+      superpowers: config.integrations.superpowers
+        ? {
+            enabled:
+              config.integrations.superpowers.enabled ??
+              DEFAULT_CONFIG.integrations?.superpowers?.enabled,
+            source:
+              config.integrations.superpowers.source ??
+              DEFAULT_CONFIG.integrations?.superpowers?.source,
+            ref:
+              config.integrations.superpowers.ref ?? DEFAULT_CONFIG.integrations?.superpowers?.ref,
+            scope:
+              config.integrations.superpowers.scope ??
+              DEFAULT_CONFIG.integrations?.superpowers?.scope,
+            agents:
+              config.integrations.superpowers.agents ??
+              DEFAULT_CONFIG.integrations?.superpowers?.agents,
+            allow_hooks:
+              config.integrations.superpowers.allow_hooks ??
+              DEFAULT_CONFIG.integrations?.superpowers?.allow_hooks,
+            allow_external_requests:
+              config.integrations.superpowers.allow_external_requests ??
+              DEFAULT_CONFIG.integrations?.superpowers?.allow_external_requests,
+          }
+        : DEFAULT_CONFIG.integrations?.superpowers,
     };
   }
 
@@ -596,6 +671,49 @@ export function validateConfig(config: AgentenvConfig): {
     }
   }
 
+  const integrations = (config.integrations ?? {}) as Record<string, IntegrationConfig | undefined>;
+  for (const key of Object.keys(integrations)) {
+    if (!(INTEGRATION_KEYS as readonly string[]).includes(key)) {
+      errors.push(`Unknown integration "${key}"`);
+    }
+  }
+
+  const superpowers = config.integrations?.superpowers;
+  if (superpowers) {
+    if (
+      superpowers.scope !== undefined &&
+      superpowers.scope !== 'project' &&
+      superpowers.scope !== 'user'
+    ) {
+      errors.push(
+        `integrations.superpowers.scope must be "project" or "user", got "${String(superpowers.scope)}"`,
+      );
+    }
+    if (superpowers.agents) {
+      for (const agent of superpowers.agents) {
+        if (!(AGENT_KEYS as readonly string[]).includes(agent)) {
+          errors.push(`integrations.superpowers.agents contains unknown agent "${agent}"`);
+        }
+      }
+    }
+    if (superpowers.source !== undefined && superpowers.source.trim() === '') {
+      errors.push('integrations.superpowers.source must not be empty');
+    }
+    if (superpowers.ref !== undefined) {
+      if (superpowers.ref.trim() === '') {
+        errors.push('integrations.superpowers.ref must not be empty');
+      } else if (!/^[A-Za-z0-9._/-]+$/.test(superpowers.ref)) {
+        errors.push(
+          `integrations.superpowers.ref "${superpowers.ref}" contains characters that are not valid in a git ref`,
+        );
+      } else if (['main', 'master', 'HEAD'].includes(superpowers.ref)) {
+        warnings.push(
+          `integrations.superpowers.ref "${superpowers.ref}" is a floating branch; pin to a tag or commit for reproducibility`,
+        );
+      }
+    }
+  }
+
   return { errors, warnings };
 }
 
@@ -677,6 +795,41 @@ export function diffConfigs(
         'advanced.show_diff_preview',
         oldConfig.advanced?.show_diff_preview,
         newConfig.advanced?.show_diff_preview,
+      ],
+      [
+        'integrations.superpowers.enabled',
+        oldConfig.integrations?.superpowers?.enabled,
+        newConfig.integrations?.superpowers?.enabled,
+      ],
+      [
+        'integrations.superpowers.source',
+        oldConfig.integrations?.superpowers?.source,
+        newConfig.integrations?.superpowers?.source,
+      ],
+      [
+        'integrations.superpowers.ref',
+        oldConfig.integrations?.superpowers?.ref,
+        newConfig.integrations?.superpowers?.ref,
+      ],
+      [
+        'integrations.superpowers.scope',
+        oldConfig.integrations?.superpowers?.scope,
+        newConfig.integrations?.superpowers?.scope,
+      ],
+      [
+        'integrations.superpowers.agents',
+        jsonOr(oldConfig.integrations?.superpowers?.agents),
+        jsonOr(newConfig.integrations?.superpowers?.agents),
+      ],
+      [
+        'integrations.superpowers.allow_hooks',
+        oldConfig.integrations?.superpowers?.allow_hooks,
+        newConfig.integrations?.superpowers?.allow_hooks,
+      ],
+      [
+        'integrations.superpowers.allow_external_requests',
+        oldConfig.integrations?.superpowers?.allow_external_requests,
+        newConfig.integrations?.superpowers?.allow_external_requests,
       ],
     ],
     entries,
@@ -795,4 +948,15 @@ export function getEnabledTools(config: AgentenvConfig): string[] {
   }
 
   return enabled;
+}
+
+/**
+ * Resolve the effective scope for an integration: its own `scope` field when
+ * set, otherwise the agentenv-level scope, defaulting to "project".
+ */
+export function resolveIntegrationScope(
+  config: AgentenvConfig,
+  integration: IntegrationConfig | undefined,
+): 'project' | 'user' {
+  return integration?.scope ?? config.scope ?? 'project';
 }
