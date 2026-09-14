@@ -184,6 +184,8 @@ function checkGitBash(): boolean {
 
 /**
  * Check if GNU coreutils are available (for macOS/Linux)
+ * Uses `command -v` to get the resolved path, then checks version output.
+ * This handles shell function shadowing (e.g., Claude Code's ugrep/bfs).
  */
 function checkGNUCoreutils(): boolean {
   if (process.platform === 'win32') {
@@ -192,17 +194,23 @@ function checkGNUCoreutils(): boolean {
 
   try {
     // Check if we have GNU versions of tools
+    // Use `command -v` to get the actual resolved path (works through shell functions)
     // BSD vs GNU grep: GNU grep has -P flag for PCRE
     try {
-      child_process.execSync('grep -P --version', { stdio: 'ignore' });
+      // First, get the resolved path - this will follow shell function aliases
+      const grepPath = child_process.execSync('command -v grep', { encoding: 'utf-8' }).trim();
+      // Now check if the resolved grep supports -P (GNU feature)
+      child_process.execSync(`${grepPath} -P --version`, { stdio: 'ignore' });
       return true;
     } catch {
       // Try other indicators
     }
 
-    // Check for GNU sed
+    // Check for GNU sed via resolved path
     try {
-      child_process.execSync('sed --version', { stdio: 'ignore' });
+      const sedPath = child_process.execSync('command -v sed', { encoding: 'utf-8' }).trim();
+      // GNU sed supports --version; BSD sed does not
+      child_process.execSync(`${sedPath} --version`, { stdio: 'ignore' });
       return true;
     } catch {
       // Ignore
