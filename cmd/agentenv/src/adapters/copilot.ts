@@ -9,7 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { BaseAdapter, AdapterConfig, AdapterResult } from './base.js';
 import { isAgentInstalled } from './detect.js';
-import { RTK_INIT_FLAGS, resolveRtkInit } from '../toolchain/rtk.js';
+import { RTK_INIT_FLAGS, resolveRtkInit, rtkMessage } from '../toolchain/rtk.js';
 
 export class CopilotAdapter extends BaseAdapter {
   private configDir: string;
@@ -86,7 +86,7 @@ export class CopilotAdapter extends BaseAdapter {
       if (this.outputFilesPresent() && !before) {
         result.filesCreated.push(...this.outputPaths());
       }
-      result.message = run.message;
+      result.message = rtkMessage(run);
     } else {
       result.success = false;
       result.errors.push(run.message + (run.stderr ? `: ${run.stderr.trim()}` : ''));

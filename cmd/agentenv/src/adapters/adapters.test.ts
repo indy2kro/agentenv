@@ -7,6 +7,7 @@ import { CodexCliAdapter } from './codex.js';
 import { CopilotAdapter } from './copilot.js';
 import { OpenCodeAdapter } from './opencode.js';
 import type { RtkInitFn } from '../toolchain/rtk.js';
+import { rtkMessage } from '../toolchain/rtk.js';
 
 interface RtkCall {
   args: string[];
@@ -210,5 +211,37 @@ describe('delegation failure path', () => {
       assert.equal(result.success, false);
       assert.ok(result.errors.some((e) => e.includes('not configured yet')));
     });
+  });
+});
+
+describe('rtkMessage transparency log', () => {
+  it('relays what rtk rewrote, collapses whitespace, and elides long output', () => {
+    assert.equal(
+      rtkMessage({
+        success: true,
+        message: 'rtk init --codex succeeded',
+        stdout: 'patched AGENTS.md\nadded RTK.md',
+        stderr: '',
+      }),
+      'rtk init --codex succeeded: patched AGENTS.md added RTK.md',
+    );
+    assert.equal(
+      rtkMessage({
+        success: true,
+        message: 'rtk init --codex succeeded',
+        stdout: '',
+        stderr: '',
+      }),
+      'rtk init --codex succeeded',
+    );
+    const long = 'x'.repeat(600);
+    const message = rtkMessage({
+      success: true,
+      message: 'm',
+      stdout: long,
+      stderr: '',
+    });
+    assert.ok(message.endsWith('...'), 'long rewrote output is elided');
+    assert.ok(message.length < 430, 'elided message stays bounded');
   });
 });

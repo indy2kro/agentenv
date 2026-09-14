@@ -77,3 +77,14 @@ const defaultRtkInit: RtkInitFn = (args, cwd) => {
 export function resolveRtkInit(rtkInit?: RtkInitFn): RtkInitFn {
   return rtkInit ?? defaultRtkInit;
 }
+
+/**
+ * Surfaces what rtk actually rewrote as part of the per-agent message, so its
+ * work isn't silently invisible (Phase 4 transparency log).
+ */
+export function rtkMessage(run: RtkInitResult): string {
+  const rewrote = run.stdout.replace(/\s+/g, ' ').trim();
+  if (!rewrote) return run.message;
+  const summary = rewrote.length > 400 ? rewrote.slice(0, 400).trimEnd() + '...' : rewrote;
+  return `${run.message}: ${summary}`;
+}

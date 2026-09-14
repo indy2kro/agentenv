@@ -9,7 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { BaseAdapter, AdapterConfig, AdapterResult } from './base.js';
 import { isAgentInstalled } from './detect.js';
-import { RTK_INIT_FLAGS, resolveRtkInit } from '../toolchain/rtk.js';
+import { RTK_INIT_FLAGS, resolveRtkInit, rtkMessage } from '../toolchain/rtk.js';
 
 export class OpenCodeAdapter extends BaseAdapter {
   private configDir: string;
@@ -88,7 +88,7 @@ export class OpenCodeAdapter extends BaseAdapter {
         result.message = 'OpenCode rtk plugin already up to date';
       } else {
         if (!existed && fs.existsSync(pluginPath)) result.filesCreated.push(pluginPath);
-        result.message = run.message;
+        result.message = rtkMessage(run);
       }
     } else {
       result.success = false;

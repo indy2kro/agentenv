@@ -295,8 +295,11 @@ agentenv/
   content — Codex `config.toml`/`hooks.json` now merge instead of
   overwriting). `apply` gained a `skipMiseInstall` option, and
   `src/commands/apply.test.ts` proves zero-diff on repeated applies plus
-  user-content preservation. Remaining: rtk rewrote-log (Phase 2 research
-  dependency).
+  user-content preservation. The rtk rewrote-log is implemented:
+  `rtkMessage()` in `src/toolchain/rtk.ts` relays rtk's captured `init`
+  stdout (what it patched) into the per-agent apply/diagnostic messages
+  (400-char elision), so rewrites aren't silently invisible. Covered by
+  `adapters.test.ts` "rtkMessage transparency log".
 
 ### Phase 5 — Distribution & generalization
 - Package `agentenv` as an npm package (`npm install -g agentenv`)
@@ -311,8 +314,10 @@ agentenv/
   through `AGENTENV_RTK_BIN` + `--skip-mise-install`) and a full-setup real
   smoke in `.github/workflows/smoke.yml` (3-OS, mise installs the pinned
   tools, real `rtk init`) on `main` pushes + `workflow_dispatch`. Adapter
-  guide written (`docs/guides/adding-an-adapter.md`). Remaining: `npm
-  publish`, then confirm the smoke.yml job is green on all three OSes.
+  guide written (`docs/guides/adding-an-adapter.md`). `smoke.yml` is green on
+  all three OSes (windows/macos/ubuntu, confirmed on the real-smoke fix commit
+  `b5da678`). Remaining: `npm publish` (needs npm credentials on this
+  machine).
 
 ## 9. Testing strategy
 
