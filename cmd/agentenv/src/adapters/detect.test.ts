@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { detectInstalledAgents, isAgentInstalled } from './detect.js';
+import { detectInstalledAgents, isAgentInstalled, resolveBinary } from './detect.js';
 import type { DetectFn } from './detect.js';
 
 function fakeDetect(present: string[]): DetectFn {
@@ -23,5 +23,10 @@ describe('agent installation detection', () => {
   it('treats gh presence as Copilot presence', () => {
     assert.equal(isAgentInstalled('copilot', fakeDetect(['gh'])), true);
     assert.equal(isAgentInstalled('copilot', fakeDetect(['codex'])), false);
+  });
+
+  it('resolveBinary finds an existing binary and returns null otherwise', () => {
+    assert.ok(resolveBinary('node') !== null);
+    assert.equal(resolveBinary('definitely-not-a-real-agentenv-binary'), null);
   });
 });

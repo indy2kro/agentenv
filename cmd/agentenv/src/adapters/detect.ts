@@ -48,3 +48,27 @@ export function detectInstalledAgents(detect: DetectFn = defaultDetect): AgentKe
 export function isAgentInstalled(agent: AgentKey, detect: DetectFn = defaultDetect): boolean {
   return AGENT_COMMANDS[agent].some(detect);
 }
+
+/**
+ * Resolve the first PATH hit for a binary, or null when it is not on PATH.
+ * Used by `agentenv status` to surface tool drift.
+ */
+export function resolveBinary(command: string): string | null {
+  const look = process.platform === 'win32' ? 'where' : 'which';
+  try {
+    // Capture stdout for the resolved path, discard stderr (Windows `where`
+    // writes "INFO: Could not find files" to stderr for misses).
+    const out = child_process.execSync(`${look} ${command}`, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    return (
+      out
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .find((line) => line.length > 0) ?? null
+    );
+  } catch {
+    return null;
+  }
+}

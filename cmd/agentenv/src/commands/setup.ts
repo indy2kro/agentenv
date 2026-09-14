@@ -25,6 +25,12 @@ export const setupCommand = new Command()
   .action(async () => {
     console.log('\n=== agentenv Setup (Simple Mode) ===\n');
 
+    if (!process.stdin.isTTY || !process.stdout.isTTY) {
+      console.error('Setup is interactive; in a non-TTY run `agentenv apply` instead.');
+      process.exitCode = 1;
+      return;
+    }
+
     const detected = detectInstalledAgents();
     console.log(
       detected.length > 0

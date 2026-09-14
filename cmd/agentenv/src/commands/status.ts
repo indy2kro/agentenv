@@ -1,130 +1,171 @@
 import { Command } from 'commander';
-import { readFileSync } from 'fs';
-import toml from 'toml';
-import * as fs from 'fs/promises';
+import * as fs from 'fs';
 import * as path from 'path';
-import { AgentenvConfig } from '../config/schema.js';
+import { isAgentInstalled, resolveBinary } from '../adapters/detect.js';
+import {
+  BINARY_MAP,
+  TOOL_DESCRIPTIONS,
+  TOOL_KEYS,
+  TOOL_TIERS,
+  getEnabledAgents,
+  loadConfig,
+  validateConfig,
+} from '../config/schema.js';
+import type { AgentKey, AgentenvConfig, CustomTool } from '../config/schema.js';
+import { findConfigPath, resolveScopeDir } from '../config/scopes.js';
+import { detectShell } from '../shell/detector.js';
 
-/**
- * Status command - Show what's installed, configured, and out of sync
- */
+const AGENT_CONFIG_FILES: Record<AgentKey, { label: string; check: () => string }> = {
+  claude_code: {
+    label: 'Claude Code',
+    check: () => path.join(homeDir(), '.claude', 'settings.json'),
+  },
+  codex_cli: { label: 'Codex CLI', check: () => path.join(homeDir(), '.codex', 'config.toml') },
+  copilot: { label: 'GitHub Copilot', check: () => path.join(homeDir(), '.copilot', 'hooks') },
+  opencode: {
+    label: 'OpenCode',
+    check: () => path.join(homeDir(), '.config', 'opencode', 'opencode.json'),
+  },
+};
+
+function homeDir(): string {
+  return process.env.HOME || process.env.USERPROFILE || '';
+}
+
+function containsManagedMarker(file: string, config: AgentenvConfig): boolean {
+  try {
+    const content = fs.readFileSync(file, 'utf-8');
+    const marker = config.generate?.marker_start ?? '<!-- agentenv-managed-start -->';
+    return content.includes(marker);
+  } catch {
+    return false;
+  }
+}
+
+function customToolStatus(tool: CustomTool): string {
+  if (tool.already_installed) {
+    const candidate = pathForPlatform(tool);
+    if (candidate && fs.existsSync(candidate)) return `present (${candidate})`;
+    return 'MISSING on disk';
+  }
+  return `mise source: ${tool.mise_source}${tool.version ? ` (${tool.version})` : ''}`;
+}
+
+function pathForPlatform(tool: CustomTool): string | undefined {
+  if (process.platform === 'win32') return tool.path_windows;
+  if (process.platform === 'darwin') return tool.path_macos;
+  return tool.path_linux;
+}
 
 export const statusCommand = new Command()
   .name('status')
   .description('Show current configuration and environment status')
-  .action(async () => {
+  .action(() => {
     console.log('\n=== agentenv status ===\n');
 
-    // Load config
-    let configPath = 'agentenv.toml';
-    let config: AgentenvConfig = {};
-    let configLoaded = false;
+    const configPath = findConfigPath();
+    if (!configPath) {
+      console.log('No agentenv.toml found (project or user scope).');
+      console.log('  Run `agentenv setup` or `agentenv configure` to create one.\n');
+      process.exitCode = 1;
+      return;
+    }
 
+    let config: AgentenvConfig;
     try {
-      const data = readFileSync(configPath, 'utf-8');
-      config = toml.parse(data);
-      configLoaded = true;
-      console.log(`Config: ${configPath}`);
-    } catch {
-      const home = process.env.HOME || process.env.USERPROFILE || '';
-      const userConfigPath = path.join(home, '.config', 'agentenv', 'agentenv.toml');
-      try {
-        const data = readFileSync(userConfigPath, 'utf-8');
-        config = toml.parse(data);
-        configPath = userConfigPath;
-        configLoaded = true;
-        console.log(`Config: ${configPath}`);
-      } catch {
-        console.log('No agentenv.toml found');
-      }
+      config = loadConfig();
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exitCode = 1;
+      return;
     }
 
-    if (configLoaded) {
-      console.log(`Scope: ${config.scope || 'project'}`);
+    const baseDir = resolveScopeDir(config.scope);
+    console.log(`Config: ${configPath}`);
+    console.log(`Scope: ${config.scope ?? 'project'}`);
+    console.log(`Base directory: ${baseDir}`);
 
-      // Show agents
-      console.log('\nEnabled Agents:');
-      const agents = config.agents || {};
-      if (agents.claude_code) console.log('  - Claude Code');
-      if (agents.codex_cli) console.log('  - Codex CLI');
-      if (agents.copilot) console.log('  - GitHub Copilot');
-      if (agents.opencode) console.log('  - OpenCode');
+    const report = validateConfig(config);
+    console.log(
+      `Validation: ${report.errors.length === 0 ? 'valid' : `${report.errors.length} error(s)`}${
+        report.warnings.length > 0 ? `, ${report.warnings.length} warning(s)` : ''
+      }`,
+    );
+    for (const warning of report.warnings) console.log(`  warning: ${warning}`);
+    console.log(`RTK command rewriting: ${config.rtk?.enabled ? 'enabled' : 'disabled'}`);
 
-      // Show tools
-      console.log('\nEnabled Tools:');
-      const tools = config.tools || {};
-      const toolList = [];
-      for (const [tool, enabled] of Object.entries(tools)) {
-        if (enabled) toolList.push(tool);
-      }
-      if (toolList.length > 0) {
-        toolList.forEach((t) => console.log(`  - ${t}`));
-      } else {
-        console.log('  (none)');
-      }
-
-      // Show rtk status
-      console.log('\nRTK Status:');
-      if (config.rtk?.enabled) {
-        console.log('  Enabled: yes');
-        console.log('  Init hooks:');
-        const init = config.rtk?.init || {};
-        if (init.claude_code) console.log('    - Claude Code');
-        if (init.codex_cli) console.log('    - Codex CLI');
-        if (init.copilot) console.log('    - GitHub Copilot');
-        if (init.opencode) console.log('    - OpenCode');
-      } else {
-        console.log('  Enabled: no');
-      }
-
-      // Show Tier 0 status
-      console.log('\nTier 0 (Shell):');
-      if (config.tier0?.check_enabled !== false) {
-        console.log('  Check enabled: yes');
-      } else {
-        console.log('  Check enabled: no');
-      }
+    // Tier 0 shell status
+    const shell = detectShell();
+    console.log('\nTier 0 (shell):');
+    if (shell.isWindows) {
+      console.log(`  Windows, POSIX-compatible: ${shell.isPosixCompatible ? 'yes' : 'NO'}`);
+      if (shell.gitBashPath) console.log(`  Git Bash: ${shell.gitBashPath}`);
+      if (!shell.isPosixCompatible) console.log('  Fix: run `agentenv apply` (Tier 0 shell fix)');
+    } else {
+      console.log(
+        `  ${shell.isPosixCompatible ? 'POSIX-compatible' : 'non-POSIX'} (not Windows; Tier 0 N/A)`,
+      );
+      const missing = shell.missingUtilities;
+      if (missing.length > 0) console.log(`  Missing utilities: ${missing.join(', ')}`);
     }
 
-    // Check for generated files
-    console.log('\nGenerated Files:');
-    const filesToCheck = [
-      'mise.toml',
-      'AGENTS.md',
-      'CLAUDE.md',
-      '.claude/settings.json',
-      '.claude/CLAUDE.md',
-      '.codex/config.toml',
-      '.codex/hooks.json',
+    // Agents
+    const enabledAgents = getEnabledAgents(config) as AgentKey[];
+    console.log('\nAgents:');
+    if (enabledAgents.length === 0) {
+      console.log('  (none enabled)');
+    }
+    for (const agent of enabledAgents) {
+      const meta = AGENT_CONFIG_FILES[agent];
+      const installed = isAgentInstalled(agent);
+      const configured = fs.existsSync(meta.check());
+      const drift = installed && !configured;
+      console.log(
+        `  ${meta.label.padEnd(16)} installed: ${installed ? 'yes' : 'no'}   ` +
+          `configured: ${configured ? 'yes' : 'no'}${drift ? '   <- drift: installed but not configured' : ''}`,
+      );
+    }
+
+    // Tools
+    const enabledTools = TOOL_KEYS.filter((key) => config.tools?.[key] === true);
+    console.log('\nTools:');
+    for (const key of enabledTools) {
+      const binary = BINARY_MAP[key];
+      const found = resolveBinary(binary) !== null;
+      const tier = TOOL_TIERS[key] ?? '?';
+      const desc = TOOL_DESCRIPTIONS[key] ?? '';
+      console.log(
+        `  ${found ? '✓' : '✗'} ${binary.padEnd(12)} ${key} (Tier ${tier})${found ? '' : '   <- drift: enabled in config but not on PATH'} — ${desc}`,
+      );
+    }
+    if (enabledTools.length === 0) console.log('  (none enabled)');
+
+    // Custom tools
+    const customTools = config.custom_tools ?? [];
+    console.log('\nCustom tools:');
+    if (customTools.length === 0) {
+      console.log('  (none)');
+    }
+    for (const tool of customTools) {
+      console.log(`  ${tool.name}: ${customToolStatus(tool)}`);
+    }
+
+    // Generated files
+    console.log('\nGenerated files:');
+    const generated: Array<[string, string, boolean]> = [
+      ['mise.toml', path.join(baseDir, 'mise.toml'), false],
+      ['AGENTS.md', path.join(baseDir, 'AGENTS.md'), true],
+      ['CLAUDE.md', path.join(baseDir, 'CLAUDE.md'), true],
     ];
-
-    for (const file of filesToCheck) {
-      try {
-        await fs.access(file);
-        console.log(`  ✓ ${file}`);
-      } catch {
-        console.log(`  ✗ ${file} (missing)`);
+    for (const [label, file, markerCheck] of generated) {
+      const exists = fs.existsSync(file);
+      if (!exists) {
+        console.log(`  ✗ ${label} (missing)`);
+        continue;
       }
+      const managed = markerCheck ? containsManagedMarker(file, config) : true;
+      console.log(`  ✓ ${label}${managed ? '' : ' (managed marker block missing)'}`);
     }
 
-    // Check tool availability
-    console.log('\nTool Availability:');
-    const toolsToCheck = [
-      { name: 'rg/ripgrep', command: 'rg --version' },
-      { name: 'fd', command: 'fd --version' },
-      { name: 'jq', command: 'jq --version' },
-      { name: 'rtk', command: 'rtk --version' },
-      { name: 'gh', command: 'gh --version' },
-    ];
-
-    for (const { name } of toolsToCheck) {
-      try {
-        // We can't actually run these without child_process, so just check
-        console.log(`  ⚠ ${name} (not verified)`);
-      } catch {
-        console.log(`  ✗ ${name} (not found)`);
-      }
-    }
-
-    console.log('\n=== Status Complete ===\n');
+    console.log('\n=== Status complete ===\n');
   });

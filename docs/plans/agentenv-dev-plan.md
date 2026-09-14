@@ -279,6 +279,13 @@ agentenv/
 - `agentenv status` command showing drift between config and actual machine state
 - A visible log of what rtk rewrote/what hooks fired, so behavior isn't silently invisible to the developer
 - Confirm zero-diff, zero-reinstall behavior on repeated `apply` runs
+- **Status:** `agentenv status` implemented (config path/validation, Tier 0
+  shell state, per-agent installed/configured with drift flags, per-tool
+  PATH drift via `resolveBinary`, custom-tool disk checks, generated-file
+  markers). Hook files are already written merge-only (adapter + Tier 0
+  preserve user content). Remaining: rtk rewrote-log (Phase 2 research
+  dependency) and an automated zero-reinstall integration test across the
+  full `apply` pipeline (currently covered per-file by unit tests).
 
 ### Phase 5 — Distribution & generalization
 - Package `agentenv` as an npm package (`npm install -g agentenv`)

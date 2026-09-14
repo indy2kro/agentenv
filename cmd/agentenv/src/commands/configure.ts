@@ -32,6 +32,12 @@ export const configureCommand = new Command()
   .action(async () => {
     console.log('\n=== agentenv Configure (Advanced Mode) ===\n');
 
+    if (!process.stdin.isTTY || !process.stdout.isTTY) {
+      console.error('Configure is interactive; in a non-TTY run `agentenv apply` instead.');
+      process.exitCode = 1;
+      return;
+    }
+
     let existing: AgentenvConfig;
     try {
       existing = loadConfig();
