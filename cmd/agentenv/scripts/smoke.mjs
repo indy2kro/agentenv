@@ -51,19 +51,33 @@ files = ["AGENTS.md", "CLAUDE.md"]
 fs.writeFileSync(path.join(project, 'agentenv.toml'), config);
 
 const env = { ...process.env, HOME: home, USERPROFILE: home };
-const applyArgs = REAL ? ['apply'] : ['apply', '--skip-mise-install'];
+const applyArgs = ['apply', '--skip-mise-install'];
 if (!REAL) env.AGENTENV_RTK_BIN = stub;
 
-// Real rtk lives in the temp HOME's mise data dir on Unix (shims at
-// ~/.local/share/mise/shims). `apply` runs `mise install` before delegating,
-// so prepending that deterministic shim dir lets `rtk init` resolve on PATH
-// (verified against mise 2026.9 on ubuntu: install drops a shim exactly there).
+// Real rtk must resolve on PATH for the delegated `rtk init`. Rather than
+// depend on `apply`'s internal mise gate (flaky right after a fresh install)
+// or on mise's version-dir layout, install the pinned rtk ourselves
+// (exit-checked), resolve its true bin dir with `mise which rtk`, and prepend
+// it to PATH before the (skip-mise) apply.
 if (REAL) {
-  env.PATH = [
-    path.join(home, '.local', 'share', 'mise', 'shims'),
-    path.join(home, '.local', 'bin'),
-    env.PATH ?? '',
-  ].join(path.delimiter);
+  const pre = path.join(temp, 'preinstall');
+  fs.mkdirSync(pre, { recursive: true });
+  fs.writeFileSync(path.join(pre, 'mise.toml'), '[tools]\nrtk = "0.49.0"\n');
+  try {
+    execFileSync('mise', ['install'], { cwd: pre, env, stdio: 'ignore' });
+  } catch (err) {
+    console.error('smoke FAIL: mise install (rtk) exited non-zero');
+    process.exit(1);
+  }
+  const rtkBin = execFileSync('mise', ['which', 'rtk'], { cwd: pre, env, encoding: 'utf-8' })
+    .trim()
+    .split(/\r?\n/)[0];
+  // Windows stores PATH as `Path`; `{...process.env}` keeps its casing, so
+  // read whichever key exists or the prepend would replace the whole PATH.
+  const basePath = env.PATH ?? env.Path ?? '';
+  const joinedPath = path.dirname(rtkBin) + (basePath ? path.delimiter + basePath : '');
+  env.PATH = joinedPath;
+  env.Path = joinedPath;
 }
 
 function run(args, cwd) {
@@ -93,7 +107,10 @@ try {
 }
 expect(/Generated .*mise\.toml/.test(applyOut), `apply should report mise.toml generation, got:\n${applyOut}`);
 if (REAL) {
-  expect(/mise install completed/.test(applyOut), `apply should run mise install, got:\n${applyOut}`);
+  expect(
+    !/rtk binary not found on PATH/.test(applyOut),
+    `delegation should resolve real rtk via mise bin dir, got:\n${applyOut}`,
+  );
 }
 
 const checks = [
@@ -133,4 +150,4 @@ if (!REAL) {
 const statusOut = run(['status'], project);
 expect(/Status complete/.test(statusOut), `status should complete, got:\n${statusOut}`);
 
-console.log(`smoke OK (${REAL ? 'real rtk + mise install' : 'rtk stub + skip mise'}): apply + status full pipeline verified for all four agents`);
+console.log(`smoke OK (${REAL ? 'real rtk via mise bin + skip-mise apply' : 'rtk stub + skip mise'}): apply + status full pipeline verified for all four agents`);
