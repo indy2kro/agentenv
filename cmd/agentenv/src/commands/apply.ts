@@ -9,6 +9,7 @@ import {
 import type { BaseAdapter } from '../adapters/index.js';
 import { getEnabledAgents, loadConfig, validateConfig } from '../config/schema.js';
 import type { AgentKey } from '../config/schema.js';
+import { resolveScopeDir } from '../config/scopes.js';
 import type { AgentenvConfig } from '../config/schema.js';
 import { generateInstructionFiles, updateWithMarkers } from '../generate/agentsmd.js';
 import { fixShellConfiguration } from '../shell/detector.js';
@@ -119,10 +120,7 @@ export const applyCommand = new Command()
       return;
     }
 
-    const baseDir =
-      config.scope === 'user'
-        ? path.join(process.env.HOME || process.env.USERPROFILE || '', '.config', 'agentenv')
-        : process.cwd();
+    const baseDir = resolveScopeDir(config.scope);
     const result = await applyConfiguration(config, baseDir);
     for (const message of result.messages) console.log(message);
     for (const error of result.errors) console.error(error);
