@@ -225,10 +225,11 @@ function checkGNUCoreutils(): boolean {
     // Use `command -v` to get the actual resolved path (works through shell functions)
     // BSD vs GNU grep: GNU grep has -P flag for PCRE
     try {
-      // First, get the resolved path - this will follow shell function aliases
+      // First, get the resolved path - this will follow shell function aliases.
+      // Then invoke the binary directly rather than building a shell string so
+      // paths containing spaces keep working reliably.
       const grepPath = child_process.execSync('command -v grep', { encoding: 'utf-8' }).trim();
-      // Now check if the resolved grep supports -P (GNU feature)
-      child_process.execSync(`${grepPath} -P --version`, { stdio: 'ignore' });
+      child_process.spawnSync(grepPath, ['-P', '--version'], { stdio: 'ignore' });
       return true;
     } catch {
       // Try other indicators
@@ -238,7 +239,7 @@ function checkGNUCoreutils(): boolean {
     try {
       const sedPath = child_process.execSync('command -v sed', { encoding: 'utf-8' }).trim();
       // GNU sed supports --version; BSD sed does not
-      child_process.execSync(`${sedPath} --version`, { stdio: 'ignore' });
+      child_process.spawnSync(sedPath, ['--version'], { stdio: 'ignore' });
       return true;
     } catch {
       // Ignore

@@ -161,7 +161,7 @@ export function getToolsToInstall(config: AgentenvConfig): Array<{
       result.push({
         name: key,
         miseName,
-        version: 'latest',
+        version: PINNED_TOOL_VERSIONS[miseName] || 'latest',
         tier: TOOL_TIERS[key] || 3,
       });
     }

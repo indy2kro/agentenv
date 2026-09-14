@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { generateMiseToml } from './mise.js';
+import { generateMiseToml, getToolsToInstall } from './mise.js';
 import { DEFAULT_CONFIG } from '../config/schema.js';
 
 describe('mise.toml generation', () => {
@@ -29,5 +29,13 @@ describe('mise.toml generation', () => {
     ]);
 
     assert.match(output, /github:someorg\/otherthing = "latest"/);
+  });
+
+  it('honors pinned tool versions in the install planner', () => {
+    const tools = getToolsToInstall(DEFAULT_CONFIG);
+    const rtk = tools.find((tool) => tool.name === 'rtk');
+
+    assert.ok(rtk);
+    assert.equal(rtk?.version, '0.49.0');
   });
 });

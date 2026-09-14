@@ -5,6 +5,7 @@
  * interactive wizard's pre-checked defaults depend on.
  */
 
+import * as fs from 'node:fs';
 import * as child_process from 'child_process';
 import { AGENT_KEYS } from '../config/schema.js';
 import type { AgentKey } from '../config/schema.js';
@@ -22,7 +23,10 @@ export type DetectFn = (command: string) => boolean;
 
 const defaultDetect: DetectFn = (command) => {
   try {
-    child_process.execSync(`${command} --version`, { stdio: 'ignore' });
+    if (command.includes('/') || command.includes('\\') || command.includes(' ')) {
+      return fs.existsSync(command);
+    }
+    child_process.execFileSync(command, ['--version'], { stdio: 'ignore' });
     return true;
   } catch {
     return false;
@@ -54,14 +58,24 @@ export function isAgentInstalled(agent: AgentKey, detect: DetectFn = defaultDete
  * Used by `agentenv status` to surface tool drift.
  */
 export function resolveBinary(command: string): string | null {
-  const look = process.platform === 'win32' ? 'where' : 'which';
+  // Direct path inputs (including paths with spaces) should be checked locally
+  // before using `where`/`which`; those lookup tools interpret a spaced path as a
+  // glob/pattern instead of a literal path.
+  if (command.includes('/') || command.includes('\\') || command.includes(' ')) {
+    try {
+      return fs.existsSync(command) ? command : null;
+    } catch {
+      return null;
+    }
+  }
+
+  const look = process.platform === 'win32' ? 'where.exe' : 'which';
   try {
-    // Capture stdout for the resolved path, discard stderr (Windows `where`
-    // writes "INFO: Could not find files" to stderr for misses).
-    const out = child_process.execSync(`${look} ${command}`, {
+    const result = child_process.spawnSync(look, [command], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
     });
+    const out = result.stdout ?? '';
     return (
       out
         .split(/\r?\n/)
