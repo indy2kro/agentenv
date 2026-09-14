@@ -1,15 +1,30 @@
 import { Command } from 'commander';
-import { select, checkbox, input, confirm } from '@inquirer/prompts';
+import { checkbox, confirm, input, select } from '@inquirer/prompts';
+import { detectInstalledAgents } from '../adapters/detect.js';
+import {
+  BINARY_MAP,
+  DEFAULT_CONFIG,
+  TOOL_DESCRIPTIONS,
+  TOOL_KEYS,
+  TOOL_TIERS,
+  diffConfigs,
+  loadConfig,
+  saveConfig,
+} from '../config/schema.js';
+import type { AgentKey, AgentenvConfig, CustomTool } from '../config/schema.js';
+import { configFilePath, resolveScopeDir } from '../config/scopes.js';
+import { applyConfiguration } from './apply.js';
+import { AGENT_OPTIONS, buildConfigFromSelections, formatDiffLines } from '../wizard/build.js';
 
 /**
  * Configure command - Advanced mode wizard
  * Performs step-by-step configuration:
- * 1. Select agents (checkbox list)
- * 2. Select tools (full Tier 1-3 picker)
+ * 1. Select agents (pre-checked = enabled or detected)
+ * 2. Select tools (full Tier 1-3 picker, pre-checked = enabled)
  * 3. Add custom binaries
  * 4. Choose scope (project vs user)
  * 5. Choose rtk enable/disable
- * 6. Review screen with diff
+ * 6. Diff review screen, then apply
  */
 export const configureCommand = new Command()
   .name('configure')
@@ -17,122 +32,134 @@ export const configureCommand = new Command()
   .action(async () => {
     console.log('\n=== agentenv Configure (Advanced Mode) ===\n');
 
+    let existing: AgentenvConfig;
+    try {
+      existing = loadConfig();
+    } catch {
+      existing = DEFAULT_CONFIG;
+    }
+    const detected = detectInstalledAgents();
+
     // Step 1: Select agents
     console.log('Step 1/6: Select agents to configure');
-    const agents = await checkbox({
+    const agents = (await checkbox({
       message: 'Select agents:',
-      choices: [
-        { name: 'Claude Code', value: 'claude', checked: true },
-        { name: 'Codex CLI', value: 'codex', checked: true },
-        { name: 'GitHub Copilot', value: 'copilot', checked: false },
-        { name: 'OpenCode', value: 'opencode', checked: false },
-      ],
-    });
+      choices: AGENT_OPTIONS.map((agent) => ({
+        name: agent.label,
+        value: agent.value,
+        checked: existing.agents?.[agent.value] === true || detected.includes(agent.value),
+      })),
+    })) as AgentKey[];
 
     // Step 2: Select tools
     console.log('\nStep 2/6: Select tools to install');
-    const tools = await checkbox({
-      message: 'Select tools (Tier 1-3):',
-      choices: [
-        // Tier 1
-        { name: 'ripgrep (rg) [Tier 1 - Essential]', value: 'ripgrep', checked: true },
-        { name: 'fd [Tier 1 - Essential]', value: 'fd', checked: true },
-        { name: 'jq [Tier 1 - Essential]', value: 'jq', checked: true },
-        { name: 'rtk [Tier 1 - Essential]', value: 'rtk', checked: true },
-
-        // Tier 2
-        { name: 'ast-grep (sg) [Tier 2 - AI coding]', value: 'ast-grep', checked: true },
-        { name: 'git-delta [Tier 2 - AI coding]', value: 'git-delta', checked: true },
-        { name: 'universal-ctags [Tier 2 - AI coding]', value: 'ctags', checked: false },
-        { name: 'gh (GitHub CLI) [Tier 2 - AI coding]', value: 'gh', checked: true },
-        { name: 'difftastic [Tier 2 - AI coding]', value: 'difftastic', checked: true },
-
-        // Tier 3
-        { name: 'yq [Tier 3 - Power user]', value: 'yq', checked: false },
-        { name: 'bat [Tier 3 - Power user]', value: 'bat', checked: false },
-        { name: 'eza [Tier 3 - Power user]', value: 'eza', checked: false },
-        { name: 'miller (mlr) [Tier 3 - Power user]', value: 'miller', checked: false },
-        { name: 'tokei [Tier 3 - Power user]', value: 'tokei', checked: false },
-        { name: 'hyperfine [Tier 3 - Power user]', value: 'hyperfine', checked: false },
-        { name: 'fzf [Tier 3 - Power user]', value: 'fzf', checked: false },
-        { name: 'just [Tier 3 - Power user]', value: 'just', checked: false },
-        { name: 'watchexec [Tier 3 - Power user]', value: 'watchexec', checked: false },
-        { name: 'direnv [Tier 3 - Power user]', value: 'direnv', checked: false },
-      ],
-    });
+    const tools = (await checkbox({
+      message: 'Select tools (Tiers 1-3):',
+      choices: TOOL_KEYS.map((key) => ({
+        name: `${BINARY_MAP[key]} — ${TOOL_DESCRIPTIONS[key]} [Tier ${TOOL_TIERS[key]}]`,
+        value: key,
+        checked: existing.tools?.[key] === true,
+      })),
+    })) as string[];
 
     // Step 3: Add custom binaries
     console.log('\nStep 3/6: Add custom binaries');
-    const addCustom = await confirm({
-      message: 'Add custom binary?',
-      default: false,
-    });
-
-    const customTools = [];
-    if (addCustom) {
-      // In a real implementation, we'd loop to add multiple
-      const name = await input({ message: 'Tool name:' });
-      const description = await input({ message: 'Description:' });
+    const customTools: CustomTool[] = [];
+    let addCustom = await confirm({ message: 'Add a custom binary?', default: false });
+    while (addCustom) {
+      const name = await input({ message: 'Tool name (e.g. "my-tool"):' });
+      const description = await input({ message: 'Description (optional):', default: '' });
       const alreadyInstalled = await confirm({ message: 'Already installed?', default: true });
 
-      let pathWindows = '';
-      let pathMacOS = '';
-      let pathLinux = '';
-
       if (alreadyInstalled) {
-        pathWindows = await input({ message: 'Windows path (C:\\...):' });
-        pathMacOS = await input({ message: 'macOS path (/usr/local/...):' });
-        pathLinux = await input({ message: 'Linux path (/usr/bin/...):' });
+        const pathWindows = await input({
+          message: 'Windows path (e.g. C:\\tools\\my-tool.exe):',
+          default: '',
+        });
+        const pathMacOS = await input({
+          message: 'macOS path (e.g. /usr/local/bin/my-tool):',
+          default: '',
+        });
+        const pathLinux = await input({
+          message: 'Linux path (e.g. /usr/bin/my-tool):',
+          default: '',
+        });
+        customTools.push({
+          name,
+          description,
+          already_installed: true,
+          path_windows: pathWindows,
+          path_macos: pathMacOS,
+          path_linux: pathLinux,
+        });
       } else {
-        const miseSource = await input({ message: 'mise source (github:owner/repo):' });
-        const version = await input({ message: 'Version (latest):', default: 'latest' });
-        customTools.push({ name, description, miseSource, version });
+        const miseSource = await input({ message: 'mise source (e.g. github:owner/repo):' });
+        const version = await input({ message: 'Version (default: latest):', default: 'latest' });
+        customTools.push({
+          name,
+          description,
+          already_installed: false,
+          mise_source: miseSource,
+          version,
+        });
       }
 
-      customTools.push({ name, description, pathWindows, pathMacOS, pathLinux });
+      addCustom = await confirm({ message: 'Add another custom binary?', default: false });
     }
 
     // Step 4: Choose scope
     console.log('\nStep 4/6: Choose configuration scope');
-    const scope = await select({
+    const scope = (await select({
       message: 'Scope:',
       choices: [
-        { name: 'Project-level (checked into repo)', value: 'project' },
+        { name: `Project-level (this repo: ${process.cwd()})`, value: 'project' },
         { name: 'User/global-level', value: 'user' },
       ],
-    });
+    })) as 'project' | 'user';
 
     // Step 5: Enable rtk
     console.log('\nStep 5/6: Token optimization');
     const rtkEnabled = await confirm({
       message: 'Enable rtk command rewriting?',
-      default: true,
+      default: existing.rtk?.enabled !== false,
     });
 
     // Step 6: Review
     console.log('\nStep 6/6: Review changes');
+    const config = buildConfigFromSelections({ agents, tools, customTools, scope, rtkEnabled });
+    const diff = diffConfigs(existing, config);
+
     console.log('\nConfiguration summary:');
-    console.log(`  Agents: ${agents.join(', ')}`);
-    console.log(`  Tools: ${tools.join(', ')}`);
+    console.log(`  Agents: ${agents.length > 0 ? agents.join(', ') : '(none)'}`);
+    console.log(`  Tools: ${tools.length > 0 ? tools.join(', ') : '(none)'}`);
     console.log(`  Custom tools: ${customTools.length}`);
     console.log(`  Scope: ${scope}`);
     console.log(`  rtk enabled: ${rtkEnabled}`);
 
-    const proceed = await confirm({
-      message: 'Apply this configuration?',
-      default: true,
-    });
-
-    if (proceed) {
-      console.log('\nApplying configuration...');
-      // TODO: Actual implementation
-      console.log('  Generating agentenv.toml...');
-      console.log('  Generating mise.toml...');
-      console.log('  Running mise install...');
-      console.log('  Generating AGENTS.md...');
-      console.log('  Configuring agent hooks...');
-      console.log('\nConfiguration applied successfully!\n');
+    if (diff.length === 0) {
+      console.log('\nNo changes from the current configuration.');
     } else {
-      console.log('\nCancelled. No changes made.\n');
+      console.log('\nChanges vs. current configuration:');
+      for (const line of formatDiffLines(diff)) console.log(`  ${line}`);
     }
+
+    const proceed = await confirm({ message: 'Apply this configuration?', default: true });
+    if (!proceed) {
+      console.log('\nCancelled. No changes made.\n');
+      return;
+    }
+
+    const file = configFilePath(scope);
+    saveConfig(config, file);
+    console.log(`\nSaved configuration: ${file}`);
+
+    const result = await applyConfiguration(config, resolveScopeDir(scope));
+    for (const message of result.messages) console.log(message);
+    for (const error of result.errors) console.error(error);
+    if (!result.success) {
+      process.exitCode = 1;
+      return;
+    }
+
+    console.log('\nConfiguration applied successfully!\n');
   });

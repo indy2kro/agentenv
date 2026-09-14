@@ -1,0 +1,78 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { buildConfigFromSelections, formatDiffLines, simpleToolSelection } from './build.js';
+import type { ConfigDiffEntry } from '../config/schema.js';
+
+describe('wizard build helpers', () => {
+  it('simpleToolSelection includes Tier 2 only when requested', () => {
+    assert.deepEqual(simpleToolSelection(false), ['ripgrep', 'fd', 'jq', 'rtk']);
+    assert.deepEqual(simpleToolSelection(true), [
+      'ripgrep',
+      'fd',
+      'jq',
+      'rtk',
+      'ast_grep',
+      'git_delta',
+      'gh',
+      'difftastic',
+    ]);
+  });
+
+  it('buildConfigFromSelections toggles agents and tools', () => {
+    const config = buildConfigFromSelections({
+      agents: ['claude_code', 'opencode'],
+      tools: ['ripgrep', 'fd'],
+      customTools: [],
+      scope: 'project',
+      rtkEnabled: false,
+    });
+
+    assert.equal(config.agents?.claude_code, true);
+    assert.equal(config.agents?.opencode, true);
+    assert.equal(config.agents?.codex_cli, false);
+    assert.equal(config.agents?.copilot, false);
+
+    assert.equal(config.tools?.ripgrep, true);
+    assert.equal(config.tools?.fd, true);
+    assert.equal(config.tools?.jq, false);
+
+    assert.equal(config.scope, 'project');
+    assert.equal(config.rtk?.enabled, false);
+    assert.equal(config.custom_tools, undefined);
+    assert.deepEqual(config.generate?.files, ['AGENTS.md', 'CLAUDE.md']);
+  });
+
+  it('buildConfigFromSelections keeps custom tools and rtk init flags', () => {
+    const config = buildConfigFromSelections({
+      agents: ['codex_cli'],
+      tools: ['rtk'],
+      customTools: [{ name: 'my-tool', description: 'x', already_installed: true }],
+      scope: 'user',
+      rtkEnabled: true,
+    });
+
+    assert.equal(config.scope, 'user');
+    assert.equal(config.custom_tools?.length, 1);
+    assert.equal(config.custom_tools?.[0].name, 'my-tool');
+    assert.equal(config.rtk?.init?.claude_code, true);
+    assert.equal(config.rtk?.enabled, true);
+    assert.equal(config.tools?.fzf, false);
+  });
+
+  it('formatDiffLines renders added/removed/changed entries', () => {
+    const diff: ConfigDiffEntry[] = [
+      { kind: 'added', key: 'agents.opencode', newValue: true },
+      { kind: 'removed', key: 'tools.tokei', newValue: false },
+      { kind: 'changed', key: 'scope', oldValue: 'project', newValue: 'user' },
+      { kind: 'changed', key: 'rtk.enabled', oldValue: true, newValue: false },
+    ];
+
+    const lines = formatDiffLines(diff);
+    assert.deepEqual(lines, [
+      'add     agents.opencode',
+      'remove  tools.tokei',
+      'change  scope: project -> user',
+      'change  rtk.enabled: true -> false',
+    ]);
+  });
+});

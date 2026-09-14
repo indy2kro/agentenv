@@ -268,6 +268,10 @@ agentenv/
 - `agentenv setup` (Simple mode: Tier 0 fix + auto-detect + Tier 1/2 defaults, one confirmation)
 - Advanced path within the wizard (agent picker, full tool picker, custom binaries, scope choice, review-before-write screen)
 - `agentenv configure` (re-run, pre-filled, diffed)
+- **Status:** first-pass implemented (`cmd/agentenv/src/commands/setup.ts`,
+  `commands/configure.ts`, `src/wizard/build.ts`). Simple mode still needs a
+  headless/non-TTY guard and one-keypress flow polish; the review screen shows
+  a `diffConfigs`-driven diff before writing.
 - **Acceptance:** a first-time Windows user gets a fully working setup — including the shell fix — in under a minute in Simple mode; an advanced user can add a custom binary and re-run without disturbing existing config
 
 ### Phase 4 — Safety, idempotency, transparency
