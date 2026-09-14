@@ -60,9 +60,14 @@ from mise.
 | `--copilot` | Writes `.github/copilot-instructions.md` + `.github/hooks/rtk-rewrite.json` (VS Code/CLI `PreToolUse` + `preToolUse`) | ❌ no — adapter writes `~/.copilot/hooks/pre-tool-use` shell script |
 | `--opencode` | Installs OpenCode plugin (in addition to Claude) | ⚠️ untested dry-run; flag exists |
 
-Other relevant flags: `--agent <cursor|windsurf|cline|kilocode|antigravity|pi|hermes>`,
+Other relevant flags: `--agent <cursor|windsurf|cline|kilocode|antigravity|kimi|pi|hermes|droid>`,
 `--gemini`, `--show`, `--claude-md` (legacy), `--hook-only`, `--auto-patch`,
-`--no-patch`, `--uninstall`, `--dry-run`.
+`--no-patch`, `--uninstall`, `--dry-run`, `--trust-filters` / `--no-trust-filters`.
+
+**Note on flag stability:** As of rtk 0.49.0, `--codex` and `--copilot` flags are
+undocumented in `rtk init --help` output but still function correctly. These
+flags may be at risk of removal in future rtk versions without appearing in
+changelogs. Consider asserting their presence in CI smoke tests.
 
 Consequences:
 
@@ -71,6 +76,10 @@ Consequences:
    Copilot path targets the VS Code/CLI `.github/hooks/` mechanism rather than
    a `~/.copilot/hooks/pre-tool-use` script. Per §2's constraint, agentenv
    should stop hand-writing these and delegate.
+2. **Side effect: rtk history database.** Every `rtk init` call (and by extension,
+   every `agentenv apply` with RTK enabled) creates `~/.local/share/rtk/history.db`
+   — a command-history database in the user's home. This should be noted in
+   Phase 4's transparency log so users understand what files are being created.
 2. **Recommendation: option 2** — keep the Claude hook (verified match, tested),
    and for Codex/Copilot invoke `rtk init --codex` / `--copilot` (and
    `--opencode` for OpenCode) from the adapters when `rtk.enabled`. The hooks
