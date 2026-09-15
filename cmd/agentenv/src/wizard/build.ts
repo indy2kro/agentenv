@@ -4,7 +4,13 @@
  */
 
 import { AGENT_KEYS, TOOL_KEYS } from '../config/schema.js';
-import type { AgentKey, AgentenvConfig, ConfigDiffEntry, CustomTool } from '../config/schema.js';
+import type {
+  AgentKey,
+  AgentenvConfig,
+  ConfigDiffEntry,
+  CustomTool,
+  IntegrationsConfig,
+} from '../config/schema.js';
 
 export const AGENT_OPTIONS: Array<{ value: AgentKey; label: string }> = [
   { value: 'claude_code', label: 'Claude Code' },
@@ -63,6 +69,7 @@ export interface WizardSelections {
   customTools: CustomTool[];
   scope: 'project' | 'user';
   rtkEnabled: boolean;
+  integrations?: IntegrationsConfig;
 }
 
 /** Assemble a full AgentenvConfig from picker selections. */
@@ -83,6 +90,7 @@ export function buildConfigFromSelections(sel: WizardSelections): AgentenvConfig
     agents,
     tools,
     custom_tools: sel.customTools.length > 0 ? sel.customTools : undefined,
+    integrations: sel.integrations,
     rtk: {
       enabled: sel.rtkEnabled,
       init: { claude_code: true, codex_cli: true, copilot: true, opencode: true },

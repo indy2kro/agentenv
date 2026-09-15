@@ -107,4 +107,30 @@ describe('wizard build helpers', () => {
     assert.equal(noTier2.rtk?.enabled, false);
     assert.equal(noTier2.scope, 'user');
   });
+
+  it('passes through an integrations selection unchanged', () => {
+    const integrations = { superpowers: { enabled: true, ref: 'v6.3.0' as const } };
+    const config = buildConfigFromSelections({
+      agents: ['claude_code'],
+      tools: [],
+      customTools: [],
+      scope: 'project',
+      rtkEnabled: true,
+      integrations,
+    });
+
+    assert.deepEqual(config.integrations, integrations);
+  });
+
+  it('omits integrations from the built config when none is passed', () => {
+    const config = buildConfigFromSelections({
+      agents: ['claude_code'],
+      tools: [],
+      customTools: [],
+      scope: 'project',
+      rtkEnabled: true,
+    });
+
+    assert.equal(config.integrations, undefined);
+  });
 });

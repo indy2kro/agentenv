@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import { checkbox, confirm, select } from '@inquirer/prompts';
 import * as fs from 'fs';
 import { detectInstalledAgents } from '../adapters/detect.js';
-import { loadConfig, saveConfig, validateConfig } from '../config/schema.js';
+import { DEFAULT_CONFIG, loadConfig, saveConfig, validateConfig } from '../config/schema.js';
 import type { AgentKey, AgentenvConfig } from '../config/schema.js';
 import { configFilePath, resolveScopeDir } from '../config/scopes.js';
 import { applyConfiguration } from './apply.js';
@@ -208,12 +208,20 @@ export const setupCommand = new Command()
       ],
     })) as 'project' | 'user';
 
+    let existing: AgentenvConfig;
+    try {
+      existing = loadConfig();
+    } catch {
+      existing = DEFAULT_CONFIG;
+    }
+
     const config = buildConfigFromSelections({
       agents: selectedAgents,
       tools: simpleToolSelection(installTier2),
       customTools: [],
       scope,
       rtkEnabled: true,
+      integrations: existing.integrations,
     });
 
     await saveAndApply(config, configFilePath(scope));

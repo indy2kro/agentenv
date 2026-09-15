@@ -25,7 +25,8 @@ import { getMiseVersion, isMiseInstalled, miseInstallInstructions } from '../too
  * 3. Add custom binaries
  * 4. Choose scope (project vs user)
  * 5. Choose rtk enable/disable
- * 6. Diff review screen, then apply
+ * 6. Optionally opt into Superpowers (the only optional integration today)
+ * 7. Diff review screen, then apply
  */
 export const configureCommand = new Command()
   .name('configure')
@@ -57,7 +58,7 @@ export const configureCommand = new Command()
     const detected = detectInstalledAgents();
 
     // Step 1: Select agents
-    console.log('Step 1/6: Select agents to configure');
+    console.log('Step 1/7: Select agents to configure');
     const agents = (await checkbox({
       message: 'Select agents:',
       choices: AGENT_OPTIONS.map((agent) => ({
@@ -68,7 +69,7 @@ export const configureCommand = new Command()
     })) as AgentKey[];
 
     // Step 2: Select tools
-    console.log('\nStep 2/6: Select tools to install');
+    console.log('\nStep 2/7: Select tools to install');
     const tools = (await checkbox({
       message: 'Select tools (Tiers 1-3):',
       choices: TOOL_KEYS.map((key) => ({
@@ -79,7 +80,7 @@ export const configureCommand = new Command()
     })) as string[];
 
     // Step 3: Add custom binaries
-    console.log('\nStep 3/6: Add custom binaries');
+    console.log('\nStep 3/7: Add custom binaries');
     const customTools: CustomTool[] = [];
     let addCustom = await confirm({ message: 'Add a custom binary?', default: false });
     while (addCustom) {
@@ -124,7 +125,7 @@ export const configureCommand = new Command()
     }
 
     // Step 4: Choose scope
-    console.log('\nStep 4/6: Choose configuration scope');
+    console.log('\nStep 4/7: Choose configuration scope');
     const scope = (await select({
       message: 'Scope:',
       choices: [
@@ -134,15 +135,75 @@ export const configureCommand = new Command()
     })) as 'project' | 'user';
 
     // Step 5: Enable rtk
-    console.log('\nStep 5/6: Token optimization');
+    console.log('\nStep 5/7: Token optimization');
     const rtkEnabled = await confirm({
       message: 'Enable rtk command rewriting?',
       default: existing.rtk?.enabled !== false,
     });
 
-    // Step 6: Review
-    console.log('\nStep 6/6: Review changes');
-    const config = buildConfigFromSelections({ agents, tools, customTools, scope, rtkEnabled });
+    // Step 6: Optional integrations
+    console.log('\nStep 6/7: Optional integrations');
+    const existingSuperpowers = existing.integrations?.superpowers;
+    console.log(
+      `  Superpowers (${DEFAULT_CONFIG.integrations?.superpowers?.source}, default ref ${DEFAULT_CONFIG.integrations?.superpowers?.ref}) — currently ${
+        existingSuperpowers?.enabled ? 'enabled' : 'disabled'
+      }`,
+    );
+    const wantsSuperpowers = await confirm({
+      message:
+        'Enable the optional Superpowers integration for Claude Code? (installs a third-party plugin via `claude plugin install`)',
+      default: existingSuperpowers?.enabled === true,
+    });
+
+    let integrations: AgentenvConfig['integrations'] = existing.integrations;
+    if (wantsSuperpowers) {
+      const ref = await input({
+        message: 'Superpowers ref to pin (tag/branch/commit):',
+        default:
+          existingSuperpowers?.ref ?? DEFAULT_CONFIG.integrations?.superpowers?.ref ?? 'v6.3.0',
+      });
+      const allowHooks = await confirm({
+        message: 'Allow Superpowers to register its SessionStart hook for Claude Code?',
+        default: existingSuperpowers?.allow_hooks === true,
+      });
+      const allowExternalRequests = await confirm({
+        message: 'Allow the optional Superpowers visual companion to make external requests?',
+        default: existingSuperpowers?.allow_external_requests === true,
+      });
+      console.log(
+        `  Review: source=github:obra/superpowers, ref=${ref}, scope=${scope}, agents=claude_code, hooks=${allowHooks}, external_requests=${allowExternalRequests}`,
+      );
+      const confirmIntegration = await confirm({
+        message: 'Confirm enabling Superpowers with these settings?',
+        default: true,
+      });
+      integrations = confirmIntegration
+        ? {
+            superpowers: {
+              enabled: true,
+              source: 'github:obra/superpowers',
+              ref,
+              scope,
+              agents: ['claude_code'],
+              allow_hooks: allowHooks,
+              allow_external_requests: allowExternalRequests,
+            },
+          }
+        : existing.integrations;
+    } else if (existingSuperpowers?.enabled) {
+      integrations = { superpowers: { ...existingSuperpowers, enabled: false } };
+    }
+
+    // Step 7: Review
+    console.log('\nStep 7/7: Review changes');
+    const config = buildConfigFromSelections({
+      agents,
+      tools,
+      customTools,
+      scope,
+      rtkEnabled,
+      integrations,
+    });
     const diff = diffConfigs(existing, config);
 
     console.log('\nConfiguration summary:');
@@ -151,6 +212,7 @@ export const configureCommand = new Command()
     console.log(`  Custom tools: ${customTools.length}`);
     console.log(`  Scope: ${scope}`);
     console.log(`  rtk enabled: ${rtkEnabled}`);
+    console.log(`  Superpowers: ${integrations?.superpowers?.enabled ? 'enabled' : 'disabled'}`);
 
     if (diff.length === 0) {
       console.log('\nNo changes from the current configuration.');
