@@ -131,6 +131,10 @@ previously-saved `agentenv.toml` instead.
 `apply` logic internally, so the end state is identical either way — the
 only difference is how you got there.
 
+Output is colorized when your terminal supports it (auto-detected, honors
+`NO_COLOR`/`FORCE_COLOR`); pass `--no-color` (before or after the subcommand)
+to force it off.
+
 ## Configuration (`agentenv.toml`)
 
 Everything flows from one file. It lives either in the project root
@@ -299,8 +303,9 @@ always preserves whatever is already configured.
   is installed and on PATH. `--skip-mise-install` intentionally leaves tools
   uninstalled; don't use it for your real run.
 - **Windows: agents aren't picking up ripgrep/fd/etc.** — check the "Tier 0
-  (shell)" block in `agentenv status`. If it reports not POSIX-compatible,
-  re-run `agentenv apply`; if Git Bash truly isn't installed, install
+  (shell)" block in `agentenv status`. It lists each enabled agent's shell
+  override state; if any show `✗` or it says "Fix: run `agentenv apply`",
+  re-run `agentenv apply`. If Git Bash truly isn't installed, install
   [Git for Windows](https://gitforwindows.org) first.
 - **A hook file has content you added by hand, and you're worried `apply`
   will clobber it** — it won't. Regeneration only replaces the marker-block
