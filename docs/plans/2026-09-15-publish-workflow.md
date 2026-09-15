@@ -47,9 +47,11 @@ Step-by-step maintainer instructions (including how to create the npm token)
 live in [`docs/guides/releasing.md`](../guides/releasing.md).
 
 - [ ] Add the `NPM_TOKEN` secret to the repository (Settings > Secrets and
-  variables > Actions) with an npm access token that has
-  `publish` scope for the `@indy2kro` scope. See the guide for the exact
-  npm website steps.
+  variables > Actions) with an npm granular access token that has
+  `publish` scope for the `@indy2kro` scope, **Bypass 2FA** enabled, and the
+  maximum allowed lifetime. Write-capable tokens are capped at 90 days (classic
+  tokens are gone), so rotation is a recurring maintenance task. See
+  [`docs/guides/releasing.md`](../guides/releasing.md) for the exact steps.
 - [ ] First publish: bump `package.json` to `1.0.0` (or keep `0.1.0`),
   `git tag v<version>`, push the tag.
 - [ ] Confirm the generated provenance appears under the release's
