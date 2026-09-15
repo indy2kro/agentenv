@@ -5,6 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { applyConfiguration } from './apply.js';
 import type { AgentenvConfig } from '../config/schema.js';
+import type { ClaudeCliRunner } from '../integrations/superpowers.js';
 import type { RtkInitFn } from '../toolchain/rtk.js';
 
 interface RtkCall {
@@ -59,6 +60,36 @@ function fakeRtkInit(): { fn: RtkInitFn; calls: RtkCall[] } {
       );
     }
     return { success: true, message: `rtk init ${joined} succeeded`, stdout: '', stderr: '' };
+  };
+  return { fn, calls };
+}
+
+/**
+ * Fake `claude plugin` runner. `plugin list` reports superpowers installed
+ * after `plugin install` has run (tracked in memory), matching what the real
+ * CLI would produce after a first `apply`.
+ */
+function fakeClaudeCli(): { fn: ClaudeCliRunner; calls: string[][] } {
+  const calls: string[][] = [];
+  let installed = false;
+  const fn: ClaudeCliRunner = (args, _cwd) => {
+    const joined = args.join(' ');
+    calls.push(args);
+    if (joined === 'plugin list') {
+      return {
+        success: true,
+        exitCode: installed ? 0 : 1,
+        stdout: installed ? 'superpowers@superpowers-marketplace' : '',
+        stderr: '',
+      };
+    }
+    if (joined.startsWith('plugin marketplace add '))
+      return { success: true, exitCode: 0, stdout: '', stderr: '' };
+    if (joined.startsWith('plugin install ')) {
+      installed = true;
+      return { success: true, exitCode: 0, stdout: '', stderr: '' };
+    }
+    return { success: true, exitCode: 0, stdout: '', stderr: '' };
   };
   return { fn, calls };
 }
@@ -242,5 +273,100 @@ describe('apply pipeline', () => {
     assert.equal(result.success, true, result.errors.join('; '));
     assert.equal(rtk.calls.length, 0);
     assert.equal(fs.existsSync(path.join(base, 'RTK.md')), false);
+  });
+
+  it('installs the Superpowers integration for Claude Code when enabled and allow_hooks', async () => {
+    const home = tempDir('agentenv-home-');
+    const base = tempDir('agentenv-base-');
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    const rtk = fakeRtkInit();
+    const claude = fakeClaudeCli();
+
+    const config: AgentenvConfig = {
+      ...CONFIG,
+      integrations: {
+        superpowers: {
+          enabled: true,
+          source: 'github:obra/superpowers',
+          ref: 'v6.3.0',
+          allow_hooks: true,
+        },
+      },
+    };
+
+    const result = await applyConfiguration(config, base, {
+      skipMiseInstall: true,
+      rtkInit: rtk.fn,
+      superpowersDeps: { runClaudeCli: claude.fn },
+    });
+    assert.equal(result.success, true, result.errors.join('; '));
+
+    assert.ok(
+      claude.calls.some((c) => c[0] === 'plugin' && c[1] === 'marketplace' && c[2] === 'add'),
+    );
+    assert.ok(claude.calls.some((c) => c[0] === 'plugin' && c[1] === 'install'));
+    assert.ok(
+      fs.existsSync(path.join(base, '.agentenv-state', 'integrations', 'superpowers.json')),
+      'missing superpowers marker',
+    );
+    assert.ok(
+      result.messages.some((m) => m.startsWith('Superpowers: ✓ claude_code: installed')),
+      `missing success message: ${result.messages.join(' | ')}`,
+    );
+  });
+
+  it('does not install Superpowers when allow_hooks is not enabled, and warns', async () => {
+    const home = tempDir('agentenv-home-');
+    const base = tempDir('agentenv-base-');
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    const rtk = fakeRtkInit();
+    const claude = fakeClaudeCli();
+
+    const config: AgentenvConfig = {
+      ...CONFIG,
+      integrations: {
+        superpowers: {
+          enabled: true,
+          source: 'github:obra/superpowers',
+          ref: 'v6.3.0',
+          allow_hooks: false,
+        },
+      },
+    };
+
+    const result = await applyConfiguration(config, base, {
+      skipMiseInstall: true,
+      rtkInit: rtk.fn,
+      superpowersDeps: { runClaudeCli: claude.fn },
+    });
+    assert.equal(result.success, true, result.errors.join('; '));
+    assert.equal(
+      claude.calls.some((c) => c[0] === 'plugin' && c[1] === 'marketplace'),
+      false,
+      'must not run plugin marketplace add without allow_hooks',
+    );
+    assert.ok(
+      result.messages.some((m) => m.startsWith('Superpowers: ✗ claude_code: missing')),
+      `missing missing-state message: ${result.messages.join(' | ')}`,
+    );
+  });
+
+  it('skips the Superpowers step entirely when the integration is disabled', async () => {
+    const home = tempDir('agentenv-home-');
+    const base = tempDir('agentenv-base-');
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    const rtk = fakeRtkInit();
+    const claude = fakeClaudeCli();
+
+    const result = await applyConfiguration(CONFIG, base, {
+      skipMiseInstall: true,
+      rtkInit: rtk.fn,
+      superpowersDeps: { runClaudeCli: claude.fn },
+    });
+    assert.equal(result.success, true, result.errors.join('; '));
+    assert.equal(claude.calls.length, 0, 'claude must not be invoked when integration is disabled');
   });
 });

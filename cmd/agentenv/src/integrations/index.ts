@@ -13,4 +13,5 @@ export {
   SUPERPOWERS_MARKETPLACE_REPO,
   SUPERPOWERS_PLUGIN_ID,
 } from './superpowers.js';
+export { integrationResultLines, integrationStateLine, ghAuthLine } from './render.js';
 export type { ClaudeCliRunner, SuperpowersAdapterDeps } from './superpowers.js';

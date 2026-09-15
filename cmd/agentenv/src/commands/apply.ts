@@ -11,6 +11,8 @@ import { getEnabledAgents, loadConfig, validateConfig } from '../config/schema.j
 import type { AgentKey } from '../config/schema.js';
 import { resolveScopeDir } from '../config/scopes.js';
 import type { AgentenvConfig } from '../config/schema.js';
+import { SuperpowersAdapter, integrationResultLines } from '../integrations/index.js';
+import type { SuperpowersAdapterDeps } from '../integrations/index.js';
 import { generateInstructionFiles, updateWithMarkers } from '../generate/agentsmd.js';
 import { fixShellConfiguration } from '../shell/detector.js';
 import type { RtkInitFn } from '../toolchain/rtk.js';
@@ -42,6 +44,8 @@ export interface ApplyOptions {
   skipMiseInstall?: boolean;
   /** Injectable `rtk init` runner (tests pass a stub). */
   rtkInit?: RtkInitFn;
+  /** Injectable Superpowers adapter dependencies (tests pass a claude stub). */
+  superpowersDeps?: SuperpowersAdapterDeps;
 }
 
 function adaptersFor(
@@ -60,6 +64,15 @@ function adaptersFor(
   if (config.agents?.codex_cli) adapters.push(new CodexCliAdapter(adapterConfig));
   if (config.agents?.copilot) adapters.push(new CopilotAdapter(adapterConfig));
   if (config.agents?.opencode) adapters.push(new OpenCodeAdapter(adapterConfig));
+  return adapters;
+}
+
+/** Integration adapters whose integration is enabled in the config (e.g. Superpowers). */
+function enabledIntegrations(config: AgentenvConfig, options: ApplyOptions): SuperpowersAdapter[] {
+  const adapters: SuperpowersAdapter[] = [];
+  if (config.integrations?.superpowers?.enabled) {
+    adapters.push(new SuperpowersAdapter(options.superpowersDeps));
+  }
   return adapters;
 }
 
@@ -158,6 +171,13 @@ export async function applyConfiguration(
     const result = await adapter.initialize();
     if (result.success) messages.push(`${adapter.getName()}: ${result.message}`);
     else errors.push(`${adapter.getName()}: ${result.errors.join('; ') || result.message}`);
+  }
+
+  // Step 6 - optional upstream integrations (Superpowers).
+  for (const adapter of enabledIntegrations(config, options)) {
+    const result = await adapter.apply(baseDir, config.integrations?.superpowers);
+    for (const line of integrationResultLines(result)) messages.push(`Superpowers: ${line}`);
+    for (const error of result.errors) errors.push(`Superpowers: ${error}`);
   }
 
   return { success: errors.length === 0, messages, errors };
