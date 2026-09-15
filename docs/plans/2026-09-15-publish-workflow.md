@@ -1,7 +1,8 @@
 # Publish workflow design — one-button npm releases from GitHub
 
 Date: 2026-09-15
-Status: implemented; publish.yml replaced by release.yml (workflow_dispatch one-button release); pending one-time npm-side Trusted Publisher reconfiguration to `release.yml`
+Status: implemented and verified end-to-end (v0.1.2 released 2026-09-15 via the
+one-button Release workflow) — Trusted Publisher re-pointed to `release.yml` on npm
 
 ## Goal
 
@@ -66,15 +67,15 @@ workflow existed; from here on, releases go through it.
 Step-by-step maintainer instructions (including the npm-side Trusted Publisher
 setup) live in [`docs/guides/releasing.md`](../guides/releasing.md).
 
-- [ ] Configure the Trusted Publisher on npm for `@indy2kro/agentenv`:
+- [x] Configure the Trusted Publisher on npm for `@indy2kro/agentenv`:
   npmjs.com → package → Settings → Trusted Publisher → GitHub Actions,
   owner `indy2kro`, repo `agentenv`, workflow filename `release.yml`, allowed
   action `npm publish`. Recommended: set Publishing access to "Require 2FA and
   disallow tokens" and delete the leftover `NPM_TOKEN` secret. Exact steps in
   [`docs/guides/releasing.md`](../guides/releasing.md).
-- [ ] Next release: run the `Release` workflow from the Actions tab (pick
-  `patch`/`minor`/`major` or an exact `custom-version`). No local edits or tag
-  pushes needed.
+- [x] First release through the new flow: v0.1.2 published via the `Release`
+  workflow with provenance; GitHub release `v0.1.2` and tag created, `latest`
+  dist-tag updated, CI green on the release commit.
 - [ ] After each publish, confirm the generated provenance appears under the
   release's "Attestations" tab on GitHub and the npm package page.
 
