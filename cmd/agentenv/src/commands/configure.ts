@@ -15,6 +15,7 @@ import type { AgentKey, AgentenvConfig, CustomTool } from '../config/schema.js';
 import { configFilePath, resolveScopeDir } from '../config/scopes.js';
 import { applyConfiguration } from './apply.js';
 import { AGENT_OPTIONS, buildConfigFromSelections, formatDiffLines } from '../wizard/build.js';
+import { getMiseVersion, isMiseInstalled, miseInstallInstructions } from '../toolchain/mise.js';
 
 /**
  * Configure command - Advanced mode wizard
@@ -37,6 +38,15 @@ export const configureCommand = new Command()
       process.exitCode = 1;
       return;
     }
+
+    if (!isMiseInstalled()) {
+      console.error('agentenv requires mise to install and manage tools, but mise was not found.');
+      for (const line of miseInstallInstructions()) console.error(`  ${line}`);
+      console.error('\nInstall mise first, then re-run `agentenv configure`.');
+      process.exitCode = 1;
+      return;
+    }
+    console.log(`Prerequisite: mise ${getMiseVersion()}\n`);
 
     let existing: AgentenvConfig;
     try {

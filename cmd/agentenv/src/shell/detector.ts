@@ -65,11 +65,15 @@ export function detectShell(): ShellInfo {
   const pathEnvironment = process.env.PATH || '';
 
   if (isWindows) {
-    // Check if we're in Git Bash (MSYS2)
+    // Only an actual Git Bash / MSYS environment is a POSIX-compatible shell.
+    // Having Git's bin dirs on PATH is NOT enough — cmd.exe and PowerShell are
+    // not POSIX shells, and over-claiming here used to skip the Tier 0 fix and
+    // print a misleading "already POSIX-compatible" message.
     isGitBash = checkGitBash();
     isPosixCompatible = isGitBash;
 
-    // Find Git Bash path
+    // Find Git Bash path (used by the Tier 0 fix even when the current shell
+    // is PowerShell/cmd, so agents get pointed at a real POSIX shell).
     for (const gitPath of GIT_BASH_PATHS) {
       try {
         if (fs.existsSync(gitPath)) {
@@ -78,19 +82,6 @@ export function detectShell(): ShellInfo {
         }
       } catch {
         // Ignore
-      }
-    }
-
-    // Check PATH for Git Bash directories
-    if (!isGitBash && gitBashPath) {
-      // Check if Git Bash binaries are in PATH
-      const pathParts = pathEnvironment.split(path.delimiter);
-      const hasGitInPath = pathParts.some(
-        (p) => p.includes('Git') && (p.includes('bin') || p.includes('usr\\bin')),
-      );
-
-      if (hasGitInPath) {
-        isPosixCompatible = true;
       }
     }
   } else if (isMacOS) {
@@ -142,14 +133,15 @@ export function detectShell(): ShellInfo {
 function determineCurrentShell(): string {
   // On Windows
   if (process.platform === 'win32') {
+    // PowerShell exposes PSModulePath; without it we fall back to COMSPEC.
+    if (process.env.PSModulePath && !process.env.SHELL?.toLowerCase().includes('bash')) {
+      return 'PowerShell';
+    }
+
     const comspec = process.env.COMSPEC;
     const shell = process.env.SHELL;
 
     if (shell) {
-      // In Git Bash, SHELL points to bash
-      if (shell.includes('bash')) {
-        return shell;
-      }
       return shell;
     }
 
@@ -630,7 +622,8 @@ export function fixShellConfiguration(
     if (!shellInfo.gitBashPath) {
       return {
         success: false,
-        message: 'Git Bash not found. Please install Git for Windows first.',
+        message:
+          'Git Bash not found. Install Git for Windows (https://git-scm.com/download/win), then re-run `agentenv apply`.',
       };
     }
 
@@ -643,7 +636,7 @@ export function fixShellConfiguration(
 
     const message =
       written.length > 0
-        ? `Configured agent shell overrides (${written.map((result) => result.agent).join(', ')}) pointing at ${bashExe}`
+        ? `Current shell (${shellInfo.currentShell}) is not POSIX-compatible; pointed agents at Git Bash (${bashExe})`
         : `Git Bash detected at ${bashExe}; agent shell config already up to date`;
 
     return {

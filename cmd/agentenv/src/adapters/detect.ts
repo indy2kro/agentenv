@@ -22,15 +22,14 @@ export const AGENT_COMMANDS: Record<AgentKey, string[]> = {
 export type DetectFn = (command: string) => boolean;
 
 const defaultDetect: DetectFn = (command) => {
-  try {
-    if (command.includes('/') || command.includes('\\') || command.includes(' ')) {
-      return fs.existsSync(command);
-    }
-    child_process.execFileSync(command, ['--version'], { stdio: 'ignore' });
-    return true;
-  } catch {
-    return false;
+  if (command.includes('/') || command.includes('\\') || command.includes(' ')) {
+    return fs.existsSync(command);
   }
+  // Detect by PATH resolution only — never execute the candidate. Executing
+  // `--version` used to be the check, but GUI-capable launchers (notably
+  // OpenCode's packaged desktop app) react to any invocation by opening the
+  // full TUI, which `agentenv setup` must not do.
+  return resolveBinary(command) !== null;
 };
 
 /**

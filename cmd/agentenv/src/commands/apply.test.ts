@@ -211,8 +211,16 @@ describe('apply pipeline', () => {
     });
     assert.equal(result.success, true, result.errors.join('; '));
 
-    // initialize() only creates config.toml when missing — user content survives
-    assert.equal(fs.readFileSync(path.join(codexDir, 'config.toml'), 'utf-8'), userConfig);
+    const final = fs.readFileSync(path.join(codexDir, 'config.toml'), 'utf-8');
+    // The Tier 0 shell fix legitimately appends [windows] shell_path on Windows;
+    // on POSIX it is a no-op. Either way the user's section must survive intact.
+    assert.ok(
+      final.includes('[model]') && final.includes('wire_api = true'),
+      `user content was clobbered:\n${final}`,
+    );
+    if (process.platform !== 'win32') {
+      assert.equal(final, userConfig);
+    }
   });
 
   it('does not delegate any rtk init when rtk is disabled', async () => {

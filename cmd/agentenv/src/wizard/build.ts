@@ -3,7 +3,7 @@
  * Kept free of inquirer/CLI so the logic is unit-testable.
  */
 
-import { TOOL_KEYS } from '../config/schema.js';
+import { AGENT_KEYS, TOOL_KEYS } from '../config/schema.js';
 import type { AgentKey, AgentenvConfig, ConfigDiffEntry, CustomTool } from '../config/schema.js';
 
 export const AGENT_OPTIONS: Array<{ value: AgentKey; label: string }> = [
@@ -18,6 +18,43 @@ export const TIER_2_TOOLS = ['ast_grep', 'git_delta', 'gh', 'difftastic'] as con
 
 export function simpleToolSelection(includeTier2: boolean): string[] {
   return includeTier2 ? [...TIER_1_TOOLS, ...TIER_2_TOOLS] : [...TIER_1_TOOLS];
+}
+
+/**
+ * Parse a comma-separated agent list (from `--agents`) into valid AgentKeys.
+ * Rejects unknown names so a typo can't silently drop an agent.
+ */
+export function parseAgentsInput(input: string): AgentKey[] {
+  const seen = new Set<AgentKey>();
+  for (const raw of input.split(',')) {
+    const name = raw.trim();
+    if (!name) continue;
+    const key = AGENT_KEYS.find((candidate) => candidate === name);
+    if (!key) {
+      throw new Error(`Unknown agent "${name}". Valid agents: ${AGENT_KEYS.join(', ')}`);
+    }
+    seen.add(key);
+  }
+  return [...seen];
+}
+
+/**
+ * Unattended (non-interactive) setup with simple-mode defaults. Used by
+ * `agentenv setup --yes` when no existing config file is available.
+ */
+export function buildDefaultSimpleConfig(
+  agents: AgentKey[],
+  includeTier2: boolean,
+  rtkEnabled: boolean,
+  scope: 'project' | 'user',
+): AgentenvConfig {
+  return buildConfigFromSelections({
+    agents,
+    tools: simpleToolSelection(includeTier2),
+    customTools: [],
+    scope,
+    rtkEnabled,
+  });
 }
 
 export interface WizardSelections {

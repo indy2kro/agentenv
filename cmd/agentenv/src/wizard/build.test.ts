@@ -1,6 +1,12 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildConfigFromSelections, formatDiffLines, simpleToolSelection } from './build.js';
+import {
+  buildConfigFromSelections,
+  buildDefaultSimpleConfig,
+  formatDiffLines,
+  parseAgentsInput,
+  simpleToolSelection,
+} from './build.js';
 import type { ConfigDiffEntry } from '../config/schema.js';
 
 describe('wizard build helpers', () => {
@@ -74,5 +80,31 @@ describe('wizard build helpers', () => {
       'change  scope: project -> user',
       'change  rtk.enabled: true -> false',
     ]);
+  });
+
+  it('parseAgentsInput accepts valid agent keys and rejects unknown ones', () => {
+    assert.deepEqual(parseAgentsInput('claude_code, opencode'), ['claude_code', 'opencode']);
+    assert.deepEqual(parseAgentsInput('codex_cli,copilot,claude_code,opencode'), [
+      'codex_cli',
+      'copilot',
+      'claude_code',
+      'opencode',
+    ]);
+    assert.throws(() => parseAgentsInput('claude_code,bogus-agent'), /Unknown agent/);
+  });
+
+  it('buildDefaultSimpleConfig assembles unattended defaults', () => {
+    const withTier2 = buildDefaultSimpleConfig(['claude_code', 'opencode'], true, true, 'project');
+    assert.equal(withTier2.agents?.claude_code, true);
+    assert.equal(withTier2.agents?.copilot, false);
+    assert.equal(withTier2.tools?.difftastic, true);
+    assert.equal(withTier2.rtk?.enabled, true);
+    assert.equal(withTier2.scope, 'project');
+
+    const noTier2 = buildDefaultSimpleConfig(['codex_cli'], false, false, 'user');
+    assert.equal(noTier2.tools?.difftastic, false);
+    assert.equal(noTier2.tools?.rtk, true);
+    assert.equal(noTier2.rtk?.enabled, false);
+    assert.equal(noTier2.scope, 'user');
   });
 });

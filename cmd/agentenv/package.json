@@ -1,5 +1,5 @@
 {
-  "name": "agentenv",
+  "name": "@indy2kro/agentenv",
   "version": "0.1.0",
   "description": "CLI for configuring a consistent, capable shell environment for AI coding agents",
   "type": "module",

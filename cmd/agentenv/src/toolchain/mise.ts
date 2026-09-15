@@ -4,9 +4,11 @@
  */
 
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import * as child_process from 'child_process';
-import { AgentenvConfig, TOOL_TIERS } from '../config/schema.js';
+import { AgentenvConfig, BINARY_MAP, TOOL_KEYS, TOOL_TIERS } from '../config/schema.js';
+import { resolveBinary } from '../adapters/detect.js';
 import { FALLBACK_REQUIRED_TOOLS, requiresFallback } from './fallbacks.js';
 
 // Tool to mise name mappings
@@ -121,6 +123,15 @@ export function generateMiseToml(
 }
 
 /**
+ * Directory where agentenv asks mise to place shims (~/.local/bin). Shim files
+ * are what make the installed tools resolve by name ("difft", "rg", ...) from
+ * any shell — PowerShell, cmd, bash or the agents themselves.
+ */
+export function shimsDir(): string {
+  return path.join(os.homedir(), '.local', 'bin');
+}
+
+/**
  * Save mise.toml to a file
  */
 export function saveMiseToml(content: string, outputPath: string): void {
@@ -217,14 +228,132 @@ export function ensureMiseInstalled(): {
   if (isMiseInstalled()) {
     return {
       success: true,
-      message: 'mise is already installed',
+      message: `mise is already installed (${getMiseVersion()})`,
     };
   }
 
   return {
     success: false,
-    message: 'mise is not installed. Please install it first: https://mise.jdx.dev',
+    message:
+      "mise is not installed. agentenv uses mise to install and manage this project's tools.\n" +
+      miseInstallInstructions().join('\n'),
   };
+}
+
+/**
+ * Platform-specific instructions for installing mise, used for self-diagnosis
+ * when `mise` is missing from PATH.
+ */
+export function miseInstallInstructions(): string[] {
+  const lines = ['To install mise, run one of the following:'];
+
+  if (process.platform === 'win32') {
+    lines.push('  winget install jdx.mise');
+    lines.push('  # or: irm https://mise.jdx.dev/install.ps1 | iex');
+  } else if (process.platform === 'darwin') {
+    lines.push('  brew install mise');
+  } else {
+    lines.push('  curl https://mise.jdx.dev/install.sh | sh');
+  }
+
+  lines.push('Then open a new terminal so `mise` is available on PATH.');
+  lines.push('Full docs: https://mise.jdx.dev/getting-started.html');
+  return lines;
+}
+
+/**
+ * Mark the generated mise.toml as trusted so `mise` (and the shims it creates)
+ * actually use it in this directory. Idempotent: re-trusting is a no-op success.
+ */
+export function trustMiseToml(
+  miseTomlPath: string,
+  cwd: string = '.',
+): {
+  success: boolean;
+  message: string;
+} {
+  try {
+    const result = child_process.spawnSync('mise', ['trust', miseTomlPath], {
+      cwd,
+      encoding: 'utf-8',
+      stdio: 'pipe',
+    });
+    if (result.status === 0) {
+      return { success: true, message: `Trusted ${miseTomlPath} (mise trust)` };
+    }
+    return {
+      success: false,
+      message: `mise trust failed (exit ${result.status ?? 'null'}): ${(
+        result.stderr ||
+        result.stdout ||
+        ''
+      ).trim()}`,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      message: `mise trust errored: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+}
+
+/**
+ * Turn raw `mise install` output into a truthful one-liner, so "already
+ * installed" runs don't imply anything new was fetched.
+ */
+export function miseInstallOutcome(stdout: string): string {
+  const match = stdout.match(/installed (\d+) tools?/);
+  if (match) {
+    const installed = Number(match[1]);
+    if (installed === 0)
+      return 'mise install completed (tools already installed, nothing to fetch)';
+    return `mise install completed (installed ${installed} tool${installed === 1 ? '' : 's'})`;
+  }
+  return 'mise install completed';
+}
+
+export interface ToolAvailability {
+  key: string;
+  binary: string;
+  onPath: boolean;
+}
+
+/**
+ * After `mise install`, check which enabled tools actually resolve on PATH so
+ * setup/apply can report honestly whether shims are active in this shell.
+ */
+export function verifyToolAvailability(config: AgentenvConfig): ToolAvailability[] {
+  const tools = config.tools || {};
+  const result: ToolAvailability[] = [];
+  for (const key of TOOL_KEYS) {
+    if (tools[key] !== true) continue;
+    const binary = BINARY_MAP[key];
+    result.push({ key, binary, onPath: resolveBinary(binary) !== null });
+  }
+  return result;
+}
+
+/**
+ * Concise, actionable guidance for the case where tools are installed via mise
+ * but are not yet resolvable from the current shell.
+ */
+export function miseActivationHint(): string {
+  const lines: string[] = [];
+  if (process.platform === 'win32') {
+    lines.push('These tools ARE installed via mise and resolve while you work inside this project');
+    lines.push(`(shims live in ${shimsDir()}). If one is still not found:`);
+    lines.push('  - Open a new terminal in this project and try again, or');
+    lines.push('  - Run `mise trust` and `mise install` in the project root.');
+    lines.push(
+      '  - To also use a tool outside this project, set a global default: `mise use -g <tool>`.',
+    );
+  } else {
+    lines.push('Enable mise in your shell so tools resolve on PATH:');
+    lines.push('  echo \'eval "$(mise activate bash)"\' >> ~/.bashrc   # bash');
+    lines.push('  echo \'eval "$(mise activate zsh)"\' >> ~/.zshrc     # zsh');
+    lines.push('Then start a new terminal.');
+  }
+  return lines.join('\n');
 }
 
 /**

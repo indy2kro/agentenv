@@ -24,13 +24,13 @@ fix, all four adapters (Claude hand-written, Codex/Copilot/OpenCode delegated
 to `rtk init`), the interactive wizard (`setup`/`configure`), and `status`
 drift reporting, plus a transparency log of what rtk rewrote during apply.
 
-Phase 5 (npm packaging + CI) is done **short of `npm publish`** —
-`agentenv` is publishable (`npm pack` clean, dist only) and installable via
-`npm install -g agentenv` once it's on the registry, but **it is not on the
-registry yet** (needs publish credentials on a maintainer's machine). Install
-from source in the meantime — see the user guide. CI runs a deterministic
-smoke on every push and a full-setup real installation smoke (mise + real
-`rtk init`, verified green on all three OSes) on `main`.
+Phase 5 (npm packaging + CI) is done — the package is published to npm as
+[`@indy2kro/agentenv`](https://www.npmjs.com/package/@indy2kro/agentenv)
+(plain `agentenv` was already taken on the registry); install with
+`npm install -g @indy2kro/agentenv` — it installs the `agentenv` command
+itself, unchanged. CI runs a deterministic smoke on every push and a
+full-setup real installation smoke (mise + real `rtk init`, verified green
+on all three OSes) on `main`.
 
 Phase 6 (optional upstream integrations, e.g. Superpowers) is **in
 progress**: the `agentenv.toml` `[integrations.superpowers]` config schema,

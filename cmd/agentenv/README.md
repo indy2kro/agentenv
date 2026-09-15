@@ -13,10 +13,10 @@ and writes config files for you.
 It targets four AI coding agents: **Claude Code**, **OpenAI Codex CLI**,
 **GitHub Copilot** (CLI/Chat), and **OpenCode**.
 
-> **⚠️ Not yet published to npm.** `npm install -g agentenv` does not work
-> yet — see [Install](#install) below for installing from source in the
-> meantime. Everything else in this guide (commands, config, tool catalog)
-> already works once you've built it locally.
+> **📦 Published as `@indy2kro/agentenv`.** The npm package name is scoped
+> (`agentenv` was already taken) — install with
+> `npm install -g @indy2kro/agentenv`. The command it installs is still
+> plain `agentenv`. See [Install](#install) below.
 
 ## Contents
 
@@ -83,14 +83,15 @@ again. Prefer not to touch global state? Run it in place instead:
 node dist/index.js setup
 ```
 
-### From npm (coming soon)
+### From npm
 
 ```sh
-npm install -g agentenv
+npm install -g @indy2kro/agentenv
 ```
 
-This will work once the package is published — see
-[What's still missing](#whats-still-missing).
+The package is published under the scoped name `@indy2kro/agentenv` (plain
+`agentenv` was already taken on the registry) — this installs the `agentenv`
+command itself, unchanged.
 
 ## Quick start
 
@@ -301,11 +302,6 @@ for the full design, config schema rationale, and phase roadmap.
 
 ## What's still missing
 
-- **npm publish.** The package is not yet on the npm registry —
-  `npm install -g agentenv` doesn't work today; install
-  [from source](#install) instead. (Needs npm publish credentials on a
-  maintainer's machine; everything else — `npm pack`, a real
-  `npm install -g` from a tarball, CI — is already verified working.)
 - **Optional integrations aren't wired up yet.** The `[integrations.superpowers]`
   config schema, its Claude Code installer adapter, and the read-only `gh`
   auth probe all exist and are tested, but nothing in `apply`, `status`,

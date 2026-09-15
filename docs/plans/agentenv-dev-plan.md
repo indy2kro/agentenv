@@ -316,8 +316,10 @@ agentenv/
   tools, real `rtk init`) on `main` pushes + `workflow_dispatch`. Adapter
   guide written (`docs/guides/adding-an-adapter.md`). `smoke.yml` is green on
   all three OSes (windows/macos/ubuntu, confirmed on the real-smoke fix commit
-  `b5da678`). Remaining: `npm publish` (needs npm credentials on this
-  machine).
+  `b5da678`). Published to npm as `@indy2kro/agentenv@0.1.0` (plain
+  `agentenv` was already taken on the registry — the package name is scoped,
+  but the installed bin command is still plain `agentenv`); install with
+  `npm install -g @indy2kro/agentenv`. Phase 5 is complete.
 
 ### Phase 6 — Optional upstream integrations
 

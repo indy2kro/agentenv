@@ -15,10 +15,16 @@ import { generateInstructionFiles, updateWithMarkers } from '../generate/agentsm
 import { fixShellConfiguration } from '../shell/detector.js';
 import type { RtkInitFn } from '../toolchain/rtk.js';
 import {
-  ensureMiseInstalled,
   generateMiseToml,
+  getMiseVersion,
+  isMiseInstalled,
+  miseActivationHint,
+  miseInstallInstructions,
+  miseInstallOutcome,
   runMiseInstall,
   saveMiseToml,
+  trustMiseToml,
+  verifyToolAvailability,
 } from '../toolchain/mise.js';
 
 export interface ApplyResult {
@@ -65,45 +71,77 @@ export async function applyConfiguration(
   const messages: string[] = [];
   const errors: string[] = [];
 
+  // Step 0 — self-diagnose the prerequisite before touching anything, so a
+  // missing mise fails loudly with install instructions instead of half
+  // configuring the project.
+  if (!options.skipMiseInstall) {
+    if (!isMiseInstalled()) {
+      errors.push('Prerequisite check failed: mise is not installed.');
+      errors.push("agentenv uses mise to install and manage this project's tools.");
+      errors.push(...miseInstallInstructions());
+      return { success: false, messages, errors };
+    }
+    messages.push(`Prerequisite: mise ${getMiseVersion()}`);
+  }
+
+  // Step 1 — Tier 0 shell compatibility fix.
   if (config.tier0?.check_enabled !== false) {
     const enabledAgents = getEnabledAgents(config) as AgentKey[];
     const tier0 = fixShellConfiguration(baseDir, enabledAgents);
     (tier0.success ? messages : errors).push(`Tier 0: ${tier0.message}`);
-    if (tier0.success && tier0.results) {
+    if (tier0.results) {
       for (const result of tier0.results) {
-        (result.action === 'skipped' ? messages : messages).push(
-          `  ${result.agent}: ${result.message}`,
-        );
+        messages.push(`  ${result.agent}: ${result.message}`);
       }
     }
   }
 
+  // Step 2 — mise.toml (declares the tools).
+  const enabledToolCount = Object.values(config.tools ?? {}).filter((on) => on === true).length;
   const misePath = path.join(baseDir, 'mise.toml');
   try {
     saveMiseToml(generateMiseToml(config, config.custom_tools ?? []), misePath);
-    messages.push(`Generated ${misePath}`);
+    messages.push(`Tools: wrote ${misePath} (${enabledToolCount} enabled)`);
   } catch (error) {
     errors.push(
       `Unable to write ${misePath}: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
 
+  // Step 3 — trust + install + verify.
   if (errors.length === 0 && !options.skipMiseInstall) {
-    const mise = ensureMiseInstalled();
-    if (!mise.success) {
-      errors.push(mise.message);
+    const trust = trustMiseToml(misePath, baseDir);
+    (trust.success ? messages : errors).push(trust.message);
+
+    const install = await runMiseInstall(misePath, baseDir);
+    if (install.success) {
+      messages.push(miseInstallOutcome(install.stdout));
     } else {
-      const install = await runMiseInstall(misePath, baseDir);
-      if (install.success) {
-        messages.push('mise install completed');
-      } else {
-        errors.push(
-          `mise install failed${install.exitCode === null ? '' : ` (exit ${install.exitCode})`}: ${install.stderr || install.stdout}`,
+      errors.push(
+        `mise install failed${install.exitCode === null ? '' : ` (exit ${install.exitCode})`}: ${install.stderr || install.stdout}`,
+      );
+    }
+
+    if (errors.length === 0) {
+      const availability = verifyToolAvailability(config);
+      const onPath = availability.filter((tool) => tool.onPath);
+      const notOnPath = availability.filter((tool) => !tool.onPath);
+      messages.push(
+        `Verify: ${onPath.length}/${availability.length} configured tools resolve on PATH`,
+      );
+      for (const tool of onPath) messages.push(`  ✓ ${tool.binary} (${tool.key})`);
+      for (const tool of notOnPath) {
+        messages.push(
+          `  ✗ ${tool.binary} (${tool.key}) — installed but not resolvable in this shell`,
         );
+      }
+      if (notOnPath.length > 0) {
+        messages.push(miseActivationHint());
       }
     }
   }
 
+  // Step 4 — instruction files for the agents.
   const markerStart = config.generate?.marker_start ?? '<!-- agentenv-managed-start -->';
   const markerEnd = config.generate?.marker_end ?? '<!-- agentenv-managed-end -->';
   for (const file of generateInstructionFiles(config, baseDir)) {

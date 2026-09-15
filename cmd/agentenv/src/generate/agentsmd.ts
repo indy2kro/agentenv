@@ -149,6 +149,7 @@ export function generateAgentsMd(config: AgentenvConfig): string {
     '- This repository has been configured with agentenv for optimal AI coding agent performance',
   );
   lines.push('- Tools are managed via [mise](https://mise.jdx.dev)');
+  lines.push('- If a listed tool is missing, run `mise trust` and `mise install` in the repo root');
   lines.push('- Configuration is managed in `agentenv.toml`');
   lines.push('');
   lines.push(markerEnd);
