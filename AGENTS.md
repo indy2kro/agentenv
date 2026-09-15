@@ -32,3 +32,106 @@ not a local-only sandbox. Never run `git push`, `git pull`, or `git fetch`
 unless the human you're working with explicitly asks for it. If your local
 branch and `origin` have diverged, stop and surface that rather than
 resolving it yourself.
+
+## What this repo is
+
+`agentenv` is a thin orchestration + config layer that gives AI coding agents
+(Claude Code, Codex CLI, Copilot, OpenCode) a consistent shell environment on
+Windows/macOS/Linux. It never reimplements a dev tool: tool installation is
+100% delegated to [mise](https://mise.jdx.dev), command rewriting/hooks to
+[rtk](https://github.com/rtk-ai/rtk), and repo instructions follow the
+[AGENTS.md](https://agents.md) standard. All the actual CLI code lives under
+`cmd/agentenv/`; `internal/` and `templates/` are stubs. `docs/plans/agentenv-dev-plan.md`
+is the design doc of record (goals, phased roadmap, current status).
+
+## Commands
+
+All commands run from `cmd/agentenv/`:
+
+```sh
+npm run build         # tsc -> dist/
+npm test              # build + run every dist/**/*.test.js via node:test
+npm run lint           # eslint src --max-warnings 0
+npm run lint:fix
+npm run format         # prettier --write src
+npm run format:check
+npm run smoke          # build + node scripts/smoke.mjs (stub rtk, deterministic)
+npm run smoke:real     # build + node scripts/smoke.mjs --real (real mise + rtk init)
+```
+
+- `npm test` is `npm run build && cd dist && node --test`: Node's built-in
+  test runner auto-discovers every compiled `*.test.js` recursively, so a new
+  `*.test.ts` file (mirroring the source file it covers — `foo.ts` →
+  `foo.test.ts` in the same directory) is picked up automatically; nothing to
+  register in `package.json`.
+- To target a single test file directly:
+  `npm run build && node --test dist/config/schema.test.js`.
+- `npm run prepare` wires Husky; the pre-commit hook runs
+  `cd cmd/agentenv && npx lint-staged` (eslint --fix + prettier on staged
+  `*.ts`).
+- CI (`.github/workflows/ci.yml`) runs build, lint, format:check, test, and
+  smoke on a windows/macos/ubuntu matrix — treat all four as required before
+  considering work done.
+- Releases are one-button via the `Release` GitHub Actions workflow, never a
+  manual `npm publish` — see `docs/guides/releasing.md`.
+
+## Architecture
+
+Everything flows from one user-authored file, `agentenv.toml` (schema in
+`src/config/schema.ts`), resolved to either the project root or
+`~/.config/agentenv/` (`src/config/scopes.ts`). `agentenv apply`
+(`src/commands/apply.ts`, `applyConfiguration()`) is the single pipeline all
+of `setup`/`configure`/`apply` funnel into, in this fixed order:
+
+1. **Prerequisite check** — mise must be installed and on PATH, or apply
+   fails fast with install instructions (`src/toolchain/mise.ts`).
+2. **Tier 0** — Windows shell fix: detect/point agents at Git Bash's POSIX
+   toolchain (`src/shell/detector.ts`).
+3. **mise.toml generation** — config's `[tools]`/`[[custom_tools]]` become a
+   generated `mise.toml` (`src/toolchain/mise.ts`), then `mise install` runs
+   and tool PATH availability is verified.
+4. **Instruction files** — `AGENTS.md`/`CLAUDE.md` are regenerated
+   (`src/generate/agentsmd.ts`), but only inside a marker-block
+   (`<!-- agentenv-managed-start/end -->` by default); hand-written content
+   outside the markers is never touched. This is the same mechanism that
+   generated the section of *this* file above — don't hand-edit generated
+   blocks in output repos, but this repo's own `CLAUDE.md`/`AGENTS.md` are
+   hand-maintained project docs, not `agentenv apply` output.
+5. **Per-agent adapters** (`src/adapters/`) — one `BaseAdapter` subclass per
+   agent (`claude.ts`, `codex.ts`, `copilot.ts`, `opencode.ts`), each
+   implementing `initialize()`/`configureHooks()`/`cleanup()`. Claude Code's
+   adapter is hand-written (matches the exact hook shape `rtk init` would
+   produce); Codex/Copilot/OpenCode delegate to a real or injectable
+   `rtk init` runner (`src/toolchain/rtk.ts`) rather than hand-rolling hook
+   files — see `docs/research/rtk-init-delegation.md` for why.
+6. **Optional integrations** (`src/integrations/`) — a second, parallel
+   adapter contract (`IntegrationAdapter` in `integrations/base.ts`) for
+   third-party installers that agentenv invokes but doesn't own the config
+   of (currently Superpowers, `integrations/superpowers.ts`). Contrast with
+   step 5: agent adapters *own* agentenv-generated files; integration
+   adapters *observe/invoke* someone else's installer and report
+   `detect`/`apply`/`status` results. As of the current `main`, the schema
+   and adapter are implemented and tested but **not yet wired into
+   `apply`/`status`/`setup`/`configure`** — check
+   `docs/plans/agentenv-dev-plan.md` §Phase 6 before assuming otherwise.
+
+`agentenv status` (`src/commands/status.ts`) walks the same config to report
+drift (configured vs. actually installed/on-PATH) without changing anything.
+`agentenv doctor` (`src/commands/doctor.ts`) is a standalone environment
+sanity check (mise, shims dir, shell, per-agent binary detection) independent
+of any `agentenv.toml`.
+
+Adding a fifth agent means adding one `BaseAdapter` implementation and
+wiring it into `adaptersFor()` in `apply.ts` plus the detection table in
+`adapters/detect.ts` — see `docs/guides/adding-an-adapter.md`. The core
+(config schema, mise/rtk invocation, marker-block generation) should not need
+to change.
+
+## Testing conventions
+
+Tests are `node:test` + `node:assert`, one `*.test.ts` beside the module it
+covers, compiled and run from `dist/`. Several tests use injectable
+dependencies instead of hitting the real world — e.g. `rtkInit`
+(`RtkInitFn`) and `superpowersDeps`/`ClaudeCliRunner` are passed through
+`ApplyOptions` specifically so `apply.test.ts` can stub `rtk`/`claude`
+subprocess calls rather than requiring them installed in CI.
