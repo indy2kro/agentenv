@@ -180,31 +180,54 @@ if (REAL) {
   // rtk-preinstall block above) — it only asks "does mise actually install a
   // working binary for this tool on this OS," which is the acceptance
   // question that matters here.
+  //
+  // Real (unmodified) process.env throughout this section, not the isolated
+  // fake-HOME `env` used above for Claude/Codex/OpenCode config isolation:
+  // mise's own attestation/Sigstore cache and some tools' own home-directory
+  // resolution (observed: git-delta on Windows) break against a synthetic
+  // HOME/USERPROFILE that isn't a real user profile, and none of this needs
+  // that isolation anyway — it never touches per-user config files.
   try {
-    execFileSync('mise', ['install'], { cwd: project, env, stdio: 'inherit' });
-  } catch {
+    execFileSync('mise', ['install'], { cwd: project, env: process.env, stdio: 'inherit' });
+  } catch (err) {
     console.error('smoke FAIL: mise install (full Tier 1+2 catalog) exited non-zero');
+    console.error(err.message);
     process.exit(1);
   }
   for (const [binary] of REAL_TOOLS) {
     let resolved;
     try {
-      resolved = execFileSync('mise', ['which', binary], { cwd: project, env, encoding: 'utf-8' })
+      resolved = execFileSync('mise', ['which', binary], {
+        cwd: project,
+        env: process.env,
+        encoding: 'utf-8',
+      })
         .trim()
         .split(/\r?\n/)[0];
-    } catch {
+    } catch (err) {
       console.error(`smoke FAIL: mise could not resolve installed tool "${binary}"`);
+      console.error(err.message);
       process.exit(1);
     }
+    if (process.platform !== 'win32') {
+      // mise's zip-archive extraction (observed: ast-grep's release asset,
+      // unlike the other tools' tar.gz) doesn't always preserve the
+      // executable bit, unlike a shim (which mise always writes executable
+      // itself) — set it explicitly since this check deliberately bypasses
+      // the shim to verify the raw installed binary.
+      try {
+        fs.chmodSync(resolved, 0o755);
+      } catch {
+        // Non-fatal: if this fails, the --version run below will surface it.
+      }
+    }
     try {
-      // Real (unmodified) process.env here, not the isolated fake-HOME `env`
-      // above: this step only asks "does the installed binary run," and some
-      // tools (observed: git-delta on Windows) resolve their own home
-      // directory via OS APIs that misbehave against a synthetic HOME/
-      // USERPROFILE that isn't a real Windows user profile.
-      execFileSync(resolved, ['--version'], { env: process.env, stdio: 'ignore' });
-    } catch {
+      execFileSync(resolved, ['--version'], { env: process.env, encoding: 'utf-8' });
+    } catch (err) {
       console.error(`smoke FAIL: "${binary}" (${resolved}) did not run --version successfully`);
+      console.error(`  status: ${err.status}, signal: ${err.signal}`);
+      console.error(`  stdout: ${err.stdout ?? ''}`);
+      console.error(`  stderr: ${err.stderr ?? ''}`);
       process.exit(1);
     }
   }
