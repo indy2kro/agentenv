@@ -1,8 +1,9 @@
 name: Publish
 
 # Publish @indy2kro/agentenv to npm whenever a version tag (v*) is pushed.
-# Requires the NPM_TOKEN repository secret (see docs/plans/2026-09-15-publish-workflow.md).
-# The tag name must match the package.json version exactly: `v<version>`.
+# Auth: npm Trusted Publishing via OIDC (no token). This workflow must be registered
+# as the Trusted Publisher for the package in npm package settings (see
+# docs/guides/releasing.md). The tag must match package.json version exactly: `v<version>`.
 
 on:
   push:
@@ -39,6 +40,8 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
       - name: Install dependencies
         run: npm ci
+      - name: Upgrade npm
+        run: npm install -g npm@latest # trusted publishing/OIDC requires npm >= 11.5.1
       - name: Verify tag matches package.json version
         run: |
           version=$(node -p "require('./package.json').version")
@@ -74,6 +77,6 @@ jobs:
             *)   echo "tag=latest" ;;
           esac >> "$GITHUB_ENV"
       - name: Publish to npm
+        # No NODE_AUTH_TOKEN here: npm must use the OIDC trusted-publishing path.
+        # A token env var makes npm fall back to the legacy token flow (EOTP).
         run: npm publish --provenance --access public --tag "$tag"
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -1,13 +1,14 @@
 # Releasing `@indy2kro/agentenv`
 
-How the package gets to npm, how to cut a release, and how to create the npm
-token that lets GitHub Actions publish it.
+How the package gets to npm, how to cut a release, and how to connect the npm
+account so GitHub Actions can publish it (Trusted Publishing / OIDC — no token).
 
 > Short version: publishing is **tag-driven and fully automated**. Bump the
 > version in `cmd/agentenv/package.json`, commit, then push a `v<version>` git
 > tag. GitHub Actions runs the `Publish` workflow (`.github/workflows/publish.yml`)
-> which gates the tree, checks the tarball, and runs `npm publish --provenance`.
-> Design/decisions: [`docs/plans/2026-09-15-publish-workflow.md`](../plans/2026-09-15-publish-workflow.md).
+> which gates the tree, checks the tarball, and runs `npm publish --provenance`
+> via Trusted Publishing (OIDC). Design/decisions:
+> [`docs/plans/2026-09-15-publish-workflow.md`](../plans/2026-09-15-publish-workflow.md).
 
 ## What "publishing" looks like
 
@@ -60,72 +61,76 @@ leaking into the tarball) the workflow fails **before** touching the registry.
    package appears on https://www.npmjs.com/package/@indy2kro/agentenv with a
    **Provenance** attestation linked back to this repo.
 
-## Creating the npm access token (`NPM_TOKEN`)
+## Setting up auth: npm Trusted Publishing (recommended)
 
-The workflow authenticates to the registry with a token stored as a GitHub
-**repository secret** named `NPM_TOKEN`. It needs `publish` scope over the
-`@indy2kro` scope — i.e. it must come from the npm account (or organization
-member) that owns `indy2kro` on the registry.
+The `Publish` workflow authenticates to the registry with **npm Trusted
+Publishing** (OIDC) — no long-lived token. GitHub Actions presents a short-lived
+identity for this exact workflow; the npm CLI exchanges it automatically for a
+publish credential (`npm >= 11.5.1`, which the workflow upgrades to). No secrets,
+no 90-day rotation, and it is npm's supported forward path:
 
-> Since the November 2025 npm security update, only **granular access tokens**
-> exist (classic tokens are revoked), and **write-capable tokens have a maximum
-> lifetime of 90 days** (default just 7 days). Read-only tokens are unlimited.
-> A publishing token therefore **must be rotated roughly every three months** —
-> see [Rotating the token](#rotating-the-token) below.
+> npm is restricting 2FA-bypass granular access tokens: they currently can't do
+> account/org management, and **around January 2027 they lose direct publishing**
+> entirely (they become "stage + human 2FA approval" only). Trusted publishing is
+> the migration target — don't build new automation on publishing tokens.
 
-1. Sign in at [npmjs.com](https://www.npmjs.com) with that account.
-2. Open **Access Tokens**: avatar menu → "Access Tokens", or go directly to
-   `https://www.npmjs.com/settings/<your-username>/tokens` (for an org scope,
-   create it under the org that owns `@indy2kro`).
-3. Click **Generate New Token** → **Granular Access Token**.
-4. Configure it to be exactly as scoped as npm allows:
-   - **Name**: `GitHub Actions - agentenv publish`
-   - **Packages & scopes**: **Read and write** on `@indy2kro/agentenv`
-     (add it individually, e.g. `indy2kro/agentenv` → `Read and write`).
-   - Leave only the **Publishing** permission active.
-   - **Expiration**: select **Custom** and pick the furthest allowed date. npm
-     caps write tokens at **90 days**, so expect the longest option to be the
-     calendar's 90-day limit — planning the rotation is part of the job.
-   - **Bypass 2FA**: check it. CI publishes non-interactively and cannot answer
-     a one-time-password prompt; without this, the `npm publish` step fails
-     with a 2FA challenge. (Checked state is fine: GitHub Actions can still
-     publish but cannot do account/org governance operations.)
-5. **Copy the token now** — npm shows it once. Treat it like a password; store
-   it in your password manager. Never add it to `.npmrc`, `.env`, or commit it.
-6. Add the secret to GitHub:
-   1. Open the repo: **Settings → Secrets and variables → Actions**.
-   2. **New repository secret**.
-   3. Name: `NPM_TOKEN`.
-   4. Value: paste the token you copied in step 5.
-   5. **Add secret**. (Admin access to the repo is required.)
-7. Verify: push a `v*` test tag (or re-trigger the `Publish` workflow via
-   **Actions → Publish → Run workflow** with a branch ref) and confirm the
-   `npm publish` step succeeds.
+The workflow already contains what Trusted Publishing needs
+(`.github/workflows/publish.yml`): `permissions.id-token: write`, a GitHub-hosted
+runner (`ubuntu-latest`), `registry-url` for npmjs, an npm upgrade step, and —
+crucially — **no `NODE_AUTH_TOKEN`** on the publish step (a token env var makes
+npm fall back to the legacy token flow and fail with a 2FA prompt). The remaining
+setup is one-time, on the npm side:
 
-## Rotating the token
+1. Sign in at [npmjs.com](https://www.npmjs.com) with the account (or
+   organization) that owns the `@indy2kro` scope.
+2. Open the package: https://www.npmjs.com/package/@indy2kro/agentenv →
+   **Settings** → **Trusted Publisher** → **Select your publisher** →
+   **GitHub Actions**.
+3. Fill in the identity — all fields are **case-sensitive**:
+   - **Organization or user**: `indy2kro`
+   - **Repository**: `agentenv`
+   - **Workflow filename**: `publish.yml` (the filename only, no path)
+   - **Environment name**: leave blank
+   - **Allowed actions**: `npm publish`
+4. **Save changes**. (npm does not verify the configuration until the first run,
+   so double-check the fields above.)
+5. Recommended hardening — package **Settings** → **Publishing access** →
+   **"Require two-factor authentication and disallow tokens"** → **Update
+   Package Settings**. Trusted publishing still works under this; it only blocks
+   legacy tokens.
+6. Remove the old token secret: GitHub **Settings → Secrets and variables →
+   Actions → `NPM_TOKEN` → Delete**, since the token path below is dead on
+   arrival.
 
-Publishing tokens expire (currently at most 90 days). Treat rotation as a
-calendar reminder item, roughly **every 2–3 months**:
+Verify by pushing a `v*` tag and watching the `Publish` workflow. If the first
+run fails with **ENEEDAUTH**, the workflow isn't registered as Trusted Publisher
+yet (or a field is off by a character); re-check step 3 and that the run was on
+the GitHub-hosted `ubuntu-latest` runner.
 
-1. Generate a new granular token exactly as above (steps 3–5). Keep the old one
-   alive until the new one has proven itself — npm lets you have several.
-2. In GitHub, edit the `NPM_TOKEN` secret (Settings → Secrets and variables →
-   Actions → `NPM_TOKEN` → **Update**) and paste the new value.
-3. Re-run the `Publish` workflow or do a throwaway `v*` tag push to confirm the
-   new token works.
-4. Revoke the old token on npm's Access Tokens page once the new one is
-   confirmed publishing.
+## Legacy `NPM_TOKEN` fallback (not recommended, being deprecated)
 
-> Secrets, once written, can only be replaced or deleted — GitHub will not show
-> you the value again, which is why the old token is kept until the new one is
-> verified.
+If you ever need token-based publishing, the requirements are: granular **Read
+and write** on `@indy2kro/agentenv`, **Publishing** permission only,
+**Bypass 2FA checked** (without it the `npm publish` step dies with a 2FA
+challenge), **Custom** expiration (write tokens cap at ~90 days), stored as the
+`NPM_TOKEN` GitHub repository secret. Plan on rotation **every 2–3 months**:
+
+1. Generate a new granular token on npm's **Access Tokens** page (keep the old
+   one until the new one proves itself).
+2. **Update** the `NPM_TOKEN` secret in GitHub (Settings → Secrets and variables
+   → Actions) with the new value.
+3. Push a throwaway `v*` tag to confirm it publishes.
+4. Revoke the old token on npm.
+
+> Remember: this path is already half-deprecated — 2FA-bypass tokens lose direct
+> publish around **January 2027** (they become stage + human approval). Treat any
+> publishing token as a stopgap; Trusted Publishing above is the real solution.
 
 ## Safety notes
 
-- **Never commit the token.** The repo's `.gitignore` already excludes
-  `*.log` and build artifacts, but the token itself must never reach git — if
-  it ever does, revoke it immediately from npm's Access Tokens page and rotate
-  the secret.
+- **Never commit a token.** If you use the NPM_TOKEN fallback, the value must
+  never reach git — if it ever does, revoke it immediately from npm's Access
+  Tokens page. Prefer Trusted Publishing, which needs no token at all.
 - **Publishing is the tag.** Branch pushes never run `npm publish`. Retracting
   a bad publish (`npm unpublish`) is out of scope for the workflow and should
   be done deliberately.

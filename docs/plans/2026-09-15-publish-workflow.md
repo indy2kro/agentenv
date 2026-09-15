@@ -1,7 +1,8 @@
 # Publish workflow design — npm publishing on version tags
 
 Date: 2026-09-15
-Status: implemented, pending the `NPM_TOKEN` repository secret
+Status: implemented; auth migrated to Trusted Publishing (OIDC), pending one-time
+npm-side configuration of the trusted publisher for `@indy2kro/agentenv`
 
 ## Goal
 
@@ -31,8 +32,16 @@ workflow existed; from here on, releases go through it.
   into the tarball.
 - **Dist-tags**: `latest` for plain versions, `beta` when the version contains
   a `-` (so experimental/RCs never shadow stable). `--tag` is explicit.
-- **Auth**: `NODE_AUTH_TOKEN` from the `NPM_TOKEN` repository secret; the
-  `Setup Node` step writes the `.npmrc` `_authToken` line via `registry-url`.
+- **Auth**: **npm Trusted Publishing (OIDC)** — no long-lived token. The
+  workflow is registered as the package's Trusted Publisher on the npm side
+  (`indy2kro` / `agentenv` / workflow `publish.yml`, allowed action `npm
+  publish`), and `npm publish` authenticates via the GitHub Actions OIDC token
+  (`permissions: id-token: write`, npm >= 11.5.1 — the workflow upgrades npm,
+  and the publish step sets **no** `NODE_AUTH_TOKEN` so npm does not fall back
+  to the legacy token path). Chosen over the original `NPM_TOKEN` secret plan:
+  write tokens cap at 90 days (constant rotation), EOTP required Bypass 2FA,
+  and npm is restricting 2FA-bypass tokens to **stage + human approval only
+  around January 2027** — a token is a stopgap, OIDC is the supported path.
 - **Actions**: pinned to full commit SHAs with human-readable version
   comments, per AGENTS.md:
   - `actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1` (v7.0.1)
@@ -44,15 +53,15 @@ workflow existed; from here on, releases go through it.
 
 ## Responsibilities / open items
 
-Step-by-step maintainer instructions (including how to create the npm token)
-live in [`docs/guides/releasing.md`](../guides/releasing.md).
+Step-by-step maintainer instructions (including the npm-side Trusted Publisher
+setup) live in [`docs/guides/releasing.md`](../guides/releasing.md).
 
-- [ ] Add the `NPM_TOKEN` secret to the repository (Settings > Secrets and
-  variables > Actions) with an npm granular access token that has
-  `publish` scope for the `@indy2kro` scope, **Bypass 2FA** enabled, and the
-  maximum allowed lifetime. Write-capable tokens are capped at 90 days (classic
-  tokens are gone), so rotation is a recurring maintenance task. See
-  [`docs/guides/releasing.md`](../guides/releasing.md) for the exact steps.
+- [ ] Configure the Trusted Publisher on npm for `@indy2kro/agentenv`:
+  npmjs.com → package → Settings → Trusted Publisher → GitHub Actions,
+  owner `indy2kro`, repo `agentenv`, workflow filename `publish.yml`, allowed
+  action `npm publish`. Recommended: set Publishing access to "Require 2FA and
+  disallow tokens" and delete the leftover `NPM_TOKEN` secret. Exact steps in
+  [`docs/guides/releasing.md`](../guides/releasing.md).
 - [ ] Next release: bump `package.json` (and `package-lock.json`),
   `git tag v<version>`, push the tag.
 - [ ] After each publish, confirm the generated provenance appears under the
