@@ -15,6 +15,7 @@ import { generateInstructionFiles, updateWithMarkers } from '../generate/agentsm
 import { fixShellConfiguration } from '../shell/detector.js';
 import type { RtkInitFn } from '../toolchain/rtk.js';
 import {
+  ensureGlobalShimsDir,
   generateMiseToml,
   getMiseVersion,
   isMiseInstalled,
@@ -108,8 +109,11 @@ export async function applyConfiguration(
     );
   }
 
-  // Step 3 — trust + install + verify.
+  // Step 3 — global shims config + trust + install + verify.
   if (errors.length === 0 && !options.skipMiseInstall) {
+    const shims = ensureGlobalShimsDir();
+    (shims.success ? messages : errors).push(shims.message);
+
     const trust = trustMiseToml(misePath, baseDir);
     (trust.success ? messages : errors).push(trust.message);
 
@@ -149,6 +153,7 @@ export async function applyConfiguration(
     (update.success ? messages : errors).push(update.message);
   }
 
+  // Step 5 - per-agent wiring.
   for (const adapter of adaptersFor(config, baseDir, options)) {
     const result = await adapter.initialize();
     if (result.success) messages.push(`${adapter.getName()}: ${result.message}`);
