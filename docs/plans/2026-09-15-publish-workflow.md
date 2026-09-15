@@ -7,7 +7,8 @@ Status: implemented, pending the `NPM_TOKEN` repository secret
 
 Automate publishing `@indy2kro/agentenv` to the npm registry from GitHub
 Actions, so a maintainer only has to bump `package.json` and push a `v*` tag.
-The CLI is currently version `0.1.0` and was never published to npm.
+The CLI shipped its first public version (`0.1.0`) on the registry before this
+workflow existed; from here on, releases go through it.
 
 ## Decisions
 
@@ -52,10 +53,10 @@ live in [`docs/guides/releasing.md`](../guides/releasing.md).
   maximum allowed lifetime. Write-capable tokens are capped at 90 days (classic
   tokens are gone), so rotation is a recurring maintenance task. See
   [`docs/guides/releasing.md`](../guides/releasing.md) for the exact steps.
-- [ ] First publish: bump `package.json` to `1.0.0` (or keep `0.1.0`),
+- [ ] Next release: bump `package.json` (and `package-lock.json`),
   `git tag v<version>`, push the tag.
-- [ ] Confirm the generated provenance appears under the release's
-  "Attestations" tab on GitHub and the npm package page.
+- [ ] After each publish, confirm the generated provenance appears under the
+  release's "Attestations" tab on GitHub and the npm package page.
 
 ## Not included (deliberately)
 
