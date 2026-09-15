@@ -93,6 +93,10 @@ The package is published under the scoped name `@indy2kro/agentenv` (plain
 `agentenv` was already taken on the registry) — this installs the `agentenv`
 command itself, unchanged.
 
+Releases are cut from this repo by pushing a `vX.Y.Z` tag: GitHub Actions
+gates the tree and publishes with npm provenance automatically. Maintainers:
+see [`docs/guides/releasing.md`](../../docs/guides/releasing.md).
+
 ## Quick start
 
 ```sh
@@ -296,7 +300,8 @@ npm run format:check
 ```
 
 See [`docs/guides/adding-an-adapter.md`](../../docs/guides/adding-an-adapter.md)
-for wiring in a fifth agent, and
+for wiring in a fifth agent, [`docs/guides/releasing.md`](../../docs/guides/releasing.md)
+for shipping a new npm version (version tags + the `Publish` workflow), and
 [`docs/plans/agentenv-dev-plan.md`](../../docs/plans/agentenv-dev-plan.md)
 for the full design, config schema rationale, and phase roadmap.
 

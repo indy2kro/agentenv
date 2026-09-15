@@ -28,9 +28,11 @@ Phase 5 (npm packaging + CI) is done — the package is published to npm as
 [`@indy2kro/agentenv`](https://www.npmjs.com/package/@indy2kro/agentenv)
 (plain `agentenv` was already taken on the registry); install with
 `npm install -g @indy2kro/agentenv` — it installs the `agentenv` command
-itself, unchanged. CI runs a deterministic smoke on every push and a
-full-setup real installation smoke (mise + real `rtk init`, verified green
-on all three OSes) on `main`.
+itself, unchanged. Publishing is automated: push a `vX.Y.Z` tag and GitHub
+Actions gates the tree, verifies the tarball, and runs
+`npm publish --provenance` (see [`docs/guides/releasing.md`](docs/guides/releasing.md)).
+CI runs a deterministic smoke on every push and a full-setup real installation
+smoke (mise + real `rtk init`, verified green on all three OSes) on `main`.
 
 Phase 6 (optional upstream integrations, e.g. Superpowers) is **in
 progress**: the `agentenv.toml` `[integrations.superpowers]` config schema,

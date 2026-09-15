@@ -43,9 +43,13 @@ The CLI is currently version `0.1.0` and was never published to npm.
 
 ## Responsibilities / open items
 
+Step-by-step maintainer instructions (including how to create the npm token)
+live in [`docs/guides/releasing.md`](../guides/releasing.md).
+
 - [ ] Add the `NPM_TOKEN` secret to the repository (Settings > Secrets and
   variables > Actions) with an npm access token that has
-  `publish` scope for the `@indy2kro` organization.
+  `publish` scope for the `@indy2kro` scope. See the guide for the exact
+  npm website steps.
 - [ ] First publish: bump `package.json` to `1.0.0` (or keep `0.1.0`),
   `git tag v<version>`, push the tag.
 - [ ] Confirm the generated provenance appears under the release's
