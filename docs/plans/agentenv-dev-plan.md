@@ -311,12 +311,16 @@ agentenv/
   clean (70 kB, dist only) and a temp-prefix `npm install -g` +
   `agentenv --help`/`status` verified end-to-end. CI smoke now runs in two
   layers: a deterministic stub-mode smoke in `ci.yml` on every push (rtk
-  through `AGENTENV_RTK_BIN` + `--skip-mise-install`) and a full-setup real
-  smoke in `.github/workflows/smoke.yml` (3-OS, mise installs the pinned
-  tools, real `rtk init`) on `main` pushes + `workflow_dispatch`. Adapter
-  guide written (`docs/guides/adding-an-adapter.md`). `smoke.yml` is green on
-  all three OSes (windows/macos/ubuntu, confirmed on the real-smoke fix commit
-  `b5da678`). Published to npm as `@indy2kro/agentenv@0.1.0` (plain
+  through `AGENTENV_RTK_BIN` + `--skip-mise-install`) and a full acceptance
+  run in `.github/workflows/smoke.yml` (3-OS, `main` pushes +
+  `workflow_dispatch`) that installs the real Tier 1+2 tool catalog via mise,
+  spawns each installed binary with `--version` to prove it actually runs
+  (not just "detected"), exercises the unattended `setup --yes` path in a
+  separate project dir, and prints (non-fatal) `agentenv doctor` output for
+  visibility. Adapter guide written (`docs/guides/adding-an-adapter.md`).
+  `smoke.yml` is green on all three OSes (windows/macos/ubuntu, confirmed on
+  the real-smoke fix commit `b5da678`; acceptance scope expanded 2026-09-15).
+  Published to npm as `@indy2kro/agentenv@0.1.0` (plain
   `agentenv` was already taken on the registry — the package name is scoped,
   but the installed bin command is still plain `agentenv`); install with
   `npm install -g @indy2kro/agentenv`. Phase 5 is complete.

@@ -1,4 +1,4 @@
-name: Smoke (full setup)
+name: Acceptance (full setup)
 
 on:
   push:
@@ -15,7 +15,7 @@ jobs:
       matrix:
         os: [windows-latest, macos-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -30,6 +30,6 @@ jobs:
       - name: Install node deps + build CLI
         working-directory: cmd/agentenv
         run: npm ci && npm run build
-      - name: Real apply + status (mise installs pinned tools, rtk writes hooks)
+      - name: Real apply/status/setup, full Tier 1+2 tool install + execution verify
         working-directory: cmd/agentenv
         run: npm run smoke:real
