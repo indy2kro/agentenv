@@ -93,9 +93,11 @@ again. Prefer not to touch global state? Run it in place instead:
 node dist/index.js setup
 ```
 
-Releases are cut from this repo by pushing a `vX.Y.Z` tag: GitHub Actions
-gates the tree and publishes with npm provenance automatically. Maintainers:
-see [`docs/guides/releasing.md`](../../docs/guides/releasing.md).
+Releases are one button: run the `Release` GitHub Actions workflow from the
+repo's Actions tab (patch/minor/major or an exact version). It bumps the
+version in `package.json` + `package-lock.json`, gates the tree, publishes
+with npm provenance, tags the release, and creates the GitHub release.
+Maintainers: see [`docs/guides/releasing.md`](../../docs/guides/releasing.md).
 
 ## Quick start
 
@@ -301,7 +303,7 @@ npm run format:check
 
 See [`docs/guides/adding-an-adapter.md`](../../docs/guides/adding-an-adapter.md)
 for wiring in a fifth agent, [`docs/guides/releasing.md`](../../docs/guides/releasing.md)
-for shipping a new npm version (version tags + the `Publish` workflow), and
+for shipping a new npm version (one-button `Release` workflow), and
 [`docs/plans/agentenv-dev-plan.md`](../../docs/plans/agentenv-dev-plan.md)
 for the full design, config schema rationale, and phase roadmap.
 

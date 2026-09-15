@@ -1,0 +1,166 @@
+name: Release
+
+# One-button release of @indy2kro/agentenv to npm. Instead of a human bumping
+# the version and pushing a tag, this workflow computes the next version,
+# bumps package.json + package-lock.json via `npm version` (single source of
+# truth), gates the tree, publishes with npm Trusted Publishing (OIDC, no
+# token), creates the GitHub release, and pushes the version commit + tag.
+#
+# Auth: this workflow must be registered as the Trusted Publisher for the
+# package in npm package settings (see docs/guides/releasing.md) with filename
+# `release.yml` and allowed action `npm publish`.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version-type:
+        description: 'Semver bump type (ignored when custom-version is set)'
+        type: choice
+        required: true
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
+      custom-version:
+        description: 'Exact version to release (e.g. 1.2.3 or 1.2.3-beta.1); overrides version-type'
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: write # push version commit + tag, create the GitHub release
+  id-token: write # for npm provenance (attestation)
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release @indy2kro/agentenv
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: cmd/agentenv
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # full history so the tag commit resolves for OIDC provenance
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: cmd/agentenv/package-lock.json
+          registry-url: 'https://registry.npmjs.org'
+      - name: Install dependencies
+        run: npm ci
+      - name: Upgrade npm
+        run: npm install -g npm@latest # trusted publishing/OIDC requires npm >= 11.5.1
+      - name: Determine target version
+        id: version
+        run: |
+          current=$(node -p "require('./package.json').version")
+          custom="${{ inputs.custom-version }}"
+          if [ -n "$custom" ]; then
+            if ! echo "$custom" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z-]+)*$'; then
+              echo "Invalid custom-version '$custom' (expected semver like 1.2.3 or 1.2.3-beta.1)" >&2
+              exit 1
+            fi
+            next="$custom"
+          else
+            next=$(node -e "
+              const v = process.argv[1].split('.').map(Number);
+              const t = '${{ inputs.version-type }}';
+              const next = t === 'major' ? [v[0]+1, 0, 0]
+                        : t === 'minor' ? [v[0], v[1]+1, 0]
+                        :                [v[0], v[1], v[2]+1];
+              process.stdout.write(next.join('.'));
+            " "$current")
+          fi
+          if [ "$next" = "$current" ]; then
+            echo "Target version '$next' equals current version '$current' — bump something first" >&2
+            exit 1
+          fi
+          case "$next" in
+            *-*) tag=beta ;; # any "-" in the version → beta dist-tag
+            *)   tag=latest ;;
+          esac
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          echo "next=$next" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - name: Ensure target version not already published
+        run: |
+          if npm view "@indy2kro/agentenv@${{ steps.version.outputs.next }}" version >/dev/null 2>&1; then
+            echo "${{ steps.version.outputs.next }} is already published; refusing to republish" >&2
+            exit 1
+          fi
+      - name: Gate (build, lint, format, test, smoke, clean tree)
+        run: |
+          npm run build
+          npm run lint
+          npm run format:check
+          npm test
+          npm run smoke
+          git diff --exit-code
+      - name: Inspect package contents
+        run: |
+          npm pack --dry-run > /tmp/pack.log 2>&1
+          cat /tmp/pack.log
+          grep -q "dist/index.js" /tmp/pack.log || { echo "dist/index.js missing from package" >&2; exit 1; }
+          grep -q "README.md" /tmp/pack.log || { echo "README.md missing from package" >&2; exit 1; }
+          grep -q "LICENSE" /tmp/pack.log || { echo "LICENSE missing from package" >&2; exit 1; }
+          if grep -Eq "\.test\.(js|mjs|cjs)" /tmp/pack.log; then
+            echo "test files leaked into package" >&2
+            exit 1
+          fi
+      - name: Bump version (package.json + package-lock.json)
+        run: npm version "${{ steps.version.outputs.next }}" --no-git-tag-version
+      - name: Verify version bump only touched version files
+        run: |
+          git diff --stat
+          changed=$(git diff --name-only)
+          count=$(echo "$changed" | wc -l)
+          if [ "$count" -ne 2 ]; then
+            echo "Expected 2 files changed, got $count: $changed" >&2
+            exit 1
+          fi
+          echo "$changed" | grep -q "cmd/agentenv/package.json" \
+            || { echo "package.json missing from version bump diff" >&2; exit 1; }
+          echo "$changed" | grep -q "cmd/agentenv/package-lock.json" \
+            || { echo "package-lock.json missing from version bump diff" >&2; exit 1; }
+          node -e "process.exit(require('./package.json').version === '${{ steps.version.outputs.next }}' ? 0 : 1)" \
+            || { echo "package.json version mismatch after bump" >&2; exit 1; }
+      - name: Rebuild and verify reported version
+        run: |
+          npm run build
+          reported=$(node dist/index.js --version)
+          echo "CLI reports version: $reported"
+          [ "$reported" = "${{ steps.version.outputs.next }}" ] \
+            || { echo "--version reports '$reported', expected '${{ steps.version.outputs.next }}'" >&2; exit 1; }
+      - name: Commit version and tag it
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json
+          git commit -m "chore: release v${{ steps.version.outputs.next }}"
+          git tag -a "v${{ steps.version.outputs.next }}" -m "chore: release v${{ steps.version.outputs.next }}"
+      - name: Publish to npm
+        # No NODE_AUTH_TOKEN here: npm must use the OIDC trusted-publishing path.
+        # A token env var makes npm fall back to the legacy token flow (EOTP).
+        run: npm publish --provenance --access public --tag "${{ steps.version.outputs.tag }}"
+      - name: Push version commit and tag
+        run: |
+          git push origin HEAD:refs/heads/main
+          git push origin "refs/tags/v${{ steps.version.outputs.next }}"
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ steps.version.outputs.next }}" \
+            --title "v${{ steps.version.outputs.next }}" \
+            --generate-notes \
+            --repo "$GITHUB_REPOSITORY"
