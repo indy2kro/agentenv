@@ -246,9 +246,9 @@ export function ensureGlobalShimsDir(): {
   }
 }
 
-/** Format a path for embedding in a TOML string (mise wants forward slashes on Windows). */
+/** Format a path for embedding in a TOML string (mise wants forward slashes). */
 function tomlPath(p: string): string {
-  return process.platform === 'win32' ? p.replace(/\\/g, '/') : p;
+  return p.replace(/\\/g, '/');
 }
 
 /**
