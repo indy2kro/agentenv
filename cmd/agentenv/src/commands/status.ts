@@ -9,11 +9,14 @@ import {
   TOOL_TIERS,
   getEnabledAgents,
   loadConfig,
+  resolveIntegrationScope,
   validateConfig,
 } from '../config/schema.js';
 import type { AgentKey, AgentenvConfig, CustomTool } from '../config/schema.js';
 import { findConfigPath, resolveScopeDir } from '../config/scopes.js';
 import { detectShell } from '../shell/detector.js';
+import { SuperpowersAdapter, ghAuthLine } from '../integrations/index.js';
+import { resolveGhAuthProbe } from '../toolchain/gh.js';
 
 const AGENT_CONFIG_FILES: Record<AgentKey, { label: string; check: (baseDir: string) => string }> =
   {
@@ -65,7 +68,7 @@ function pathForPlatform(tool: CustomTool): string | undefined {
 export const statusCommand = new Command()
   .name('status')
   .description('Show current configuration and environment status')
-  .action(() => {
+  .action(async () => {
     console.log('\n=== agentenv status ===\n');
 
     const configPath = findConfigPath();
@@ -142,6 +145,9 @@ export const statusCommand = new Command()
       console.log(
         `  ${found ? '✓' : '✗'} ${binary.padEnd(12)} ${key} (Tier ${tier})${found ? '' : '   <- drift: enabled in config but not on PATH'} — ${desc}`,
       );
+      if (key === 'gh' && found) {
+        console.log(`      ${ghAuthLine(resolveGhAuthProbe()().status)}`);
+      }
     }
     if (enabledTools.length === 0) console.log('  (none enabled)');
 
@@ -170,6 +176,37 @@ export const statusCommand = new Command()
       }
       const managed = markerCheck ? containsManagedMarker(file, config) : true;
       console.log(`  ✓ ${label}${managed ? '' : ' (managed marker block missing)'}`);
+    }
+
+    // Integrations
+    console.log('\nIntegrations:');
+    const superpowersConfig = config.integrations?.superpowers;
+    console.log('  Superpowers');
+    if (!superpowersConfig || superpowersConfig.enabled !== true) {
+      console.log('    enabled: no');
+    } else {
+      // Resolve against the top-level scope before calling the adapter — the
+      // adapter only ever sees an IntegrationConfig, not the full
+      // AgentenvConfig, so it can't fall back to the top-level scope itself
+      // (see the matching resolution in apply.ts).
+      const scope = resolveIntegrationScope(config, superpowersConfig);
+      const adapter = new SuperpowersAdapter();
+      const result = await adapter.status(resolveScopeDir(scope), { ...superpowersConfig, scope });
+      console.log('    enabled: yes');
+      console.log(`    source: ${result.source ?? '(unset)'}`);
+      console.log(`    ref: ${result.ref ?? '(unset)'}`);
+      console.log(`    scope: ${result.scope}`);
+      for (const agentState of result.agents) {
+        const label = AGENT_CONFIG_FILES[agentState.agent]?.label ?? agentState.agent;
+        console.log(
+          `    ${label.padEnd(16)} ${agentState.state}${agentState.detail ? ` (${agentState.detail})` : ''}`,
+        );
+      }
+      console.log(`    hooks allowed: ${superpowersConfig.allow_hooks ? 'yes' : 'no'}`);
+      console.log(
+        `    external requests allowed: ${superpowersConfig.allow_external_requests ? 'yes' : 'no'}`,
+      );
+      for (const warning of result.warnings) console.log(`    warning: ${warning}`);
     }
 
     console.log('\n=== Status complete ===\n');
