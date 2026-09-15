@@ -10,6 +10,7 @@ import { setupCommand } from './commands/setup.js';
 import { configureCommand } from './commands/configure.js';
 import { applyCommand } from './commands/apply.js';
 import { statusCommand } from './commands/status.js';
+import { updateCommand } from './commands/update.js';
 
 // Create the CLI
 const program = new Command();
@@ -24,6 +25,7 @@ program.addCommand(setupCommand);
 program.addCommand(configureCommand);
 program.addCommand(applyCommand);
 program.addCommand(statusCommand);
+program.addCommand(updateCommand);
 
 // Parse and execute
 program.parse(process.argv);

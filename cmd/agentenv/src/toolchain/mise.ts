@@ -314,6 +314,66 @@ export function getUpgradeableTools(config: AgentenvConfig): string[] {
 }
 
 /**
+ * Update mise itself. Unattended (`MISE_YES=1`); surfaces stderr as-is because
+ * some install methods (e.g. winget) do not support in-place self-updates and
+ * the user must see that instead of a silent no-op.
+ */
+export async function runMiseSelfUpdate(): Promise<{
+  success: boolean;
+  output: string;
+}> {
+  try {
+    const result = child_process.spawnSync('mise', ['self-update'], {
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, MISE_YES: '1' },
+    });
+    const output = (result.stdout || result.stderr || '').trim();
+    return { success: result.status === 0, output };
+  } catch (err) {
+    return {
+      success: false,
+      output: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+/**
+ * Bump the given `mise up` targets to their latest versions within the current
+ * config constraints (pins stay put because pinned tools are not passed in).
+ */
+export async function runMiseUpgrade(
+  tools: string[],
+  cwd: string,
+): Promise<{
+  success: boolean;
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+}> {
+  try {
+    const result = child_process.spawnSync('mise', ['up', ...tools], {
+      cwd,
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    return {
+      success: result.status === 0,
+      stdout: result.stdout || '',
+      stderr: result.stderr || '',
+      exitCode: result.status ?? null,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      stdout: '',
+      stderr: err instanceof Error ? err.message : String(err),
+      exitCode: null,
+    };
+  }
+}
+
+/**
  * Check if a specific tool is installed via mise
  */
 export function isMiseInstalled(): boolean {
