@@ -132,6 +132,126 @@ export function shimsDir(): string {
 }
 
 /**
+ * mise's global config directory. `shims_dir` is deliberately NOT honored in a
+ * project/`MISE_CONFIG_FILE` config — mise ignores it there with a warning
+ * ("ignored for security reasons") — so it must live in the global config.
+ */
+export function miseGlobalConfigDir(): string {
+  return path.join(os.homedir(), '.config', 'mise');
+}
+
+export function miseGlobalConfigPath(): string {
+  return path.join(miseGlobalConfigDir(), 'config.toml');
+}
+
+/**
+ * True when a PATH variable entry resolves to the given directory
+ * (case-folded on Windows where PATH entries and real paths often differ in
+ * case).
+ */
+export function pathContainsDir(pathVar: string, dir: string): boolean {
+  const target = path.resolve(dir);
+  const want = process.platform === 'win32' ? target.toLowerCase() : target;
+  return pathVar
+    .split(path.delimiter)
+    .filter((entry) => entry.trim() !== '')
+    .some((entry) => {
+      const resolved = path.resolve(entry);
+      const have = process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+      return have === want;
+    });
+}
+
+/** Whether the shims dir (~/.local/bin) is already resolvable from PATH. */
+export function shimsDirOnPath(): boolean {
+  return pathContainsDir(process.env.PATH ?? '', shimsDir());
+}
+
+/**
+ * Line-based insert/update of `shims_dir = "<dir>"` under `[settings]` in a
+ * mise config. Surgical on purpose: the global mise config may carry the
+ * user's own comments/settings, and a full TOML round-trip would destroy them.
+ */
+export function upsertShimsDir(content: string, dir: string): string {
+  const shimsLine = `shims_dir = "${tomlPath(dir)}"`;
+  const lines = content.split('\n');
+  const headerIdx = lines.findIndex((line) => /^\s*\[settings\]\s*$/.test(line));
+  if (headerIdx === -1) {
+    const trimmed = content.trimEnd();
+    return trimmed === ''
+      ? `[settings]\n${shimsLine}\n`
+      : `${trimmed}\n\n[settings]\n${shimsLine}\n`;
+  }
+  const nextHeader = lines.findIndex((line, i) => i > headerIdx && /^\s*\[[^[]/.test(line));
+  const end = nextHeader === -1 ? lines.length : nextHeader;
+  const existing = lines.slice(headerIdx, end).findIndex((line) => /^\s*shims_dir\s*=/.test(line));
+  if (existing !== -1) {
+    lines[headerIdx + existing] = shimsLine;
+    return lines.join('\n');
+  }
+  lines.splice(headerIdx + 1, 0, shimsLine);
+  return lines.join('\n');
+}
+
+/**
+ * Extract the `shims_dir` value mise would honor from `[settings]` in a mise
+ * config, or null when it is absent. Used by `agentenv doctor`.
+ */
+export function getShimsDirValue(content: string): string | null {
+  const lines = content.split('\n');
+  const headerIdx = lines.findIndex((line) => /^\s*\[settings\]\s*$/.test(line));
+  if (headerIdx === -1) return null;
+  for (let i = headerIdx + 1; i < lines.length; i++) {
+    if (/^\s*\[[^[]/.test(lines[i])) break;
+    const match = lines[i].match(/^\s*shims_dir\s*=\s*"([^"]+)"/);
+    if (match) return match[1];
+  }
+  return null;
+}
+
+/**
+ * Ensure mise's GLOBAL config declares the shims_dir agentenv relies on, and
+ * tell the user whether the shims dir is actually on PATH. Idempotent.
+ */
+export function ensureGlobalShimsDir(): {
+  success: boolean;
+  message: string;
+} {
+  const dir = shimsDir();
+  const configPath = miseGlobalConfigPath();
+  try {
+    fs.mkdirSync(miseGlobalConfigDir(), { recursive: true });
+    const existing = fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf-8') : '';
+    const updated = upsertShimsDir(existing, dir);
+    if (updated !== existing) fs.writeFileSync(configPath, updated);
+
+    const pathLine = shimsDirOnPath()
+      ? `${dir} is on PATH`
+      : `Add ${dir} to PATH so the shims resolve (Windows: System Properties > Environment Variables > Path)`;
+    if (updated !== existing) {
+      return {
+        success: true,
+        message: `mise: set shims_dir in ${configPath}; ${pathLine}`,
+      };
+    }
+    return {
+      success: true,
+      message: `mise: shims_dir already set (${tomlPath(dir)}); ${pathLine}`,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      message: `Failed to configure mise shims_dir: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+}
+
+/** Format a path for embedding in a TOML string (mise wants forward slashes on Windows). */
+function tomlPath(p: string): string {
+  return process.platform === 'win32' ? p.replace(/\\/g, '/') : p;
+}
+
+/**
  * Save mise.toml to a file
  */
 export function saveMiseToml(content: string, outputPath: string): void {
