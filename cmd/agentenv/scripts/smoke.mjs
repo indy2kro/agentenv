@@ -222,7 +222,12 @@ if (REAL) {
       }
     }
     try {
-      execFileSync(resolved, ['--version'], { env: process.env, encoding: 'utf-8' });
+      // cwd: project — observed (ast-grep): `mise which` can resolve to a
+      // path under an unversioned "latest" directory that is itself still a
+      // mise-aware dispatcher requiring an active mise context (a directory
+      // with the declaring mise.toml, or a global default version) to know
+      // which concrete version to run, not a fully static binary.
+      execFileSync(resolved, ['--version'], { cwd: project, env: process.env, encoding: 'utf-8' });
     } catch (err) {
       console.error(`smoke FAIL: "${binary}" (${resolved}) did not run --version successfully`);
       console.error(`  status: ${err.status}, signal: ${err.signal}`);
