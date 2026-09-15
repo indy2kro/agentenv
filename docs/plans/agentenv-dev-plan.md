@@ -333,28 +333,37 @@ agentenv/
   it regenerated). Implementation plan:
   `docs/superpowers/plans/2026-09-14-superpowers-integration.md` (same
   caveat).
-- First integration: Superpowers (`github:obra/superpowers`). Only Claude
-  Code has a documented, non-interactive, ref-pinnable installer
-  (`claude plugin marketplace add` / `claude plugin install`); the other
-  three v1 agents report `unsupported` with manual-install hints — see
-  `docs/research/superpowers-install-mechanisms.md`.
+- First integration: Superpowers (`github:obra/superpowers`). Upstream now
+  documents installers for many more coding-agent harnesses than agentenv's
+  four v1 targets, but among those four, only Claude Code has a documented,
+  non-interactive, ref-pinnable installer (`claude plugin marketplace add` /
+  `claude plugin install`). Copilot documents a command of the same shape
+  but no way to pin a ref, and Codex CLI/OpenCode have no fixed
+  non-interactive command at all, so all three report `unsupported` with
+  manual-install hints rather than run unpinned or unreviewed — see
+  `docs/research/superpowers-install-mechanisms.md` (re-verified against the
+  upstream README on 2026-09-15).
 - `gh` gains authenticated/unauthenticated/unknown reporting in
   `agentenv status` via `gh auth status --hostname github.com`; agentenv
   never manages GitHub credentials.
-- **Status: in progress — Tasks 1–3 of 7 landed, Tasks 4–7 not started.**
-  Merged so far (`cmd/agentenv/src/config/schema.ts`,
-  `cmd/agentenv/src/toolchain/gh.ts`, `cmd/agentenv/src/integrations/`):
-  the full `integrations.superpowers` config schema (defaults, validation,
-  TOML round-trip, diff reporting), the read-only `gh` auth probe module,
-  and the `IntegrationAdapter` contract + `SuperpowersAdapter` — all tested,
-  all inert. **Not yet done:** wiring any of it into `agentenv apply`
-  (install step), `agentenv status` (Integrations section + `gh` auth line),
-  `agentenv setup`/`configure` (preserve existing settings, Advanced-mode
-  opt-in step), or the README/docs updates. Until that wiring lands, setting
-  `integrations.superpowers.enabled = true` in `agentenv.toml` parses and
-  validates cleanly but has **no effect** — nothing installs, nothing is
-  reported. Do not tell users this feature works yet.
-- **Acceptance (not yet met):** `agentenv apply` with
+- **Status: complete — all 7 tasks landed.** The full `integrations`
+  config schema (defaults, validation, TOML round-trip, diff reporting), the
+  read-only `gh` auth probe, and the `IntegrationAdapter` contract +
+  `SuperpowersAdapter` are wired into the rest of the CLI:
+  `agentenv apply` runs the Superpowers install/update step (idempotent,
+  skips with a warning unless `allow_hooks = true`, since Superpowers
+  registers a Claude Code `SessionStart` hook); `agentenv status` reports an
+  Integrations section (enabled/disabled, source, ref, scope, per-agent
+  state) and a `gh` auth line under Tools; `agentenv setup` preserves
+  whatever integrations config already exists and never enables one itself;
+  `agentenv configure` (Advanced mode) adds an explicit opt-in step showing
+  the full source/ref/scope/agents/hooks/external-request summary before
+  installing anything. Shared rendering helpers for both `apply` and
+  `status` live in `cmd/agentenv/src/integrations/render.ts`. `npm test` runs
+  every `*.test.js` under `dist/` via Node's built-in recursive test
+  discovery (`node --test`, run from `dist/`) instead of a hand-maintained
+  file list, so new test files are picked up automatically.
+- **Acceptance (met):** `agentenv apply` with
   `integrations.superpowers.enabled = true` and `allow_hooks = true`
   installs Superpowers for Claude Code idempotently; `agentenv status` shows
   its state; `setup`/`configure` preserve and (Advanced mode only) offer

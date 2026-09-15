@@ -36,14 +36,13 @@ version, gates the tree, verifies the tarball, runs
 CI runs a deterministic smoke on every push and a full-setup real installation
 smoke (mise + real `rtk init`, verified green on all three OSes) on `main`.
 
-Phase 6 (optional upstream integrations, e.g. Superpowers) is **in
-progress**: the `agentenv.toml` `[integrations.superpowers]` config schema,
-its Claude Code installer adapter, and a read-only `gh` auth-status probe are
-implemented and tested, but none of it is wired into `apply`/`status`/
-`setup`/`configure` yet — setting `integrations.superpowers.enabled = true`
-today has no effect. See
+Phase 6 (optional upstream integrations, e.g. Superpowers) is **done**: the
+`agentenv.toml` `[integrations.superpowers]` config schema, a Claude
+Code-only installer adapter (`claude plugin marketplace add` / `claude
+plugin install`, ref-pinned), and a read-only `gh` auth-status probe are all
+wired into `apply`, `status`, `setup`, and `configure`. See
 [`docs/plans/agentenv-dev-plan.md`](docs/plans/agentenv-dev-plan.md) §Phase 6
-for exactly what's left.
+for details and rationale.
 
 The CLI lives in [`cmd/agentenv/`](cmd/agentenv/README.md). See
 `docs/plans/agentenv-dev-plan.md` §8 for the phase roadmap,

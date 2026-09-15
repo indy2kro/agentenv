@@ -28,10 +28,9 @@ It targets four AI coding agents: **Claude Code**, **OpenAI Codex CLI**,
 - [Configuration (`agentenv.toml`)](#configuration-agentenvtoml)
 - [Tool catalog](#tool-catalog)
 - [Custom tools](#custom-tools)
-- [Optional integrations (experimental, not yet active)](#optional-integrations-experimental-not-yet-active)
+- [Optional integrations](#optional-integrations)
 - [Troubleshooting](#troubleshooting)
 - [Development](#development)
-- [What's still missing](#whats-still-missing)
 
 ## Why agentenv
 
@@ -246,29 +245,49 @@ supported shapes:
 Custom tools flow through the exact same "config changed → regenerate
 `AGENTS.md`/hooks" pipeline as catalog tools.
 
-## Optional integrations (experimental, not yet active)
+## Optional integrations
 
-`agentenv.toml` has a `[integrations.superpowers]` section for optionally
-installing [Superpowers](https://github.com/obra/superpowers) — a
-third-party Claude Code skill/methodology plugin — through its own
-documented installer, never bundled or forked. The schema is fully
-implemented today (validation, defaults, `agentenv configure`'s pending
-opt-in step) but **`agentenv apply`/`status` do not act on it yet** — setting
-`enabled = true` today parses and validates cleanly but has no effect. See
-[What's still missing](#whats-still-missing).
-
-When it lands, only Claude Code will get a fully automated install (via
-`claude plugin marketplace add` / `claude plugin install`, pinned to a
-specific `ref`) — Codex CLI, Copilot, and OpenCode have no safe
-non-interactive installer documented upstream today, so they'll always
-report "unsupported" with manual-install instructions instead. See
+Agentenv can optionally install third-party skill/methodology integrations
+through their own documented native installers — never bundled, never
+forked. The first is [Superpowers](https://github.com/obra/superpowers).
+Superpowers itself now supports a long list of coding agents/harnesses, but
+of agentenv's four v1 targets, only Claude Code has a documented,
+non-interactive, ref-pinnable installer today
+(`claude plugin marketplace add` / `claude plugin install`). Copilot
+documents a command of the same shape but no way to pin a ref, and Codex
+CLI/OpenCode have no fixed non-interactive command at all — so those three
+are always reported as `unsupported` in `agentenv status`, with manual
+install hints, rather than run unpinned or unreviewed. See
 [`docs/research/superpowers-install-mechanisms.md`](../../docs/research/superpowers-install-mechanisms.md)
-for why.
+for the per-agent findings and why.
 
-`agentenv` also never touches GitHub credentials: a `gh` auth-status probe
-(`gh auth status --hostname github.com`, read-only, never `gh auth login`)
-exists in the codebase but — like the rest of this section — isn't wired
-into `agentenv status`'s output yet either.
+Disabled by default. To opt in:
+
+```toml
+[integrations.superpowers]
+enabled = true
+source = "github:obra/superpowers"
+ref = "v6.3.0"
+scope = "user"
+agents = ["claude_code"]
+allow_hooks = true          # Superpowers registers a SessionStart hook
+allow_external_requests = false
+```
+
+`agentenv apply` installs/updates it idempotently for Claude Code (skipping
+and warning if `allow_hooks` isn't explicitly `true`, since Superpowers
+registers a `SessionStart` hook), and `agentenv status` reports an
+**Integrations** section with enabled/disabled, source, ref, scope, and each
+agent's installed/missing/unsupported/drifted state. `agentenv configure`
+(Advanced mode) also offers this as an explicit opt-in step, showing the
+full source/ref/scope/agents/hooks/external-request summary before
+installing anything. `agentenv setup` (Simple mode) never enables it and
+always preserves whatever is already configured.
+
+`agentenv` also never touches GitHub credentials: `agentenv status` reports
+`gh` authentication (authenticated/unauthenticated/unknown) via a read-only
+`gh auth status --hostname github.com` probe; agentenv never runs
+`gh auth login` or reads token values.
 
 ## Troubleshooting
 
@@ -306,17 +325,6 @@ for wiring in a fifth agent, [`docs/guides/releasing.md`](../../docs/guides/rele
 for shipping a new npm version (one-button `Release` workflow), and
 [`docs/plans/agentenv-dev-plan.md`](../../docs/plans/agentenv-dev-plan.md)
 for the full design, config schema rationale, and phase roadmap.
-
-## What's still missing
-
-- **Optional integrations aren't wired up yet.** The `[integrations.superpowers]`
-  config schema, its Claude Code installer adapter, and the read-only `gh`
-  auth probe all exist and are tested, but nothing in `apply`, `status`,
-  `setup`, or `configure` calls them yet — see
-  [Optional integrations](#optional-integrations-experimental-not-yet-active)
-  above. Tracked in
-  [`docs/plans/agentenv-dev-plan.md`](../../docs/plans/agentenv-dev-plan.md)
-  Phase 6.
 
 ## License
 

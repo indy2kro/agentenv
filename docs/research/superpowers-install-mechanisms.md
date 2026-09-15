@@ -2,6 +2,14 @@
 
 **Status:** Resolved — feeds `docs/superpowers/plans/2026-09-14-superpowers-integration.md`.
 
+**Re-verified 2026-09-15** against the current `obra/superpowers` README.
+Upstream now documents installers for many more harnesses than agentenv's
+four v1 targets (Antigravity, Cursor, Devin CLI, Factory Droid, Gemini CLI,
+Grok Build CLI, Kimi Code, Pi, Hermes Agent, in addition to the four below) —
+out of scope here, but a reminder that this integration isn't Claude-specific
+upstream, only agentenv's *automation* of it is scoped to the four v1 agents.
+The findings below for those four are unchanged.
+
 ## The Question
 
 `docs/superpowers/specs/2026-09-14-optional-integrations-design.md` requires
