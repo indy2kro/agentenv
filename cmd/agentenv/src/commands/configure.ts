@@ -16,6 +16,8 @@ import { configFilePath, resolveScopeDir } from '../config/scopes.js';
 import { applyConfiguration } from './apply.js';
 import { AGENT_OPTIONS, buildConfigFromSelections, formatDiffLines } from '../wizard/build.js';
 import { getMiseVersion, isMiseInstalled, miseInstallInstructions } from '../toolchain/mise.js';
+import { colorizeLine, theme } from '../ui/theme.js';
+import { withSpinner } from '../ui/spinner.js';
 
 /**
  * Configure command - Advanced mode wizard
@@ -32,16 +34,20 @@ export const configureCommand = new Command()
   .name('configure')
   .description('Re-run configuration wizard (Advanced mode)')
   .action(async () => {
-    console.log('\n=== agentenv Configure (Advanced Mode) ===\n');
+    console.log(theme.heading('\n=== agentenv Configure (Advanced Mode) ===\n'));
 
     if (!process.stdin.isTTY || !process.stdout.isTTY) {
-      console.error('Configure is interactive; in a non-TTY run `agentenv apply` instead.');
+      console.error(
+        theme.fail('Configure is interactive; in a non-TTY run `agentenv apply` instead.'),
+      );
       process.exitCode = 1;
       return;
     }
 
     if (!isMiseInstalled()) {
-      console.error('agentenv requires mise to install and manage tools, but mise was not found.');
+      console.error(
+        theme.fail('agentenv requires mise to install and manage tools, but mise was not found.'),
+      );
       for (const line of miseInstallInstructions()) console.error(`  ${line}`);
       console.error('\nInstall mise first, then re-run `agentenv configure`.');
       process.exitCode = 1;
@@ -231,13 +237,15 @@ export const configureCommand = new Command()
     saveConfig(config, file);
     console.log(`\nSaved configuration: ${file}`);
 
-    const result = await applyConfiguration(config, resolveScopeDir(scope));
-    for (const message of result.messages) console.log(message);
-    for (const error of result.errors) console.error(error);
+    const result = await withSpinner('Applying configuration...', () =>
+      applyConfiguration(config, resolveScopeDir(scope)),
+    );
+    for (const message of result.messages) console.log(colorizeLine(message));
+    for (const error of result.errors) console.error(theme.fail(error));
     if (!result.success) {
       process.exitCode = 1;
       return;
     }
 
-    console.log('\nConfiguration applied successfully!\n');
+    console.log(theme.ok('\nConfiguration applied successfully!\n'));
   });

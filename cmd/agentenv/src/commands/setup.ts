@@ -14,6 +14,8 @@ import {
   simpleToolSelection,
 } from '../wizard/build.js';
 import { getMiseVersion, isMiseInstalled, miseInstallInstructions } from '../toolchain/mise.js';
+import { colorizeLine, theme } from '../ui/theme.js';
+import { withSpinner } from '../ui/spinner.js';
 
 function agentLabel(agent: AgentKey): string {
   return AGENT_OPTIONS.find((option) => option.value === agent)?.label ?? agent;
@@ -24,7 +26,9 @@ function misePrereqCheck(): boolean {
     console.log(`Prerequisite: mise ${getMiseVersion()}\n`);
     return true;
   }
-  console.error('agentenv requires mise to install and manage tools, but mise was not found.');
+  console.error(
+    theme.fail('agentenv requires mise to install and manage tools, but mise was not found.'),
+  );
   for (const line of miseInstallInstructions()) console.error(`  ${line}`);
   console.error('\nInstall mise first, then re-run `agentenv setup`.');
   return false;
@@ -38,15 +42,17 @@ async function saveAndApply(config: AgentenvConfig, file: string): Promise<void>
   saveConfig(config, file);
   console.log(`Saved configuration: ${file}\n`);
 
-  const result = await applyConfiguration(config, resolveScopeDir(config.scope ?? 'project'));
-  for (const message of result.messages) console.log(message);
-  for (const error of result.errors) console.error(error);
+  const result = await withSpinner('Applying configuration...', () =>
+    applyConfiguration(config, resolveScopeDir(config.scope ?? 'project')),
+  );
+  for (const message of result.messages) console.log(colorizeLine(message));
+  for (const error of result.errors) console.error(theme.fail(error));
   if (!result.success) {
     process.exitCode = 1;
     return;
   }
 
-  console.log('\nSetup complete!\n');
+  console.log(theme.ok('\nSetup complete!\n'));
 }
 
 interface SetupCommandOptions {
@@ -67,7 +73,7 @@ interface SetupCommandOptions {
  *      --agents / --no-tier2 / --no-rtk / --scope.
  */
 async function unattendedSetup(options: SetupCommandOptions): Promise<void> {
-  console.log('\n=== agentenv Setup (Unattended) ===\n');
+  console.log(theme.heading('\n=== agentenv Setup (Unattended) ===\n'));
   if (!misePrereqCheck()) {
     process.exitCode = 1;
     return;
@@ -80,15 +86,15 @@ async function unattendedSetup(options: SetupCommandOptions): Promise<void> {
     try {
       config = loadConfig(options.config);
     } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error));
+      console.error(theme.fail(error instanceof Error ? error.message : String(error)));
       process.exitCode = 1;
       return;
     }
     const report = validateConfig(config);
-    for (const warning of report.warnings) console.log(`warning: ${warning}`);
+    for (const warning of report.warnings) console.log(theme.warn(`warning: ${warning}`));
     if (report.errors.length > 0) {
-      for (const error of report.errors) console.error(`error: ${error}`);
-      console.error(`Configuration at ${options.config} is invalid; not applying.`);
+      for (const error of report.errors) console.error(theme.fail(`error: ${error}`));
+      console.error(theme.fail(`Configuration at ${options.config} is invalid; not applying.`));
       process.exitCode = 1;
       return;
     }
@@ -101,9 +107,9 @@ async function unattendedSetup(options: SetupCommandOptions): Promise<void> {
       console.log(`Using existing configuration: ${file}`);
       config = loadConfig(file);
       const report = validateConfig(config);
-      for (const warning of report.warnings) console.log(`warning: ${warning}`);
+      for (const warning of report.warnings) console.log(theme.warn(`warning: ${warning}`));
       if (report.errors.length > 0) {
-        for (const error of report.errors) console.error(`error: ${error}`);
+        for (const error of report.errors) console.error(theme.fail(`error: ${error}`));
         process.exitCode = 1;
         return;
       }
@@ -113,7 +119,7 @@ async function unattendedSetup(options: SetupCommandOptions): Promise<void> {
         try {
           agents = parseAgentsInput(options.agents);
         } catch (error) {
-          console.error(error instanceof Error ? error.message : String(error));
+          console.error(theme.fail(error instanceof Error ? error.message : String(error)));
           process.exitCode = 1;
           return;
         }
@@ -158,11 +164,13 @@ export const setupCommand = new Command()
       return;
     }
 
-    console.log('\n=== agentenv Setup (Simple Mode) ===\n');
+    console.log(theme.heading('\n=== agentenv Setup (Simple Mode) ===\n'));
 
     if (!process.stdin.isTTY || !process.stdout.isTTY) {
       console.error(
-        'Setup is interactive; in a non-TTY run `agentenv setup --yes` or `agentenv apply`.',
+        theme.fail(
+          'Setup is interactive; in a non-TTY run `agentenv setup --yes` or `agentenv apply`.',
+        ),
       );
       process.exitCode = 1;
       return;

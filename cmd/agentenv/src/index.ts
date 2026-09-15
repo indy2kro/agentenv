@@ -13,6 +13,7 @@ import { applyCommand } from './commands/apply.js';
 import { statusCommand } from './commands/status.js';
 import { updateCommand } from './commands/update.js';
 import { doctorCommand } from './commands/doctor.js';
+import { setColorEnabled } from './ui/theme.js';
 
 const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8'));
 
@@ -22,7 +23,15 @@ const program = new Command();
 program
   .name('agentenv')
   .description('Configure a consistent, capable shell environment for AI coding agents')
-  .version(version);
+  .version(version)
+  .option('--no-color', 'disable colored output (also honors the NO_COLOR env var)');
+
+// Color auto-detects from TTY + NO_COLOR/FORCE_COLOR by default (chalk);
+// --no-color is the only explicit override, checked before any command runs.
+program.hook('preAction', (_thisCommand, actionCommand) => {
+  const { color } = actionCommand.optsWithGlobals<{ color?: boolean }>();
+  if (color === false) setColorEnabled(false);
+});
 
 // Add commands
 program.addCommand(setupCommand);

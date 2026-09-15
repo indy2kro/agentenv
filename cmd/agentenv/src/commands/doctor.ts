@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import * as fs from 'fs';
 import * as path from 'path';
 import { AGENT_COMMANDS, isAgentInstalled, resolveBinary } from '../adapters/detect.js';
+import { theme } from '../ui/theme.js';
 import {
   BINARY_MAP,
   getEnabledAgents,
@@ -35,13 +36,21 @@ export interface DoctorSection {
   items: DoctorItem[];
 }
 
+const STATUS_COLOR: Record<DoctorStatus, (text: string) => string> = {
+  ok: theme.ok,
+  warn: theme.warn,
+  fail: theme.fail,
+};
+
 export function renderDoctor(sections: DoctorSection[]): string {
-  const lines: string[] = ['\n=== agentenv Doctor ===\n'];
+  const lines: string[] = [`\n${theme.heading('=== agentenv Doctor ===')}\n`];
   for (const section of sections) {
-    lines.push(section.title);
+    lines.push(theme.bold(section.title));
     for (const item of section.items) {
       const glyph = item.status === 'ok' ? '[ok]  ' : item.status === 'warn' ? '[warn]' : '[fail]';
-      lines.push(`  ${glyph} ${item.label}${item.detail ? ` — ${item.detail}` : ''}`);
+      lines.push(
+        `  ${STATUS_COLOR[item.status](glyph)} ${item.label}${item.detail ? ` — ${item.detail}` : ''}`,
+      );
     }
     lines.push('');
   }

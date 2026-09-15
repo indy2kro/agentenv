@@ -29,6 +29,8 @@ import {
   trustMiseToml,
   verifyToolAvailability,
 } from '../toolchain/mise.js';
+import { colorizeLine, theme } from '../ui/theme.js';
+import { withSpinner } from '../ui/spinner.js';
 
 export interface ApplyResult {
   success: boolean;
@@ -192,24 +194,26 @@ export const applyCommand = new Command()
     try {
       config = loadConfig();
     } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error));
+      console.error(theme.fail(error instanceof Error ? error.message : String(error)));
       process.exitCode = 1;
       return;
     }
 
     const report = validateConfig(config);
-    for (const warning of report.warnings) console.log(`warning: ${warning}`);
+    for (const warning of report.warnings) console.log(theme.warn(`warning: ${warning}`));
     if (report.errors.length > 0) {
-      for (const error of report.errors) console.error(`error: ${error}`);
+      for (const error of report.errors) console.error(theme.fail(`error: ${error}`));
       process.exitCode = 1;
       return;
     }
 
     const baseDir = resolveScopeDir(config.scope);
-    const result = await applyConfiguration(config, baseDir, {
-      skipMiseInstall: options.skipMiseInstall === true,
-    });
-    for (const message of result.messages) console.log(message);
-    for (const error of result.errors) console.error(error);
+    const result = await withSpinner('Applying configuration...', () =>
+      applyConfiguration(config, baseDir, {
+        skipMiseInstall: options.skipMiseInstall === true,
+      }),
+    );
+    for (const message of result.messages) console.log(colorizeLine(message));
+    for (const error of result.errors) console.error(theme.fail(error));
     if (!result.success) process.exitCode = 1;
   });
