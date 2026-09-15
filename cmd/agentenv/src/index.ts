@@ -5,6 +5,7 @@
  * Configure a consistent, capable shell environment for AI coding agents
  */
 
+import { readFileSync } from 'node:fs';
 import { Command } from 'commander';
 import { setupCommand } from './commands/setup.js';
 import { configureCommand } from './commands/configure.js';
@@ -13,13 +14,15 @@ import { statusCommand } from './commands/status.js';
 import { updateCommand } from './commands/update.js';
 import { doctorCommand } from './commands/doctor.js';
 
+const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8'));
+
 // Create the CLI
 const program = new Command();
 
 program
   .name('agentenv')
   .description('Configure a consistent, capable shell environment for AI coding agents')
-  .version('0.1.0');
+  .version(version);
 
 // Add commands
 program.addCommand(setupCommand);
