@@ -105,7 +105,7 @@ try {
   console.error(err.stderr ?? '');
   process.exit(1);
 }
-expect(/Generated .*mise\.toml/.test(applyOut), `apply should report mise.toml generation, got:\n${applyOut}`);
+expect(/Tools: wrote .*mise\.toml/.test(applyOut), `apply should report mise.toml generation, got:\n${applyOut}`);
 if (REAL) {
   expect(
     !/rtk binary not found on PATH/.test(applyOut),
