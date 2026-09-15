@@ -7,6 +7,7 @@ import {
   generateMiseToml,
   getShimsDirValue,
   getToolsToInstall,
+  getUpgradeableTools,
   miseActivationHint,
   miseInstallInstructions,
   miseInstallOutcome,
@@ -59,6 +60,35 @@ describe('mise.toml generation', () => {
     const output = generateMiseToml(DEFAULT_CONFIG, []);
     assert.equal(output.includes('shims_dir'), false);
     assert.ok(shimsDir().length > 0);
+  });
+
+  it('resolves config tool_versions pins in the generated mise.toml', () => {
+    const config = { ...DEFAULT_CONFIG, tool_versions: { jq: '2.0.0' } };
+    const output = generateMiseToml(config, []);
+
+    assert.match(output, /^jq = "2\.0\.0"$/m);
+    assert.doesNotMatch(output, /^jq = "latest"$/m);
+  });
+
+  it('records config tool_versions pins in the install planner', () => {
+    const config = { ...DEFAULT_CONFIG, tool_versions: { jq: '1.4.0' } };
+    const tools = getToolsToInstall(config);
+    const jq = tools.find((tool) => tool.name === 'jq');
+
+    assert.ok(jq);
+    assert.equal(jq?.version, '1.4.0');
+  });
+
+  it('getUpgradeableTools excludes rtk and pinned tools, keeps unpinned ones', () => {
+    const upgradeable = getUpgradeableTools({
+      ...DEFAULT_CONFIG,
+      tool_versions: { jq: '1.7.1' },
+    });
+
+    assert.ok(upgradeable.includes('ripgrep'));
+    assert.ok(upgradeable.includes('difftastic'));
+    assert.equal(upgradeable.includes('rtk'), false);
+    assert.equal(upgradeable.includes('jq'), false);
   });
 });
 

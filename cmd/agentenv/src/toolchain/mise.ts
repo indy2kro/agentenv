@@ -99,7 +99,7 @@ export function generateMiseToml(
       continue;
     }
     const miseName = MISE_TOOL_NAMES[toolKey] || toolKey;
-    const version = PINNED_TOOL_VERSIONS[miseName] || 'latest';
+    const version = PINNED_TOOL_VERSIONS[miseName] || config.tool_versions?.[toolKey] || 'latest';
     lines.push(`${miseName} = "${version}"`);
   }
 
@@ -292,7 +292,7 @@ export function getToolsToInstall(config: AgentenvConfig): Array<{
       result.push({
         name: key,
         miseName,
-        version: PINNED_TOOL_VERSIONS[miseName] || 'latest',
+        version: PINNED_TOOL_VERSIONS[miseName] || config.tool_versions?.[key] || 'latest',
         tier: TOOL_TIERS[key] || 3,
       });
     }
@@ -302,7 +302,19 @@ export function getToolsToInstall(config: AgentenvConfig): Array<{
 }
 
 /**
- * Check if mise is installed
+ * The mise tool names `agentenv update` may safely bump: enabled, non-fallback
+ * tools that resolve to `latest`. Pinned tools (rtk's code pin and any
+ * `agentenv.toml [tool_versions]` entry) are excluded so `mise up` never moves
+ * a version the user (or the hook contract) chose to pin.
+ */
+export function getUpgradeableTools(config: AgentenvConfig): string[] {
+  return getToolsToInstall(config)
+    .filter((tool) => tool.version === 'latest')
+    .map((tool) => tool.miseName);
+}
+
+/**
+ * Check if a specific tool is installed via mise
  */
 export function isMiseInstalled(): boolean {
   try {

@@ -58,6 +58,21 @@ describe('configuration persistence', () => {
     assert.equal(ctags?.path_windows, 'C:\\ctags\\ctags.exe');
     assert.equal(ctags?.path_macos, '/usr/local/bin/ctags');
   });
+
+  it('serializes tool_versions pins and round-trips them through loadConfig', () => {
+    const content = configToToml({ tool_versions: { jq: '1.7.1', fd: '1.0' } });
+    assert.match(content, /\[tool_versions\]/);
+    assert.deepEqual(JSON.parse(JSON.stringify(toml.parse(content).tool_versions)), {
+      jq: '1.7.1',
+      fd: '1.0',
+    });
+
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-config-'));
+    const configPath = path.join(directory, 'agentenv.toml');
+    fs.writeFileSync(configPath, content);
+    const config = loadConfig(configPath);
+    assert.equal(config.tool_versions?.jq, '1.7.1');
+  });
 });
 
 describe('configuration validation', () => {
@@ -94,6 +109,22 @@ describe('configuration validation', () => {
     });
     assert.ok(report.warnings.some((warning) => warning.includes('mytool')));
   });
+
+  it('rejects a version pin for an unknown tool', () => {
+    const report = validateConfig({ tool_versions: { wget: '1.0' } });
+    assert.ok(
+      report.errors.some((error) => error.includes('tool_versions references unknown tool "wget"')),
+    );
+  });
+
+  it('rejects an empty version pin', () => {
+    const report = validateConfig({ tool_versions: { jq: '' } });
+    assert.ok(
+      report.errors.some((error) =>
+        error.includes('tool_versions.jq must be a non-empty version string'),
+      ),
+    );
+  });
 });
 
 describe('configuration diff', () => {
@@ -123,6 +154,15 @@ describe('configuration diff', () => {
         ['rtk.enabled', true, false],
       ],
     );
+  });
+
+  it('reports a changed diff entry when a version pin flips', () => {
+    const oldConfig: AgentenvConfig = { tool_versions: { jq: '1.0' } };
+    const newConfig: AgentenvConfig = { tool_versions: { jq: '1.1' } };
+
+    assert.deepEqual(diffConfigs(oldConfig, newConfig), [
+      { kind: 'changed', key: 'tool_versions.jq', oldValue: '1.0', newValue: '1.1' },
+    ]);
   });
 
   it('reports custom tool additions, removals, and field changes', () => {

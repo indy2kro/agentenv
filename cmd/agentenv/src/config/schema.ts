@@ -88,6 +88,12 @@ export interface AgentenvConfig {
     direnv?: boolean;
   };
   custom_tools?: CustomTool[];
+  /**
+   * Optional per-tool version pins, e.g. `jq = "1.7.1"`. A pinned tool is
+   * installed at exactly that version and is excluded from `agentenv update`.
+   * Unpinned tools resolve to `latest`.
+   */
+  tool_versions?: Record<string, string>;
   rtk?: RtkConfig;
   tier0?: Tier0Config;
   generate?: GenerateConfig;
@@ -372,6 +378,16 @@ export function configToToml(config: AgentenvConfig): string {
     }
   }
 
+  // Tool version pins
+  if (config.tool_versions && Object.keys(config.tool_versions).length > 0) {
+    lines.push('\n[tool_versions]');
+    for (const [key, version] of Object.entries(config.tool_versions).sort(([a], [b]) =>
+      a.localeCompare(b),
+    )) {
+      lines.push(`${key} = ${tomlString(version)}`);
+    }
+  }
+
   // Custom tools
   if (config.custom_tools && config.custom_tools.length > 0) {
     for (const ct of config.custom_tools) {
@@ -496,6 +512,12 @@ function mergeWithDefaults(config: AgentenvConfig): AgentenvConfig {
   // Merge custom_tools
   if (config.custom_tools) {
     result.custom_tools = config.custom_tools;
+  }
+
+  // Merge tool_versions (opt-in pins; the resulting tool list is not merged
+  // into `tools`, the pins only steer the installed version).
+  if (config.tool_versions) {
+    result.tool_versions = config.tool_versions;
   }
 
   // Merge rtk
@@ -648,6 +670,16 @@ export function validateConfig(config: AgentenvConfig): {
     }
   }
 
+  const toolVersions = config.tool_versions ?? {};
+  for (const [key, version] of Object.entries(toolVersions)) {
+    if (!(TOOL_KEYS as readonly string[]).includes(key)) {
+      errors.push(`tool_versions references unknown tool "${key}"`);
+    }
+    if (typeof version !== 'string' || version.trim() === '') {
+      errors.push(`tool_versions.${key} must be a non-empty version string`);
+    }
+  }
+
   if (Array.isArray(config.custom_tools)) {
     for (const ct of config.custom_tools) {
       if (!ct.name) {
@@ -777,6 +809,19 @@ export function diffConfigs(
   }
 
   diffCustomTools(oldConfig.custom_tools ?? [], newConfig.custom_tools ?? [], entries);
+
+  const oldVersions = oldConfig.tool_versions ?? {};
+  const newVersions = newConfig.tool_versions ?? {};
+  for (const key of new Set([...Object.keys(oldVersions), ...Object.keys(newVersions)])) {
+    if (oldVersions[key] !== newVersions[key]) {
+      entries.push({
+        kind: 'changed',
+        key: `tool_versions.${key}`,
+        oldValue: oldVersions[key],
+        newValue: newVersions[key],
+      });
+    }
+  }
 
   diffNestedSettings(
     [
