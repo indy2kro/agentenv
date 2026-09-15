@@ -65,7 +65,17 @@ different config file format, that's what this fixes:
 
 ## Install
 
-### From source (works today)
+### From npm (recommended)
+
+```sh
+npm install -g @indy2kro/agentenv
+```
+
+This installs the `agentenv` command itself, unchanged. The package is
+published under the scoped name `@indy2kro/agentenv` (plain `agentenv` was
+already taken on the registry).
+
+### From source
 
 ```sh
 git clone https://github.com/indy2kro/agentenv.git
@@ -82,16 +92,6 @@ again. Prefer not to touch global state? Run it in place instead:
 ```sh
 node dist/index.js setup
 ```
-
-### From npm
-
-```sh
-npm install -g @indy2kro/agentenv
-```
-
-The package is published under the scoped name `@indy2kro/agentenv` (plain
-`agentenv` was already taken on the registry) — this installs the `agentenv`
-command itself, unchanged.
 
 Releases are cut from this repo by pushing a `vX.Y.Z` tag: GitHub Actions
 gates the tree and publishes with npm provenance automatically. Maintainers:
