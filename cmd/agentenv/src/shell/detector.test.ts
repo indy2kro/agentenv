@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { applyAgentShellFix, bashExecutable } from './detector.js';
+import { applyAgentShellFix, bashExecutable, checkAgentShellConfiguration } from './detector.js';
 
 const bashExe = 'C:\\Program Files\\Git\\usr\\bin\\bash.exe';
 
@@ -127,6 +127,59 @@ describe('Tier 0 shell fix', () => {
       const result = applyAgentShellFix('copilot', bashExe, home);
       assert.equal(result.action, 'skipped');
       assert.equal(result.file, '');
+    });
+  });
+
+  describe('checkAgentShellConfiguration', () => {
+    it('claude_code: not configured when settings.json is absent', () => {
+      const result = checkAgentShellConfiguration('claude_code', tempHome());
+      assert.equal(result.isConfigured, false);
+      assert.equal(result.needsFix, true);
+    });
+
+    it('claude_code: configured with no fix needed after applyAgentShellFix', () => {
+      const home = tempHome();
+      applyAgentShellFix('claude_code', bashExe, home);
+      const result = checkAgentShellConfiguration('claude_code', home);
+      assert.equal(result.isConfigured, true);
+      assert.equal(result.needsFix, false);
+      assert.equal(result.shell, bashExe);
+    });
+
+    it('codex_cli: not configured when config.toml is absent', () => {
+      const result = checkAgentShellConfiguration('codex_cli', tempHome());
+      assert.equal(result.isConfigured, false);
+      assert.equal(result.needsFix, true);
+    });
+
+    it('codex_cli: configured with no fix needed after applyAgentShellFix', () => {
+      const home = tempHome();
+      applyAgentShellFix('codex_cli', bashExe, home);
+      const result = checkAgentShellConfiguration('codex_cli', home);
+      assert.equal(result.isConfigured, true);
+      assert.equal(result.needsFix, false);
+      assert.equal(result.shell, bashExe);
+    });
+
+    it('opencode: not configured when opencode.json is absent', () => {
+      const result = checkAgentShellConfiguration('opencode', tempHome());
+      assert.equal(result.isConfigured, false);
+      assert.equal(result.needsFix, true);
+    });
+
+    it('opencode: configured with no fix needed after applyAgentShellFix', () => {
+      const home = tempHome();
+      applyAgentShellFix('opencode', bashExe, home);
+      const result = checkAgentShellConfiguration('opencode', home);
+      assert.equal(result.isConfigured, true);
+      assert.equal(result.needsFix, false);
+      assert.equal(result.shell, bashExe);
+    });
+
+    it('copilot: always configured with no fix needed (no per-file override exists)', () => {
+      const result = checkAgentShellConfiguration('copilot', tempHome());
+      assert.equal(result.isConfigured, true);
+      assert.equal(result.needsFix, false);
     });
   });
 });

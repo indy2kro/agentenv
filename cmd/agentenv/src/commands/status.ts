@@ -14,9 +14,10 @@ import {
 } from '../config/schema.js';
 import type { AgentKey, AgentenvConfig, CustomTool } from '../config/schema.js';
 import { findConfigPath, resolveScopeDir } from '../config/scopes.js';
-import { detectShell } from '../shell/detector.js';
+import { checkAgentShellConfiguration, detectShell } from '../shell/detector.js';
 import { SuperpowersAdapter, ghAuthLine } from '../integrations/index.js';
 import { resolveGhAuthProbe } from '../toolchain/gh.js';
+import { colorizeLine, theme } from '../ui/theme.js';
 
 const AGENT_CONFIG_FILES: Record<AgentKey, { label: string; check: (baseDir: string) => string }> =
   {
@@ -69,7 +70,7 @@ export const statusCommand = new Command()
   .name('status')
   .description('Show current configuration and environment status')
   .action(async () => {
-    console.log('\n=== agentenv status ===\n');
+    console.log(theme.heading('\n=== agentenv status ===\n'));
 
     const configPath = findConfigPath();
     if (!configPath) {
@@ -83,7 +84,7 @@ export const statusCommand = new Command()
     try {
       config = loadConfig();
     } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error));
+      console.error(theme.fail(error instanceof Error ? error.message : String(error)));
       process.exitCode = 1;
       return;
     }
@@ -94,21 +95,43 @@ export const statusCommand = new Command()
     console.log(`Base directory: ${baseDir}`);
 
     const report = validateConfig(config);
+    const validationSummary = `Validation: ${
+      report.errors.length === 0 ? 'valid' : `${report.errors.length} error(s)`
+    }${report.warnings.length > 0 ? `, ${report.warnings.length} warning(s)` : ''}`;
     console.log(
-      `Validation: ${report.errors.length === 0 ? 'valid' : `${report.errors.length} error(s)`}${
-        report.warnings.length > 0 ? `, ${report.warnings.length} warning(s)` : ''
-      }`,
+      report.errors.length === 0 ? theme.ok(validationSummary) : theme.fail(validationSummary),
     );
-    for (const warning of report.warnings) console.log(`  warning: ${warning}`);
+    for (const warning of report.warnings) console.log(theme.warn(`  warning: ${warning}`));
     console.log(`RTK command rewriting: ${config.rtk?.enabled ? 'enabled' : 'disabled'}`);
 
     // Tier 0 shell status
     const shell = detectShell();
-    console.log('\nTier 0 (shell):');
+    console.log(theme.heading('\nTier 0 (shell):'));
     if (shell.isWindows) {
-      console.log(`  Windows, POSIX-compatible: ${shell.isPosixCompatible ? 'yes' : 'NO'}`);
+      // shell.isPosixCompatible reflects THIS interactive shell (PowerShell,
+      // almost always not bash) — that's expected and isn't what `apply`
+      // fixes. What apply actually manages is each enabled agent's own
+      // config pointing at Git Bash, so that's what decides whether a fix
+      // is actually needed.
+      console.log(`  Current shell: ${shell.currentShell}`);
       if (shell.gitBashPath) console.log(`  Git Bash: ${shell.gitBashPath}`);
-      if (!shell.isPosixCompatible) console.log('  Fix: run `agentenv apply` (Tier 0 shell fix)');
+      else console.log('  Git Bash: NOT FOUND');
+
+      const shellHome = process.env.HOME || process.env.USERPROFILE || '';
+      const agentShellChecks = (getEnabledAgents(config) as AgentKey[]).map((agent) => ({
+        agent,
+        check: checkAgentShellConfiguration(agent, shellHome),
+      }));
+      if (agentShellChecks.length > 0) {
+        console.log('  Agent shell overrides:');
+        for (const { agent, check } of agentShellChecks) {
+          const label = AGENT_CONFIG_FILES[agent]?.label ?? agent;
+          console.log(colorizeLine(`    ${check.needsFix ? '✗' : '✓'} ${label}`));
+        }
+      }
+      if (!shell.gitBashPath || agentShellChecks.some(({ check }) => check.needsFix)) {
+        console.log(theme.warn('  Fix: run `agentenv apply` (Tier 0 shell fix)'));
+      }
     } else {
       console.log(
         `  ${shell.isPosixCompatible ? 'POSIX-compatible' : 'non-POSIX'} (not Windows; Tier 0 N/A)`,
@@ -119,7 +142,7 @@ export const statusCommand = new Command()
 
     // Agents
     const enabledAgents = getEnabledAgents(config) as AgentKey[];
-    console.log('\nAgents:');
+    console.log(theme.heading('\nAgents:'));
     if (enabledAgents.length === 0) {
       console.log('  (none enabled)');
     }
@@ -128,32 +151,34 @@ export const statusCommand = new Command()
       const installed = isAgentInstalled(agent);
       const configured = fs.existsSync(meta.check(baseDir));
       const drift = installed && !configured;
-      console.log(
+      const line =
         `  ${meta.label.padEnd(16)} installed: ${installed ? 'yes' : 'no'}   ` +
-          `configured: ${configured ? 'yes' : 'no'}${drift ? '   <- drift: installed but not configured' : ''}`,
-      );
+        `configured: ${configured ? 'yes' : 'no'}${drift ? '   <- drift: installed but not configured' : ''}`;
+      console.log(drift ? theme.warn(line) : line);
     }
 
     // Tools
     const enabledTools = TOOL_KEYS.filter((key) => config.tools?.[key] === true);
-    console.log('\nTools:');
+    console.log(theme.heading('\nTools:'));
     for (const key of enabledTools) {
       const binary = BINARY_MAP[key];
       const found = resolveBinary(binary) !== null;
       const tier = TOOL_TIERS[key] ?? '?';
       const desc = TOOL_DESCRIPTIONS[key] ?? '';
       console.log(
-        `  ${found ? '✓' : '✗'} ${binary.padEnd(12)} ${key} (Tier ${tier})${found ? '' : '   <- drift: enabled in config but not on PATH'} — ${desc}`,
+        colorizeLine(
+          `  ${found ? '✓' : '✗'} ${binary.padEnd(12)} ${key} (Tier ${tier})${found ? '' : '   <- drift: enabled in config but not on PATH'} — ${desc}`,
+        ),
       );
       if (key === 'gh' && found) {
-        console.log(`      ${ghAuthLine(resolveGhAuthProbe()().status)}`);
+        console.log(colorizeLine(`      ${ghAuthLine(resolveGhAuthProbe()().status)}`));
       }
     }
     if (enabledTools.length === 0) console.log('  (none enabled)');
 
     // Custom tools
     const customTools = config.custom_tools ?? [];
-    console.log('\nCustom tools:');
+    console.log(theme.heading('\nCustom tools:'));
     if (customTools.length === 0) {
       console.log('  (none)');
     }
@@ -162,7 +187,7 @@ export const statusCommand = new Command()
     }
 
     // Generated files
-    console.log('\nGenerated files:');
+    console.log(theme.heading('\nGenerated files:'));
     const generated: Array<[string, string, boolean]> = [
       ['mise.toml', path.join(baseDir, 'mise.toml'), false],
       ['AGENTS.md', path.join(baseDir, 'AGENTS.md'), true],
@@ -171,15 +196,15 @@ export const statusCommand = new Command()
     for (const [label, file, markerCheck] of generated) {
       const exists = fs.existsSync(file);
       if (!exists) {
-        console.log(`  ✗ ${label} (missing)`);
+        console.log(theme.fail(`  ✗ ${label} (missing)`));
         continue;
       }
       const managed = markerCheck ? containsManagedMarker(file, config) : true;
-      console.log(`  ✓ ${label}${managed ? '' : ' (managed marker block missing)'}`);
+      console.log(colorizeLine(`  ✓ ${label}${managed ? '' : ' (managed marker block missing)'}`));
     }
 
     // Integrations
-    console.log('\nIntegrations:');
+    console.log(theme.heading('\nIntegrations:'));
     const superpowersConfig = config.integrations?.superpowers;
     console.log('  Superpowers');
     if (!superpowersConfig || superpowersConfig.enabled !== true) {
@@ -206,8 +231,8 @@ export const statusCommand = new Command()
       console.log(
         `    external requests allowed: ${superpowersConfig.allow_external_requests ? 'yes' : 'no'}`,
       );
-      for (const warning of result.warnings) console.log(`    warning: ${warning}`);
+      for (const warning of result.warnings) console.log(theme.warn(`    warning: ${warning}`));
     }
 
-    console.log('\n=== Status complete ===\n');
+    console.log(theme.heading('\n=== Status complete ===\n'));
   });

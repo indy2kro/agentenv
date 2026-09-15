@@ -693,143 +693,151 @@ export function fixShellConfiguration(
 }
 
 /**
- * Check if a specific agent is configured to use a POSIX shell
+ * Check whether a specific agent's own config already points it at a POSIX
+ * (bash) shell — i.e. whether Tier 0's per-agent fix (applyAgentShellFix) has
+ * actually taken effect for that agent. Reads exactly the field each
+ * patch*ShellFix writes, so this stays in sync with what `apply` can affect;
+ * it deliberately does not look at the current process's own shell/env,
+ * since that's the interactive shell the user is running agentenv from, not
+ * the target agent's configuration.
  */
-export function checkAgentShellConfiguration(agent: string): {
+export function checkAgentShellConfiguration(
+  agent: AgentKey,
+  home: string = process.env.HOME || process.env.USERPROFILE || '',
+): { isConfigured: boolean; shell?: string; needsFix: boolean } {
+  switch (agent) {
+    case 'claude_code':
+      return checkClaudeCodeShell(home);
+    case 'codex_cli':
+      return checkCodexShell(home);
+    case 'copilot':
+      return checkCopilotShell();
+    case 'opencode':
+      return checkOpenCodeShell(home);
+  }
+}
+
+function isBashPath(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
+}
+
+/**
+ * Check Claude Code shell configuration: reads env.CLAUDE_CODE_GIT_BASH_PATH,
+ * the exact field patchClaudeShellFix writes.
+ */
+function checkClaudeCodeShell(home: string): {
   isConfigured: boolean;
   shell?: string;
   needsFix: boolean;
 } {
-  if (process.platform !== 'win32') {
-    return {
-      isConfigured: true,
-      needsFix: false,
-    };
-  }
-
-  // Agent-specific shell configuration check
-  switch (agent) {
-    case 'claude_code':
-      // Claude Code uses SHELL environment variable or config
-      return checkClaudeCodeShell();
-    case 'codex_cli':
-      return checkCodexShell();
-    case 'copilot':
-      return checkCopilotShell();
-    case 'opencode':
-      return checkOpenCodeShell();
-    default:
-      return {
-        isConfigured: false,
-        needsFix: true,
-      };
-  }
-}
-
-/**
- * Check Claude Code shell configuration
- */
-function checkClaudeCodeShell(): { isConfigured: boolean; shell?: string; needsFix: boolean } {
   try {
-    const home = process.env.HOME || process.env.USERPROFILE || '';
     const settingsPath = path.join(home, '.claude', 'settings.json');
-
     if (fs.existsSync(settingsPath)) {
-      const data = fs.readFileSync(settingsPath, 'utf-8');
-      const settings = JSON.parse(data);
-
-      if (settings.shell) {
+      const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as Record<
+        string,
+        unknown
+      >;
+      const env = (settings.env ?? {}) as Record<string, unknown>;
+      const bashPath = env.CLAUDE_CODE_GIT_BASH_PATH;
+      if (isBashPath(bashPath)) {
         return {
           isConfigured: true,
-          shell: settings.shell,
-          needsFix: !settings.shell.toLowerCase().includes('bash'),
+          shell: bashPath,
+          needsFix: !bashPath.toLowerCase().includes('bash'),
         };
       }
     }
-
-    return {
-      isConfigured: false,
-      needsFix: true,
-    };
+    return { isConfigured: false, needsFix: true };
   } catch {
-    return {
-      isConfigured: false,
-      needsFix: true,
-    };
+    return { isConfigured: false, needsFix: true };
   }
 }
 
 /**
- * Check Codex CLI shell configuration
+ * Extract the `shell_path` value from a Codex config.toml's [windows]
+ * section, matching what setTomlWindowsShellPath writes.
  */
-function checkCodexShell(): { isConfigured: boolean; shell?: string; needsFix: boolean } {
-  // Codex CLI respects the SHELL environment variable
-  const shell = process.env.SHELL;
-
-  if (shell && shell.toLowerCase().includes('bash')) {
-    return {
-      isConfigured: true,
-      shell,
-      needsFix: false,
-    };
+function readTomlWindowsShellPath(content: string): string | undefined {
+  const lines = content.split(/\r?\n/);
+  let inWindowsSection = false;
+  for (const raw of lines) {
+    const trimmed = raw.trim();
+    if (/^\[.*]$/.test(trimmed)) {
+      inWindowsSection = trimmed === '[windows]';
+      continue;
+    }
+    if (inWindowsSection) {
+      // valueLine is built via JSON.stringify(bashExe) (patchCodexShellFix),
+      // so a JSON-compatible quoted-string parse reverses it correctly.
+      const match = /^shell_path\s*=\s*("(?:[^"\\]|\\.)*")$/.exec(trimmed);
+      if (match) {
+        try {
+          return JSON.parse(match[1]) as string;
+        } catch {
+          return undefined;
+        }
+      }
+    }
   }
-
-  return {
-    isConfigured: false,
-    needsFix: true,
-  };
+  return undefined;
 }
 
 /**
- * Check Copilot shell configuration
+ * Check Codex CLI shell configuration: reads [windows] shell_path from
+ * config.toml, the exact field patchCodexShellFix writes.
+ */
+function checkCodexShell(home: string): {
+  isConfigured: boolean;
+  shell?: string;
+  needsFix: boolean;
+} {
+  try {
+    const configPath = path.join(home, '.codex', 'config.toml');
+    if (fs.existsSync(configPath)) {
+      const shellPath = readTomlWindowsShellPath(fs.readFileSync(configPath, 'utf-8'));
+      if (isBashPath(shellPath)) {
+        return {
+          isConfigured: true,
+          shell: shellPath,
+          needsFix: !shellPath.toLowerCase().includes('bash'),
+        };
+      }
+    }
+    return { isConfigured: false, needsFix: true };
+  } catch {
+    return { isConfigured: false, needsFix: true };
+  }
+}
+
+/**
+ * GitHub Copilot has no per-file shell override (see applyAgentShellFix) —
+ * it follows the SHELL env var, which Tier 0's Git Bash PATH entries already
+ * cover, so there is nothing here for `apply` to fix.
  */
 function checkCopilotShell(): { isConfigured: boolean; shell?: string; needsFix: boolean } {
-  // GitHub Copilot CLI respects the SHELL environment variable
-  const shell = process.env.SHELL;
-
-  if (shell && shell.toLowerCase().includes('bash')) {
-    return {
-      isConfigured: true,
-      shell,
-      needsFix: false,
-    };
-  }
-
-  return {
-    isConfigured: false,
-    needsFix: true,
-  };
+  return { isConfigured: true, needsFix: false };
 }
 
 /**
- * Check OpenCode shell configuration
+ * Check OpenCode shell configuration: reads `shell`, the exact field
+ * patchOpenCodeShellFix writes.
  */
-function checkOpenCodeShell(): { isConfigured: boolean; shell?: string; needsFix: boolean } {
+function checkOpenCodeShell(home: string): {
+  isConfigured: boolean;
+  shell?: string;
+  needsFix: boolean;
+} {
   try {
-    const home = process.env.HOME || process.env.USERPROFILE || '';
     const configPath = path.join(home, '.config', 'opencode', 'opencode.json');
-
     if (fs.existsSync(configPath)) {
-      const data = fs.readFileSync(configPath, 'utf-8');
-      const config = JSON.parse(data);
-
-      if (config.shell) {
-        return {
-          isConfigured: true,
-          shell: config.shell,
-          needsFix: !config.shell.toLowerCase().includes('bash'),
-        };
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8')) as Record<string, unknown>;
+      const shell = config.shell;
+      if (isBashPath(shell)) {
+        return { isConfigured: true, shell, needsFix: !shell.toLowerCase().includes('bash') };
       }
     }
-
-    return {
-      isConfigured: false,
-      needsFix: true,
-    };
+    return { isConfigured: false, needsFix: true };
   } catch {
-    return {
-      isConfigured: false,
-      needsFix: true,
-    };
+    return { isConfigured: false, needsFix: true };
   }
 }
