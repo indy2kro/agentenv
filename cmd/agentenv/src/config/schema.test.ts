@@ -5,6 +5,11 @@ import * as os from 'os';
 import * as path from 'path';
 import toml from 'toml';
 import {
+  BINARY_MAP,
+  DEFAULT_CONFIG,
+  TOOL_DESCRIPTIONS,
+  TOOL_KEYS,
+  TOOL_TIERS,
   configToToml,
   diffConfigs,
   loadConfig,
@@ -289,5 +294,89 @@ describe('integrations config', () => {
       'project',
     );
     assert.equal(resolveIntegrationScope({}, undefined), 'project');
+  });
+});
+
+const NEW_TOOLS: Array<{ key: string; binary: string; description: string }> = [
+  {
+    key: 'ripgrep_all',
+    binary: 'rga',
+    description: 'Fast ripgrep-based search across archives, docs, and code',
+  },
+  {
+    key: 'zoxide',
+    binary: 'zoxide',
+    description: 'Smarter cd with fuzzy matching and learning',
+  },
+  { key: 'shellcheck', binary: 'shellcheck', description: 'Shell script linter' },
+  { key: 'uv', binary: 'uv', description: 'Fast Python package and project manager' },
+  { key: 'xh', binary: 'xh', description: 'HTTP client with a curl-like interface' },
+  { key: 'actionlint', binary: 'actionlint', description: 'GitHub Actions workflow linter' },
+  {
+    key: 'gitleaks',
+    binary: 'gitleaks',
+    description: 'Secrets scan and protection (detect leaked secrets)',
+  },
+  {
+    key: 'gum',
+    binary: 'gum',
+    description: 'Glow up your shell scripts with styled prompts and spinners',
+  },
+  { key: 'glow', binary: 'glow', description: 'Markdown renderer for the terminal' },
+  { key: 'jless', binary: 'jless', description: 'Interactive JSON pager' },
+  { key: 'sd', binary: 'sd', description: 'Intuitive find-and-replace for text files' },
+  { key: 'tealdeer', binary: 'tldr', description: 'Fast, community-driven man pages (tldr)' },
+  { key: 'duckdb', binary: 'duckdb', description: 'Embeddable analytical SQL database' },
+  { key: 'qsv', binary: 'qsv', description: 'Ultra-fast CSV data processing toolkit' },
+];
+
+describe('tool catalog: new tier-3 tools', () => {
+  it('are registered in TOOL_KEYS, TOOL_TIERS, BINARY_MAP, and TOOL_DESCRIPTIONS', () => {
+    for (const { key, binary, description } of NEW_TOOLS) {
+      assert.ok(
+        TOOL_KEYS.includes(key as keyof NonNullable<AgentenvConfig['tools']>),
+        `missing TOOL_KEYS: ${key}`,
+      );
+      assert.equal(TOOL_TIERS[key], 3, `wrong tier for ${key}`);
+      assert.equal(BINARY_MAP[key], binary, `wrong binary for ${key}`);
+      assert.equal(TOOL_DESCRIPTIONS[key], description, `wrong description for ${key}`);
+    }
+  });
+
+  it('defaults all new tools to disabled', () => {
+    for (const { key } of NEW_TOOLS) {
+      assert.equal(
+        DEFAULT_CONFIG.tools?.[key as keyof NonNullable<AgentenvConfig['tools']>],
+        false,
+        `${key} should default to false`,
+      );
+    }
+  });
+
+  it('are accepted by validateConfig as known tool keys', () => {
+    const report = validateConfig({ tools: { ripgrep_all: true, duckdb: true } });
+    assert.ok(!report.errors.some((e) => e.includes('Unknown tool')), report.errors.join('; '));
+  });
+
+  it('round-trip through configToToml -> loadConfig preserves values', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-catalog-t1-'));
+    const configPath = path.join(dir, 'agentenv.toml');
+    fs.writeFileSync(
+      configPath,
+      configToToml({
+        scope: 'project',
+        tools: { ripgrep_all: true, tealdeer: true, duckdb: false },
+      }),
+    );
+    const loaded = loadConfig(configPath);
+    assert.equal(loaded.tools?.ripgrep_all, true);
+    assert.equal(loaded.tools?.tealdeer, true);
+    assert.equal(loaded.tools?.duckdb, false);
+  });
+
+  it('includes the new tools in the generated [tools] TOML block', () => {
+    const tomlContent = configToToml({ scope: 'project', tools: { uv: true, zoxide: true } });
+    assert.ok(tomlContent.includes('uv = true'));
+    assert.ok(tomlContent.includes('zoxide = true'));
   });
 });

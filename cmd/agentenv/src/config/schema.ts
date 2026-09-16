@@ -86,6 +86,21 @@ export interface AgentenvConfig {
     just?: boolean;
     watchexec?: boolean;
     direnv?: boolean;
+    // New tier-3 tools
+    ripgrep_all?: boolean;
+    zoxide?: boolean;
+    shellcheck?: boolean;
+    uv?: boolean;
+    xh?: boolean;
+    actionlint?: boolean;
+    gitleaks?: boolean;
+    gum?: boolean;
+    glow?: boolean;
+    jless?: boolean;
+    sd?: boolean;
+    tealdeer?: boolean;
+    duckdb?: boolean;
+    qsv?: boolean;
   };
   custom_tools?: CustomTool[];
   /**
@@ -133,6 +148,21 @@ export const DEFAULT_CONFIG: AgentenvConfig = {
     just: false,
     watchexec: false,
     direnv: false,
+    // New tier-3 tools (default: disabled)
+    ripgrep_all: false,
+    zoxide: false,
+    shellcheck: false,
+    uv: false,
+    xh: false,
+    actionlint: false,
+    gitleaks: false,
+    gum: false,
+    glow: false,
+    jless: false,
+    sd: false,
+    tealdeer: false,
+    duckdb: false,
+    qsv: false,
   },
   rtk: {
     enabled: true,
@@ -192,6 +222,20 @@ export const TOOL_KEYS: Array<keyof NonNullable<AgentenvConfig['tools']>> = [
   'just',
   'watchexec',
   'direnv',
+  'ripgrep_all',
+  'zoxide',
+  'shellcheck',
+  'uv',
+  'xh',
+  'actionlint',
+  'gitleaks',
+  'gum',
+  'glow',
+  'jless',
+  'sd',
+  'tealdeer',
+  'duckdb',
+  'qsv',
 ];
 
 // Tool tiers for categorization
@@ -218,6 +262,21 @@ export const TOOL_TIERS: Record<string, number> = {
   just: 3,
   watchexec: 3,
   direnv: 3,
+  // Tier 3 - new additions
+  ripgrep_all: 3,
+  zoxide: 3,
+  shellcheck: 3,
+  uv: 3,
+  xh: 3,
+  actionlint: 3,
+  gitleaks: 3,
+  gum: 3,
+  glow: 3,
+  jless: 3,
+  sd: 3,
+  tealdeer: 3,
+  duckdb: 3,
+  qsv: 3,
 };
 
 // Binary name mappings (TOML key -> binary name)
@@ -241,6 +300,21 @@ export const BINARY_MAP: Record<string, string> = {
   just: 'just',
   watchexec: 'watchexec',
   direnv: 'direnv',
+  // New tools
+  ripgrep_all: 'rga',
+  zoxide: 'zoxide',
+  shellcheck: 'shellcheck',
+  uv: 'uv',
+  xh: 'xh',
+  actionlint: 'actionlint',
+  gitleaks: 'gitleaks',
+  gum: 'gum',
+  glow: 'glow',
+  jless: 'jless',
+  sd: 'sd',
+  tealdeer: 'tldr',
+  duckdb: 'duckdb',
+  qsv: 'qsv',
 };
 
 // Tool descriptions
@@ -264,6 +338,21 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   just: 'Command runner for project recipes',
   watchexec: 'File watcher that runs commands on changes',
   direnv: 'Environment variable manager',
+  // New tools
+  ripgrep_all: 'Fast ripgrep-based search across archives, docs, and code',
+  zoxide: 'Smarter cd with fuzzy matching and learning',
+  shellcheck: 'Shell script linter',
+  uv: 'Fast Python package and project manager',
+  xh: 'HTTP client with a curl-like interface',
+  actionlint: 'GitHub Actions workflow linter',
+  gitleaks: 'Secrets scan and protection (detect leaked secrets)',
+  gum: 'Glow up your shell scripts with styled prompts and spinners',
+  glow: 'Markdown renderer for the terminal',
+  jless: 'Interactive JSON pager',
+  sd: 'Intuitive find-and-replace for text files',
+  tealdeer: 'Fast, community-driven man pages (tldr)',
+  duckdb: 'Embeddable analytical SQL database',
+  qsv: 'Ultra-fast CSV data processing toolkit',
 };
 
 /**
@@ -370,6 +459,20 @@ export function configToToml(config: AgentenvConfig): string {
       'just',
       'watchexec',
       'direnv',
+      'ripgrep_all',
+      'zoxide',
+      'shellcheck',
+      'uv',
+      'xh',
+      'actionlint',
+      'gitleaks',
+      'gum',
+      'glow',
+      'jless',
+      'sd',
+      'tealdeer',
+      'duckdb',
+      'qsv',
     ] as const;
     for (const key of toolKeys) {
       if (config.tools[key as keyof AgentenvConfig['tools']] !== undefined) {
@@ -506,6 +609,20 @@ function mergeWithDefaults(config: AgentenvConfig): AgentenvConfig {
       just: config.tools.just ?? DEFAULT_CONFIG.tools?.just,
       watchexec: config.tools.watchexec ?? DEFAULT_CONFIG.tools?.watchexec,
       direnv: config.tools.direnv ?? DEFAULT_CONFIG.tools?.direnv,
+      ripgrep_all: config.tools.ripgrep_all ?? DEFAULT_CONFIG.tools?.ripgrep_all,
+      zoxide: config.tools.zoxide ?? DEFAULT_CONFIG.tools?.zoxide,
+      shellcheck: config.tools.shellcheck ?? DEFAULT_CONFIG.tools?.shellcheck,
+      uv: config.tools.uv ?? DEFAULT_CONFIG.tools?.uv,
+      xh: config.tools.xh ?? DEFAULT_CONFIG.tools?.xh,
+      actionlint: config.tools.actionlint ?? DEFAULT_CONFIG.tools?.actionlint,
+      gitleaks: config.tools.gitleaks ?? DEFAULT_CONFIG.tools?.gitleaks,
+      gum: config.tools.gum ?? DEFAULT_CONFIG.tools?.gum,
+      glow: config.tools.glow ?? DEFAULT_CONFIG.tools?.glow,
+      jless: config.tools.jless ?? DEFAULT_CONFIG.tools?.jless,
+      sd: config.tools.sd ?? DEFAULT_CONFIG.tools?.sd,
+      tealdeer: config.tools.tealdeer ?? DEFAULT_CONFIG.tools?.tealdeer,
+      duckdb: config.tools.duckdb ?? DEFAULT_CONFIG.tools?.duckdb,
+      qsv: config.tools.qsv ?? DEFAULT_CONFIG.tools?.qsv,
     };
   }
 
