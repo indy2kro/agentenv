@@ -8,15 +8,17 @@ tools ourselves. `agentenv` is a thin orchestration + config layer on top of
 instructions). It never re-implements any dev tool — it just drives mise/rtk
 and writes config files for you.
 
-It targets four AI coding agents: **Claude Code**, **OpenAI Codex CLI**,
-**GitHub Copilot** (CLI/Chat), and **OpenCode**.
+It supports nine AI coding agents: **Claude Code**, **OpenAI Codex CLI**,
+**GitHub Copilot** (CLI/Chat), **OpenCode**, **Gemini CLI**, **Cursor**,
+**Windsurf**, **Cline CLI**, and **Mistral Vibe**. Claude Code and Codex CLI
+are enabled by default; the remaining agents are opt-in.
 
 If you've ever had an AI coding agent fumble because `grep`/`fd`/`jq` weren't
 on PATH, or watched every agent redo the same hook-wiring dance for a
 different config file format, that's what this fixes:
 
 - **One command** (`agentenv setup`) gets a fresh machine — Windows included
-  — to a working state for whichever of the four agents you have installed.
+  — to a working state for whichever supported agents you have installed.
 - **A single source of truth** (`agentenv.toml`) drives everything else:
   `mise.toml`, `AGENTS.md`/`CLAUDE.md`, and each agent's own hook files are
   all generated from it, never hand-maintained.
@@ -35,7 +37,7 @@ different config file format, that's what this fixes:
   anything.
 - **Git for Windows**, if you're on Windows — agentenv's Tier 0 shell fix
   relies on the POSIX toolchain it bundles.
-- Optionally, whichever of the four agents you want configured already
+- Optionally, whichever supported agents you want configured already
   installed (agentenv detects what's present; it doesn't install the agents
   themselves).
 
@@ -56,7 +58,7 @@ already taken on the registry). Installing from source instead? See
 agentenv setup
 ```
 
-This is Simple mode: it auto-detects which of the four agents are installed,
+This is Simple mode: it auto-detects which supported agents are installed,
 offers the default tool set (Tier 1 always, Tier 2 unless you decline),
 writes `agentenv.toml`, and wires everything up in one pass — including the
 Windows shell fix if you're on Windows. Answer three prompts (agents, Tier 2
@@ -101,6 +103,11 @@ claude_code = true
 codex_cli   = true
 copilot     = true
 opencode    = true
+gemini_cli  = false
+cursor      = false
+windsurf    = false
+cline       = false
+vibe        = false
 
 [tools]
 # Tier 1 (essential, on by default)
@@ -114,7 +121,21 @@ git_delta  = true
 gh         = true
 difftastic = true
 # Tier 3 (power-user, off by default) — see cmd/agentenv/README.md for the full list
-yq = false
+yq          = false
+ripgrep_all = false
+zoxide      = false
+shellcheck  = false
+uv          = false
+xh          = false
+actionlint  = false
+gitleaks    = false
+gum         = false
+glow        = false
+jless       = false
+sd          = false
+tealdeer    = false
+duckdb      = false
+qsv         = false
 
 [rtk]
 enabled = true

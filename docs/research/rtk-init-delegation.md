@@ -1,6 +1,11 @@
 # Open Question: Delegate Hook Wiring to `rtk init` vs. Hand-Write Hooks
 
-**Status:** Open — to be resolved during Phase 2, before adapter acceptance.
+**Status:** Resolved — implemented in the adapter catalog as of 2026-09-16.
+
+The current implementation delegates RTK initialization for all nine supported
+agents through the shared `RtkDelegationAdapter` where RTK owns the integration
+surface. The four-agent wording in the original findings below is retained as
+historical research context.
 
 ## The Question
 
@@ -51,7 +56,7 @@ Queried via `rtk init --help` and `rtk init --<agent> --dry-run -v` (in a
 throwaway HOME; no files written). This machine has `rtk 0.42.4` on PATH
 from mise.
 
-`rtk init` flags for our four agents:
+`rtk init` flags for the original four v1 agents:
 
 | Flag | Behavior (dry-run) | Matches current adapter? |
 |---|---|---|
@@ -90,7 +95,7 @@ Consequences:
    in `status`/`configure` without writing, or run with the patch flags for
    non-interactive apply.
 
-## What to Verify in Phase 2
+## Historical Phase 2 Verification Checklist
 
 On each OS, after `mise install` makes `rtk` available:
 
@@ -98,8 +103,9 @@ On each OS, after `mise install` makes `rtk` available:
    against what the adapter currently writes — largely **done above**; the
    remaining gap is the OpenCode plugin file rtk actually generates.
 2. Confirm `rtk init` is idempotent / safe to re-run.
-3. Decide the delegation boundary (see Options below) and record the decision
-   back in `docs/plans/agentenv-dev-plan.md` Phase 2.
+3. The delegation boundary was subsequently recorded in the implementation:
+   Claude Code retains its verified native adapter, while the other supported
+   agents use RTK delegation.
 
 ## Related
 

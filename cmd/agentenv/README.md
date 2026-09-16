@@ -10,8 +10,10 @@
 instructions). It never re-implements any dev tool — it just drives mise/rtk
 and writes config files for you.
 
-It targets four AI coding agents: **Claude Code**, **OpenAI Codex CLI**,
-**GitHub Copilot** (CLI/Chat), and **OpenCode**.
+It supports nine AI coding agents: **Claude Code**, **OpenAI Codex CLI**,
+**GitHub Copilot** (CLI/Chat), **OpenCode**, **Gemini CLI**, **Cursor**,
+**Windsurf**, **Cline CLI**, and **Mistral Vibe**. Claude Code and Codex CLI
+are enabled by default; the remaining agents are opt-in.
 
 > **📦 Published as `@indy2kro/agentenv`.** The npm package name is scoped
 > (`agentenv` was already taken) — install with
@@ -39,7 +41,7 @@ on PATH, or watched every agent redo the same hook-wiring dance for a
 different config file format, that's what this fixes:
 
 - **One command** (`agentenv setup`) gets a fresh machine — Windows included
-  — to a working state for whichever of the four agents you have installed.
+  — to a working state for whichever supported agents you have installed.
 - **A single source of truth** (`agentenv.toml`) drives everything else:
   `mise.toml`, `AGENTS.md`/`CLAUDE.md`, and each agent's own hook files are
   all generated from it, never hand-maintained.
@@ -58,7 +60,7 @@ different config file format, that's what this fixes:
   anything.
 - **Git for Windows**, if you're on Windows — agentenv's Tier 0 shell fix
   relies on the POSIX toolchain it bundles.
-- Optionally, whichever of the four agents you want configured already
+- Optionally, whichever supported agents you want configured already
   installed (agentenv detects what's present; it doesn't install the agents
   themselves).
 
@@ -104,7 +106,7 @@ Maintainers: see [`docs/guides/releasing.md`](../../docs/guides/releasing.md).
 agentenv setup
 ```
 
-This is Simple mode: it auto-detects which of the four agents are installed,
+This is Simple mode: it auto-detects which supported agents are installed,
 offers the default tool set (Tier 1 always, Tier 2 unless you decline),
 writes `agentenv.toml`, and wires everything up in one pass — including the
 Windows shell fix if you're on Windows. Answer three prompts (agents, Tier 2
@@ -161,6 +163,11 @@ claude_code = true
 codex_cli   = true
 copilot     = true
 opencode    = true
+gemini_cli  = false
+cursor      = false
+windsurf    = false
+cline       = false
+vibe        = false
 
 [tools]
 # Tier 1 (essential, on by default)
@@ -174,9 +181,30 @@ git_delta  = true
 gh         = true
 difftastic = true
 # Tier 3 (power-user, off by default) — see the Tool catalog below for the full list
-yq = false
-bat = false
-# ...
+yq          = false
+bat         = false
+eza         = false
+miller      = false
+tokei       = false
+hyperfine  = false
+fzf         = false
+just        = false
+watchexec   = false
+direnv      = false
+ripgrep_all = false
+zoxide      = false
+shellcheck  = false
+uv          = false
+xh          = false
+actionlint  = false
+gitleaks    = false
+gum         = false
+glow        = false
+jless       = false
+sd          = false
+tealdeer    = false
+duckdb      = false
+qsv         = false
 
 # Your own tool, already installed somewhere on the machine
 [[custom_tools]]
@@ -220,13 +248,31 @@ default. Run `agentenv configure` if you'd rather build this file
 interactively than hand-write it; the review screen at the end shows you the
 exact diff before anything is written.
 
+## Supported agents
+
+| Agent | Config key | Default |
+|---|---|---|
+| Claude Code | `claude_code` | on |
+| OpenAI Codex CLI | `codex_cli` | on |
+| GitHub Copilot | `copilot` | off |
+| OpenCode | `opencode` | off |
+| Gemini CLI | `gemini_cli` | off |
+| Cursor | `cursor` | off |
+| Windsurf | `windsurf` | off |
+| Cline CLI | `cline` | off |
+| Mistral Vibe | `vibe` | off |
+
+`agentenv setup` detects installed agents and offers the Simple-mode defaults.
+Use `agentenv configure` or `--agents` when you need to select the full
+supported set explicitly.
+
 ## Tool catalog
 
 | Tier | Tools | Default |
 |---|---|---|
 | **1 — essential** | `ripgrep` (rg), `fd`, `jq`, `rtk` | always on |
-| **2 — AI-coding value-add** | `ast_grep` (sg), `git_delta` (delta), `gh`, `difftastic` (difft) | on (Simple mode asks once) |
-| **3 — power-user** | `universal_ctags`, `yq`, `bat`, `eza`, `miller` (mlr), `tokei`, `hyperfine`, `fzf`, `just`, `watchexec`, `direnv` | off — pick individually via `agentenv configure` |
+| **2 — AI-coding value-add** | `ast_grep` (sg), `git_delta` (delta), `universal_ctags`, `gh`, `difftastic` (difft) | on (Simple mode asks once) |
+| **3 — power-user** | `yq`, `bat`, `eza`, `miller` (mlr), `tokei`, `hyperfine`, `fzf`, `just`, `watchexec`, `direnv`, `ripgrep_all` (rga), `zoxide`, `shellcheck`, `uv`, `xh`, `actionlint`, `gitleaks`, `gum`, `glow`, `jless`, `sd`, `tealdeer` (tldr), `duckdb`, `qsv` | off — pick individually via `agentenv configure` |
 
 All of Tiers 1–3 install through mise the same way — no separate mechanism.
 Two tools (`universal_ctags`, `tokei`) aren't in mise's registry on every
@@ -255,7 +301,7 @@ Agentenv can optionally install third-party skill/methodology integrations
 through their own documented native installers — never bundled, never
 forked. The first is [Superpowers](https://github.com/obra/superpowers).
 Superpowers itself now supports a long list of coding agents/harnesses, but
-of agentenv's four v1 targets, only Claude Code has a documented,
+of agentenv's original four v1 targets, only Claude Code has a documented,
 non-interactive, ref-pinnable installer today
 (`claude plugin marketplace add` / `claude plugin install`). Copilot
 documents a command of the same shape but no way to pin a ref, and Codex

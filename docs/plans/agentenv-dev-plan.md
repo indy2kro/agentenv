@@ -12,6 +12,12 @@ dev tools ourselves.
 - GitHub Copilot (CLI / Chat)
 - OpenCode
 
+**Current implementation status (2026-09-16):** the catalog has expanded to
+nine supported agents — the four v1 targets plus Gemini CLI, Cursor, Windsurf,
+Cline CLI, and Mistral Vibe — and 33 catalog tools, including 14 opt-in Tier 3
+additions. The original v1 requirements below remain the historical baseline;
+the current adapter, wizard, and status surfaces use the expanded catalog.
+
 **Design constraint:** the core (tool installation, instruction content,
 config format) must stay agent-agnostic. Support for any additional agent
 (Cursor, Gemini CLI, Windsurf, Cline, etc.) should be addable later as a new
