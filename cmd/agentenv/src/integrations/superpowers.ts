@@ -159,7 +159,9 @@ export class SuperpowersAdapter implements IntegrationAdapter {
 
   async detect(baseDir: string, config: IntegrationConfig | undefined): Promise<IntegrationResult> {
     const scope = resolveIntegrationScope({}, config);
-    const requestedAgents = config?.agents ?? [...AGENT_KEYS];
+    const requestedAgents: AgentKey[] = (config?.agents as AgentKey[] | undefined) ?? [
+      ...AGENT_KEYS,
+    ];
     const result: IntegrationResult = {
       name: this.getName(),
       source: config?.source,

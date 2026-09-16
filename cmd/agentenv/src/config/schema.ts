@@ -6,6 +6,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import toml from 'toml';
+import { writeFileWithVerify } from '../utils/fs-retry.js';
 
 export interface CustomTool {
   name: string;
@@ -25,6 +26,11 @@ export interface RtkConfig {
     codex_cli?: boolean;
     copilot?: boolean;
     opencode?: boolean;
+    gemini_cli?: boolean;
+    cursor?: boolean;
+    windsurf?: boolean;
+    cline?: boolean;
+    vibe?: boolean;
   };
 }
 
@@ -49,7 +55,7 @@ export interface IntegrationConfig {
   source?: string;
   ref?: string;
   scope?: 'project' | 'user';
-  agents?: AgentKey[];
+  agents?: string[];
   allow_hooks?: boolean;
   allow_external_requests?: boolean;
 }
@@ -65,6 +71,11 @@ export interface AgentenvConfig {
     codex_cli?: boolean;
     copilot?: boolean;
     opencode?: boolean;
+    gemini_cli?: boolean;
+    cursor?: boolean;
+    windsurf?: boolean;
+    cline?: boolean;
+    vibe?: boolean;
   };
   tools?: {
     ripgrep?: boolean;
@@ -122,8 +133,13 @@ export const DEFAULT_CONFIG: AgentenvConfig = {
   agents: {
     claude_code: true,
     codex_cli: true,
-    copilot: true,
-    opencode: true,
+    copilot: false,
+    opencode: false,
+    gemini_cli: false,
+    cursor: false,
+    windsurf: false,
+    cline: false,
+    vibe: false,
   },
   tools: {
     // Tier 1 - always enabled by default
@@ -171,6 +187,11 @@ export const DEFAULT_CONFIG: AgentenvConfig = {
       codex_cli: true,
       copilot: true,
       opencode: true,
+      gemini_cli: true,
+      cursor: true,
+      windsurf: true,
+      cline: true,
+      vibe: true,
     },
   },
   tier0: {
@@ -194,7 +215,17 @@ export const DEFAULT_CONFIG: AgentenvConfig = {
 };
 
 // Known agent keys for validation
-export const AGENT_KEYS = ['claude_code', 'codex_cli', 'copilot', 'opencode'] as const;
+export const AGENT_KEYS = [
+  'claude_code',
+  'codex_cli',
+  'copilot',
+  'opencode',
+  'gemini_cli',
+  'cursor',
+  'windsurf',
+  'cline',
+  'vibe',
+] as const;
 export type AgentKey = (typeof AGENT_KEYS)[number];
 
 // Known integration keys for validation
@@ -408,8 +439,8 @@ export function loadConfig(configPath?: string): AgentenvConfig {
 export function saveConfig(config: AgentenvConfig, configPath: string): void {
   try {
     fs.mkdirSync(path.dirname(configPath), { recursive: true });
-    const tomlString = configToToml(config);
-    fs.writeFileSync(configPath, tomlString);
+    const result = writeFileWithVerify(configPath, configToToml(config));
+    if (!result.success) throw new Error(result.message);
   } catch (err) {
     throw new Error(`Failed to save config: ${err}`, { cause: err });
   }
@@ -429,11 +460,10 @@ export function configToToml(config: AgentenvConfig): string {
   // Agents
   if (config.agents) {
     lines.push('\n[agents]');
-    if (config.agents.claude_code !== undefined)
-      lines.push(`claude_code = ${config.agents.claude_code}`);
-    if (config.agents.codex_cli !== undefined) lines.push(`codex_cli = ${config.agents.codex_cli}`);
-    if (config.agents.copilot !== undefined) lines.push(`copilot = ${config.agents.copilot}`);
-    if (config.agents.opencode !== undefined) lines.push(`opencode = ${config.agents.opencode}`);
+    for (const key of AGENT_KEYS) {
+      const value = config.agents[key];
+      if (value !== undefined) lines.push(`${key} = ${value}`);
+    }
   }
 
   // Tools
@@ -513,13 +543,10 @@ export function configToToml(config: AgentenvConfig): string {
     if (config.rtk.enabled !== undefined) lines.push(`enabled = ${config.rtk.enabled}`);
     if (config.rtk.init) {
       lines.push('\n[rtk.init]');
-      if (config.rtk.init.claude_code !== undefined)
-        lines.push(`claude_code = ${config.rtk.init.claude_code}`);
-      if (config.rtk.init.codex_cli !== undefined)
-        lines.push(`codex_cli = ${config.rtk.init.codex_cli}`);
-      if (config.rtk.init.copilot !== undefined) lines.push(`copilot = ${config.rtk.init.copilot}`);
-      if (config.rtk.init.opencode !== undefined)
-        lines.push(`opencode = ${config.rtk.init.opencode}`);
+      for (const key of AGENT_KEYS) {
+        const value = config.rtk.init[key];
+        if (value !== undefined) lines.push(`${key} = ${value}`);
+      }
     }
   }
 
@@ -579,12 +606,7 @@ function mergeWithDefaults(config: AgentenvConfig): AgentenvConfig {
 
   // Merge agents
   if (config.agents) {
-    result.agents = {
-      claude_code: config.agents.claude_code ?? DEFAULT_CONFIG.agents?.claude_code,
-      codex_cli: config.agents.codex_cli ?? DEFAULT_CONFIG.agents?.codex_cli,
-      copilot: config.agents.copilot ?? DEFAULT_CONFIG.agents?.copilot,
-      opencode: config.agents.opencode ?? DEFAULT_CONFIG.agents?.opencode,
-    };
+    result.agents = { ...DEFAULT_CONFIG.agents, ...config.agents };
   }
 
   // Merge tools
@@ -641,12 +663,9 @@ function mergeWithDefaults(config: AgentenvConfig): AgentenvConfig {
   if (config.rtk) {
     result.rtk = {
       enabled: config.rtk.enabled ?? DEFAULT_CONFIG.rtk?.enabled,
-      init: {
-        claude_code: config.rtk.init?.claude_code ?? DEFAULT_CONFIG.rtk?.init?.claude_code,
-        codex_cli: config.rtk.init?.codex_cli ?? DEFAULT_CONFIG.rtk?.init?.codex_cli,
-        copilot: config.rtk.init?.copilot ?? DEFAULT_CONFIG.rtk?.init?.copilot,
-        opencode: config.rtk.init?.opencode ?? DEFAULT_CONFIG.rtk?.init?.opencode,
-      },
+      init: Object.fromEntries(
+        AGENT_KEYS.map((key) => [key, config.rtk?.init?.[key] ?? DEFAULT_CONFIG.rtk?.init?.[key]]),
+      ) as NonNullable<RtkConfig['init']>,
     };
   }
 
@@ -714,12 +733,7 @@ function mergeWithDefaults(config: AgentenvConfig): AgentenvConfig {
  */
 export function getEnabledAgents(config: AgentenvConfig): string[] {
   const agents = config.agents || DEFAULT_CONFIG.agents || {};
-  const enabled: string[] = [];
-  if (agents.claude_code) enabled.push('claude_code');
-  if (agents.codex_cli) enabled.push('codex_cli');
-  if (agents.copilot) enabled.push('copilot');
-  if (agents.opencode) enabled.push('opencode');
-  return enabled;
+  return AGENT_KEYS.filter((key) => agents[key] === true);
 }
 
 /**

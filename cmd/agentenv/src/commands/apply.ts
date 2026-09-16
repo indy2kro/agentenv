@@ -5,6 +5,11 @@ import {
   CodexCliAdapter,
   CopilotAdapter,
   OpenCodeAdapter,
+  GeminiCliAdapter,
+  CursorAdapter,
+  WindsurfAdapter,
+  ClineAdapter,
+  VibeAdapter,
 } from '../adapters/index.js';
 import type { BaseAdapter } from '../adapters/index.js';
 import { getEnabledAgents, loadConfig, validateConfig } from '../config/schema.js';
@@ -18,17 +23,22 @@ import { fixShellConfiguration } from '../shell/detector.js';
 import type { RtkInitFn } from '../toolchain/rtk.js';
 import {
   ensureGlobalShimsDir,
+  eulaPreflightHint,
   generateMiseToml,
-  getMiseVersion,
   isMiseInstalled,
   miseActivationHint,
   miseInstallInstructions,
   miseInstallOutcome,
+  prereqMessage,
   runMiseInstall,
   saveMiseToml,
+  toolAvailabilityLine,
   trustMiseToml,
+  verifyHintNeeded,
+  verifySummaryLine,
   verifyToolAvailability,
 } from '../toolchain/mise.js';
+import { normalizeOutput } from '../utils/output.js';
 import { colorizeLine, theme } from '../ui/theme.js';
 import { withSpinner } from '../ui/spinner.js';
 
@@ -44,6 +54,12 @@ export interface ApplyOptions {
    * only wants file generation (e.g. CI too fast, or a dry-run apply).
    */
   skipMiseInstall?: boolean;
+  /**
+   * Skip pushing the "Prerequisite: mise X" line. `setup`/`configure` pass
+   * this so the line is printed exactly once per run (their own prereq check
+   * already printed it).
+   */
+  skipPrereqMessage?: boolean;
   /** Injectable `rtk init` runner (tests pass a stub). */
   rtkInit?: RtkInitFn;
   /** Injectable Superpowers adapter dependencies (tests pass a claude stub). */
@@ -66,6 +82,11 @@ function adaptersFor(
   if (config.agents?.codex_cli) adapters.push(new CodexCliAdapter(adapterConfig));
   if (config.agents?.copilot) adapters.push(new CopilotAdapter(adapterConfig));
   if (config.agents?.opencode) adapters.push(new OpenCodeAdapter(adapterConfig));
+  if (config.agents?.gemini_cli) adapters.push(new GeminiCliAdapter(adapterConfig));
+  if (config.agents?.cursor) adapters.push(new CursorAdapter(adapterConfig));
+  if (config.agents?.windsurf) adapters.push(new WindsurfAdapter(adapterConfig));
+  if (config.agents?.cline) adapters.push(new ClineAdapter(adapterConfig));
+  if (config.agents?.vibe) adapters.push(new VibeAdapter(adapterConfig));
   return adapters;
 }
 
@@ -97,13 +118,15 @@ export async function applyConfiguration(
       errors.push(...miseInstallInstructions());
       return { success: false, messages, errors };
     }
-    messages.push(`Prerequisite: mise ${getMiseVersion()}`);
+    if (!options.skipPrereqMessage) {
+      messages.push(prereqMessage());
+    }
   }
 
   // Step 1 — Tier 0 shell compatibility fix.
   if (config.tier0?.check_enabled !== false) {
     const enabledAgents = getEnabledAgents(config) as AgentKey[];
-    const tier0 = fixShellConfiguration(baseDir, enabledAgents);
+    const tier0 = fixShellConfiguration(baseDir, enabledAgents, process.stdin.isTTY === true);
     (tier0.success ? messages : errors).push(`Tier 0: ${tier0.message}`);
     if (tier0.results) {
       for (const result of tier0.results) {
@@ -132,30 +155,30 @@ export async function applyConfiguration(
     const trust = trustMiseToml(misePath, baseDir);
     (trust.success ? messages : errors).push(trust.message);
 
+    const eulaAhead = eulaPreflightHint(config);
+    if (eulaAhead) messages.push(eulaAhead);
+
     const install = await runMiseInstall(misePath, baseDir);
     if (install.success) {
       messages.push(miseInstallOutcome(install.stdout));
+      if (install.eulaHint) messages.push(install.eulaHint);
     } else {
+      const installDetail = normalizeOutput(install.stderr || install.stdout).trim();
       errors.push(
-        `mise install failed${install.exitCode === null ? '' : ` (exit ${install.exitCode})`}: ${install.stderr || install.stdout}`,
+        `mise install failed${install.exitCode === null ? '' : ` (exit ${install.exitCode})`}: ${installDetail}${install.eulaHint ? ` ${install.eulaHint}` : ''}`,
       );
     }
 
     if (errors.length === 0) {
       const availability = verifyToolAvailability(config);
-      const onPath = availability.filter((tool) => tool.onPath);
-      const notOnPath = availability.filter((tool) => !tool.onPath);
-      messages.push(
-        `Verify: ${onPath.length}/${availability.length} configured tools resolve on PATH`,
-      );
-      for (const tool of onPath) messages.push(`  ✓ ${tool.binary} (${tool.key})`);
-      for (const tool of notOnPath) {
-        messages.push(
-          `  ✗ ${tool.binary} (${tool.key}) — installed but not resolvable in this shell`,
+      const missing = availability.filter((tool) => tool.status === 'missing');
+      messages.push(verifySummaryLine(availability));
+      for (const tool of availability) messages.push(`  ${toolAvailabilityLine(tool)}`);
+      if (verifyHintNeeded(availability)) messages.push(miseActivationHint());
+      if (missing.length > 0) {
+        errors.push(
+          `Tool verification failed: ${missing.length} of ${availability.length} configured tools are not installed (mise install did not produce them)`,
         );
-      }
-      if (notOnPath.length > 0) {
-        messages.push(miseActivationHint());
       }
     }
   }

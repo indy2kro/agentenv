@@ -3,7 +3,13 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { detectInstalledAgents, isAgentInstalled, resolveBinary } from './detect.js';
+import {
+  AGENT_COMMANDS,
+  detectInstalledAgents,
+  isAgentInstalled,
+  resolveBinary,
+} from './detect.js';
+import { AGENT_KEYS } from '../config/schema.js';
 import type { DetectFn } from './detect.js';
 
 function fakeDetect(present: string[]): DetectFn {
@@ -44,5 +50,28 @@ describe('agent installation detection', () => {
     if (process.platform !== 'win32') fs.chmodSync(binary, 0o755);
 
     assert.equal(resolveBinary(binary), binary);
+  });
+});
+
+describe('agent catalog: detection', () => {
+  it('AGENT_COMMANDS covers every agent key with a non-empty binary array', () => {
+    for (const key of AGENT_KEYS) {
+      const cmds = AGENT_COMMANDS[key];
+      assert.ok(
+        Array.isArray(cmds) && cmds.length > 0,
+        `AGENT_COMMANDS missing or empty for ${key}`,
+      );
+    }
+  });
+
+  it('detects the five new agents by their CLI binaries', () => {
+    assert.deepEqual(
+      detectInstalledAgents(fakeDetect(['gemini', 'cursor', 'windsurf', 'cline', 'vibe'])),
+      ['gemini_cli', 'cursor', 'windsurf', 'cline', 'vibe'],
+    );
+  });
+
+  it('isAgentInstalled returns false for a missing binary', () => {
+    assert.equal(isAgentInstalled('gemini_cli', fakeDetect([])), false);
   });
 });

@@ -9,6 +9,7 @@ import * as path from 'path';
 import * as child_process from 'child_process';
 import { AgentenvConfig, BINARY_MAP, TOOL_KEYS, TOOL_TIERS } from '../config/schema.js';
 import { resolveBinary } from '../adapters/detect.js';
+import { writeFileWithVerify } from '../utils/fs-retry.js';
 import { FALLBACK_REQUIRED_TOOLS, requiresFallback } from './fallbacks.js';
 
 // Tool to mise name mappings
@@ -32,6 +33,21 @@ export const MISE_TOOL_NAMES: Record<string, string> = {
   just: 'just',
   watchexec: 'watchexec',
   direnv: 'direnv',
+  // New tools
+  ripgrep_all: 'ripgrep-all',
+  zoxide: 'zoxide',
+  shellcheck: 'shellcheck',
+  uv: 'uv',
+  xh: 'xh',
+  actionlint: 'actionlint',
+  gitleaks: 'gitleaks',
+  gum: 'gum',
+  glow: 'glow',
+  jless: 'jless',
+  sd: 'sd',
+  tealdeer: 'tealdeer',
+  duckdb: 'duckdb',
+  qsv: 'qsv',
 };
 
 // Tools that cannot be installed via mise and require fallback
@@ -257,9 +273,13 @@ function tomlPath(p: string): string {
 export function saveMiseToml(content: string, outputPath: string): void {
   try {
     fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-    fs.writeFileSync(outputPath, content);
+    const result = writeFileWithVerify(outputPath, content);
+    if (!result.success) throw new Error(result.message);
   } catch (err) {
-    throw new Error(`Failed to save mise.toml: ${err}`, { cause: err });
+    throw new Error(
+      `Failed to save mise.toml: ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
+    );
   }
 }
 
@@ -373,40 +393,87 @@ export async function runMiseUpgrade(
   }
 }
 
+export interface RunMiseCapturedOptions {
+  cwd?: string;
+  /** When known, point mise at the project's mise.toml via MISE_CONFIG_FILE. */
+  miseTomlPath?: string;
+}
+
+export interface MiseCapturedOutput {
+  status: number | null;
+  stdout: string;
+  stderr: string;
+  blockedWarn: boolean;
+}
+
+/**
+ * Run a single mise command with args passed as an array (never a
+ * string-built command — paths with spaces would break parsing on Windows)
+ * and with stderr captured instead of inherited. This is the one funnel every
+ * mise capture goes through so a `mise WARN` update notice on stderr can
+ * never leak into agentenv's stdout.
+ */
+export function runMiseCaptured(
+  args: string[],
+  opts: RunMiseCapturedOptions = {},
+): MiseCapturedOutput {
+  const env = opts.miseTomlPath
+    ? { ...process.env, MISE_CONFIG_FILE: opts.miseTomlPath }
+    : process.env;
+  let result: child_process.SpawnSyncReturns<string>;
+  try {
+    result = child_process.spawnSync('mise', args, {
+      cwd: opts.cwd,
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env,
+    });
+  } catch (err) {
+    return {
+      status: null,
+      stdout: '',
+      stderr: err instanceof Error ? err.message : String(err),
+      blockedWarn: false,
+    };
+  }
+  const stderr = result.error ? result.error.message : (result.stderr ?? '');
+  return {
+    status: result.status,
+    stdout: result.stdout ?? '',
+    stderr,
+    blockedWarn: /warn|self-update|version .* available/i.test(stderr),
+  };
+}
+
 /**
  * Check if a specific tool is installed via mise
  */
 export function isMiseInstalled(): boolean {
-  try {
-    child_process.execSync('mise --version', { stdio: 'ignore' });
-    return true;
-  } catch {
-    return false;
-  }
+  return runMiseCaptured(['--version']).status === 0;
 }
 
 /**
- * Get mise version
+ * Get mise version. The probe is silent by construction: it only reads
+ * stdout, never surfaces whatever mise may have written to stderr (a
+ * `mise WARN release available` update notice is not truth about the
+ * installed version, so it is dropped here).
  */
 export function getMiseVersion(): string {
-  try {
-    const output = child_process.execSync('mise --version', { encoding: 'utf-8' });
-    return output.trim();
-  } catch {
-    return 'unknown';
-  }
+  const result = runMiseCaptured(['--version']);
+  const version = result.stdout.trim();
+  return result.status === 0 && version !== '' ? version : 'unknown';
+}
+
+/** Alias used by prereq/status/doctor so version probes never surface mise WARN. */
+export function getMiseVersionSilent(): string {
+  return getMiseVersion();
 }
 
 /**
  * Check if a specific tool is installed via mise
  */
 export function isToolInstalled(toolName: string): boolean {
-  try {
-    child_process.execSync(`mise which ${toolName}`, { stdio: 'ignore' });
-    return true;
-  } catch {
-    return false;
-  }
+  return runMiseCaptured(['which', toolName]).status === 0;
 }
 
 /**
@@ -430,6 +497,23 @@ export function ensureMiseInstalled(): {
       "mise is not installed. agentenv uses mise to install and manage this project's tools.\n" +
       miseInstallInstructions().join('\n'),
   };
+}
+
+/**
+ * The literal "Prerequisite: mise X" line, built from a version string so
+ * setup/configure/apply all render identically without drifting.
+ */
+export function prereqLine(version: string): string {
+  return `Prerequisite: mise ${version}`;
+}
+
+/**
+ * The shared "Prerequisite: mise X" string, resolved from the real mise. Both
+ * paths that funnel into `apply` (setup/configure) can tell apply "we already
+ * printed it" without the line drifting.
+ */
+export function prereqMessage(): string {
+  return prereqLine(getMiseVersion());
 }
 
 /**
@@ -464,29 +548,18 @@ export function trustMiseToml(
   success: boolean;
   message: string;
 } {
-  try {
-    const result = child_process.spawnSync('mise', ['trust', miseTomlPath], {
-      cwd,
-      encoding: 'utf-8',
-      stdio: 'pipe',
-    });
-    if (result.status === 0) {
-      return { success: true, message: `Trusted ${miseTomlPath} (mise trust)` };
-    }
-    return {
-      success: false,
-      message: `mise trust failed (exit ${result.status ?? 'null'}): ${(
-        result.stderr ||
-        result.stdout ||
-        ''
-      ).trim()}`,
-    };
-  } catch (err) {
-    return {
-      success: false,
-      message: `mise trust errored: ${err instanceof Error ? err.message : String(err)}`,
-    };
+  const result = runMiseCaptured(['trust', miseTomlPath], { cwd });
+  if (result.status === 0) {
+    return { success: true, message: `Trusted ${miseTomlPath} (mise trust)` };
   }
+  const detail = (result.stderr || result.stdout || '').trim();
+  if (result.status === null && detail) {
+    return { success: false, message: `mise trust errored: ${detail}` };
+  }
+  return {
+    success: false,
+    message: `mise trust failed (exit ${result.status ?? 'null'}): ${detail}`,
+  };
 }
 
 /**
@@ -504,15 +577,67 @@ export function miseInstallOutcome(stdout: string): string {
   return 'mise install completed';
 }
 
+export type ToolResolvability = 'resolvable' | 'needs-new-terminal' | 'missing';
+
 export interface ToolAvailability {
   key: string;
   binary: string;
   onPath: boolean;
+  status: ToolResolvability;
+}
+
+/**
+ * True when a shim file for `binary` exists on disk under `dir` (case-folded,
+ * and accepting the .exe/.cmd/.bat suffix Windows shims get). This is what
+ * distinguishes "installed, just not on this stale PATH's resolve set" from
+ * "not installed at all" — a new terminal picks the shim up from here.
+ */
+export function shimExistsIn(binary: string, dir: string): boolean {
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(dir);
+  } catch {
+    return false;
+  }
+  const base = binary.toLowerCase();
+  return entries.some((entry) => {
+    const name = entry.toLowerCase();
+    return (
+      name === base || name === `${base}.exe` || name === `${base}.cmd` || name === `${base}.bat`
+    );
+  });
+}
+
+/** Whether the shim for `binary` exists in the common shims dir (~/.local/bin). */
+export function shimExists(binary: string): boolean {
+  return shimExistsIn(binary, shimsDir());
+}
+
+/**
+ * The three-state verdict for one binary. `resolvable` means it is on the
+ * current PATH; `needs-new-terminal` means it is installed (a mise shim exists
+ * on disk under the shims dir) but the current shell's PATH is stale; `missing`
+ * means neither — the only case that is a genuine failure.
+ */
+export function classifyToolResolvability(
+  onPath: boolean,
+  shimPresent: boolean,
+  isWindows: boolean = process.platform === 'win32',
+): ToolResolvability {
+  if (onPath) return 'resolvable';
+  if (isWindows && shimPresent) return 'needs-new-terminal';
+  return 'missing';
+}
+
+export function toolResolvability(binary: string): ToolResolvability {
+  return classifyToolResolvability(resolveBinary(binary) !== null, shimExists(binary));
 }
 
 /**
  * After `mise install`, check which enabled tools actually resolve on PATH so
- * setup/apply can report honestly whether shims are active in this shell.
+ * setup/apply can report honestly whether shims are active in this shell. On
+ * Windows an installed tool that is only reachable from a *new* terminal is
+ * classified `needs-new-terminal`, not `missing`.
  */
 export function verifyToolAvailability(config: AgentenvConfig): ToolAvailability[] {
   const tools = config.tools || {};
@@ -520,9 +645,64 @@ export function verifyToolAvailability(config: AgentenvConfig): ToolAvailability
   for (const key of TOOL_KEYS) {
     if (tools[key] !== true) continue;
     const binary = BINARY_MAP[key];
-    result.push({ key, binary, onPath: resolveBinary(binary) !== null });
+    const onPath = resolveBinary(binary) !== null;
+    result.push({
+      key,
+      binary,
+      onPath,
+      status: classifyToolResolvability(onPath, shimExists(binary)),
+    });
   }
   return result;
+}
+
+export interface VerifyCounts {
+  resolvable: number;
+  needsNewTerminal: number;
+  missing: number;
+}
+
+export function verifyCounts(availability: ToolAvailability[]): VerifyCounts {
+  const counts: VerifyCounts = { resolvable: 0, needsNewTerminal: 0, missing: 0 };
+  for (const tool of availability) {
+    if (tool.status === 'resolvable') counts.resolvable++;
+    else if (tool.status === 'needs-new-terminal') counts.needsNewTerminal++;
+    else counts.missing++;
+  }
+  return counts;
+}
+
+/**
+ * Shared summary line used by `apply` and `update`. The old
+ * "N/M configured tools resolve on PATH" phrasing is kept only as a superset
+ * when something is not immediately resolvable.
+ */
+export function verifySummaryLine(availability: ToolAvailability[]): string {
+  const counts = verifyCounts(availability);
+  const base = `Verify: ${counts.resolvable} resolvable / ${counts.needsNewTerminal} need a new terminal / ${counts.missing} missing`;
+  if (counts.needsNewTerminal + counts.missing > 0) {
+    return `${base} — ${counts.resolvable}/${availability.length} configured tools resolve on PATH now`;
+  }
+  return base;
+}
+
+/** One line per tool, symbol-prefixed (commands add their own indentation). */
+export function toolAvailabilityLine(tool: ToolAvailability): string {
+  if (tool.status === 'resolvable') return `✓ ${tool.binary} (${tool.key})`;
+  if (tool.status === 'needs-new-terminal') {
+    return `~ ${tool.binary} (${tool.key}) — installed; open a new terminal`;
+  }
+  return `✗ ${tool.binary} (${tool.key}) — not installed (mise install did not produce it)`;
+}
+
+/**
+ * Whether the activation hint should be shown at all: only when at least one
+ * tool is installed-but-stale or missing. Emitted once per run by the caller.
+ */
+export function verifyHintNeeded(availability: ToolAvailability[]): boolean {
+  return availability.some(
+    (tool) => tool.status === 'needs-new-terminal' || tool.status === 'missing',
+  );
 }
 
 /**
@@ -530,22 +710,79 @@ export function verifyToolAvailability(config: AgentenvConfig): ToolAvailability
  * but are not yet resolvable from the current shell.
  */
 export function miseActivationHint(): string {
-  const lines: string[] = [];
   if (process.platform === 'win32') {
-    lines.push('These tools ARE installed via mise and resolve while you work inside this project');
-    lines.push(`(shims live in ${shimsDir()}). If one is still not found:`);
-    lines.push('  - Open a new terminal in this project and try again, or');
-    lines.push('  - Run `mise trust` and `mise install` in the project root.');
-    lines.push(
-      '  - To also use a tool outside this project, set a global default: `mise use -g <tool>`.',
-    );
-  } else {
-    lines.push('Enable mise in your shell so tools resolve on PATH:');
-    lines.push('  echo \'eval "$(mise activate bash)"\' >> ~/.bashrc   # bash');
-    lines.push('  echo \'eval "$(mise activate zsh)"\' >> ~/.zshrc     # zsh');
-    lines.push('Then start a new terminal.');
+    return [
+      'Tools ARE installed via mise and resolve inside this project (shims in ~/.local/bin).',
+      "If one still isn't found: open a NEW terminal in this project, or run `mise trust` + `mise install`, or `mise use -g <tool>`.",
+    ].join('\n');
   }
-  return lines.join('\n');
+  return [
+    'Enable mise in your shell so tools resolve on PATH: add `eval "$(mise activate bash)"` to ~/.bashrc (or `mise activate zsh` for zsh).',
+    'Then start a new terminal.',
+  ].join('\n');
+}
+
+/**
+ * Patterns that indicate an interactive acceptance prompt (EULA/license) in
+ * install output. Detected so the user is told *which* tool wants acceptance
+ * with a one-line instruction instead of a deadlocked/hung non-interactive run.
+ */
+export const EULA_PROMPT_PATTERNS: RegExp[] = [
+  /\beula\b/i,
+  /accept.*(?:license|terms|eula)/i,
+  /\by\/n\b/i,
+  /\bpress\s+(?:enter|y)\b/i,
+];
+
+/**
+ * Known tools whose first install asks for a EULA. Keyed by tool name the same
+ * way `verifyToolAvailability` keys tools (data-driven; never blanket-pipe
+ * `yes` into a blind install).
+ */
+export const EULA_TOOL_NAMES: string[] = ['gitleaks'];
+
+/** Printed before `mise install` when a known EULA-gated tool is enabled. Never auto-accepts. */
+export function eulaPreflightHint(config: AgentenvConfig): string {
+  const tools = config.tools || {};
+  const flagged = EULA_TOOL_NAMES.filter((name) => tools[name as keyof typeof tools] === true);
+  if (flagged.length === 0) return '';
+  const tool = flagged[0];
+  return `${tool} requires accepting a EULA on first install — run \`mise install ${tool}\` in an interactive terminal and accept it, then re-run \`agentenv apply\`.`;
+}
+
+export interface EulaDetection {
+  eulaTools: string[];
+  eulaHint: string;
+}
+
+/** Detect a likely interactive-acceptance prompt in captured install output. */
+export function detectEulaPrompt(stdout: string, stderr: string): EulaDetection {
+  const combined = `${stdout}\n${stderr}`;
+  const prompted = EULA_PROMPT_PATTERNS.some((pattern) => pattern.test(combined));
+  if (!prompted) return { eulaTools: [], eulaHint: '' };
+  const tool = EULA_TOOL_NAMES.find((name) => combined.toLowerCase().includes(name));
+  if (tool) {
+    return {
+      eulaTools: [tool],
+      eulaHint: `gitleaks requires accepting a EULA on first install — run \`mise install ${tool}\` in an interactive terminal and accept it, then re-run \`agentenv apply\`.`,
+    };
+  }
+  return {
+    eulaTools: [],
+    eulaHint:
+      'mise install wants an interactive acceptance — run `mise install` in an interactive terminal and accept it, then re-run `agentenv apply`.',
+  };
+}
+
+export interface MiseInstallResult {
+  success: boolean;
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+  /** Tools (from EULA_TOOL_NAMES) whose EULA likely needs accepting. */
+  eulaTools: string[];
+  /** One-line instruction for the acceptance case; empty when no prompt. */
+  eulaHint: string;
 }
 
 /**
@@ -555,38 +792,17 @@ export function miseActivationHint(): string {
 export async function runMiseInstall(
   miseTomlPath: string,
   cwd: string = '.',
-): Promise<{
-  success: boolean;
-  stdout: string;
-  stderr: string;
-  exitCode: number | null;
-}> {
-  try {
-    const result = child_process.spawnSync('mise', ['install'], {
-      cwd,
-      encoding: 'utf-8',
-      stdio: 'pipe',
-      env: {
-        ...process.env,
-        // Ensure mise uses the correct config file
-        MISE_CONFIG_FILE: miseTomlPath,
-      },
-    });
-
-    return {
-      success: result.status === 0,
-      stdout: result.stdout || '',
-      stderr: result.stderr || '',
-      exitCode: result.status ?? null,
-    };
-  } catch (err) {
-    return {
-      success: false,
-      stdout: '',
-      stderr: err instanceof Error ? err.message : String(err),
-      exitCode: null,
-    };
-  }
+): Promise<MiseInstallResult> {
+  const result = runMiseCaptured(['install'], { cwd, miseTomlPath });
+  const eula = detectEulaPrompt(result.stdout, result.stderr);
+  return {
+    success: result.status === 0,
+    stdout: result.stdout,
+    stderr: result.stderr,
+    exitCode: result.status ?? null,
+    eulaTools: eula.eulaTools,
+    eulaHint: eula.eulaHint,
+  };
 }
 
 /**
@@ -594,14 +810,10 @@ export async function runMiseInstall(
  */
 export function getInstalledVersions(): Record<string, string> {
   const versions: Record<string, string> = {};
+  const result = runMiseCaptured(['ls', '--json']);
 
   try {
-    const output = child_process.execSync('mise ls --json', {
-      encoding: 'utf-8',
-      stdio: 'pipe',
-    });
-
-    const tools = JSON.parse(output) as Array<{
+    const tools = JSON.parse(result.stdout) as Array<{
       name: string;
       version: string;
     }>;

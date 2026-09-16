@@ -51,3 +51,9 @@ new tools.
 - `watchexec` has a secondary `cargo:watchexec-cli` backend in mise's registry.
 - `hyperfine` and `just` have both `aqua:` and `cargo:` backends, but the `aqua:`
   entries are preferred and sufficient since prebuilt binaries exist.
+
+## Catalog status (2026-09-16)
+
+The 14 additional Tier 3 tools are now first-class catalog keys (default off)
+rather than custom_tools candidates. See `cmd/agentenv/src/config/schema.ts`
+`TOOL_KEYS`.

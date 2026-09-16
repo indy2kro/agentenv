@@ -58,6 +58,16 @@ function fakeRtkInit(): { fn: RtkInitFn; calls: RtkCall[] } {
         path.join(pluginsDir, 'rtk.ts'),
         '// rtk opencode plugin\nexport const plugin = {};\n',
       );
+    } else if (joined === '--gemini') {
+      fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK (Gemini CLI)\n');
+    } else if (joined === '--agent cursor') {
+      fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK (Cursor)\n');
+    } else if (joined === '--agent windsurf') {
+      fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK (Windsurf)\n');
+    } else if (joined === '--agent cline') {
+      fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK (Cline CLI)\n');
+    } else if (joined === '--agent vibe') {
+      fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK (Mistral Vibe)\n');
     }
     return { success: true, message: `rtk init ${joined} succeeded`, stdout: '', stderr: '' };
   };
@@ -368,5 +378,20 @@ describe('apply pipeline', () => {
     });
     assert.equal(result.success, true, result.errors.join('; '));
     assert.equal(claude.calls.length, 0, 'claude must not be invoked when integration is disabled');
+  });
+
+  it('omits the prerequisite line when skipPrereqMessage is set', async () => {
+    const home = tempDir('agentenv-home-');
+    const base = tempDir('agentenv-base-');
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    const rtk = fakeRtkInit();
+    const result = await applyConfiguration(CONFIG, base, {
+      skipMiseInstall: true,
+      skipPrereqMessage: true,
+      rtkInit: rtk.fn,
+    });
+    assert.equal(result.success, true, result.errors.join('; '));
+    assert.equal(result.messages.filter((m) => m.startsWith('Prerequisite: mise')).length, 0);
   });
 });

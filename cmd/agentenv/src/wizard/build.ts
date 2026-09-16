@@ -17,6 +17,11 @@ export const AGENT_OPTIONS: Array<{ value: AgentKey; label: string }> = [
   { value: 'codex_cli', label: 'Codex CLI' },
   { value: 'copilot', label: 'GitHub Copilot' },
   { value: 'opencode', label: 'OpenCode' },
+  { value: 'gemini_cli', label: 'Gemini CLI' },
+  { value: 'cursor', label: 'Cursor' },
+  { value: 'windsurf', label: 'Windsurf' },
+  { value: 'cline', label: 'Cline CLI' },
+  { value: 'vibe', label: 'Mistral Vibe' },
 ];
 
 export const TIER_1_TOOLS = ['ripgrep', 'fd', 'jq', 'rtk'] as const;
@@ -74,12 +79,10 @@ export interface WizardSelections {
 
 /** Assemble a full AgentenvConfig from picker selections. */
 export function buildConfigFromSelections(sel: WizardSelections): AgentenvConfig {
-  const agents: Record<AgentKey, boolean> = {
-    claude_code: false,
-    codex_cli: false,
-    copilot: false,
-    opencode: false,
-  };
+  const agents = Object.fromEntries(AGENT_KEYS.map((key) => [key, false])) as Record<
+    AgentKey,
+    boolean
+  >;
   for (const agent of sel.agents) agents[agent] = true;
 
   const tools: NonNullable<AgentenvConfig['tools']> = {};
@@ -93,7 +96,7 @@ export function buildConfigFromSelections(sel: WizardSelections): AgentenvConfig
     integrations: sel.integrations,
     rtk: {
       enabled: sel.rtkEnabled,
-      init: { claude_code: true, codex_cli: true, copilot: true, opencode: true },
+      init: Object.fromEntries(AGENT_KEYS.map((key) => [key, true])),
     },
     tier0: { check_enabled: true },
     generate: {

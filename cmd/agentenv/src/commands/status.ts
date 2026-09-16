@@ -35,7 +35,14 @@ const AGENT_CONFIG_FILES: Record<AgentKey, { label: string; check: (baseDir: str
       label: 'OpenCode',
       check: () => path.join(homeDir(), '.config', 'opencode', 'plugins', 'rtk.ts'),
     },
+    gemini_cli: { label: 'Gemini CLI', check: (baseDir) => path.join(baseDir, 'RTK.md') },
+    cursor: { label: 'Cursor', check: (baseDir) => path.join(baseDir, 'RTK.md') },
+    windsurf: { label: 'Windsurf', check: (baseDir) => path.join(baseDir, 'RTK.md') },
+    cline: { label: 'Cline CLI', check: (baseDir) => path.join(baseDir, 'RTK.md') },
+    vibe: { label: 'Mistral Vibe', check: (baseDir) => path.join(baseDir, 'RTK.md') },
   };
+
+export { AGENT_CONFIG_FILES };
 
 function homeDir(): string {
   return process.env.HOME || process.env.USERPROFILE || '';

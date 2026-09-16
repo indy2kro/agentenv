@@ -43,6 +43,26 @@ switch (flags) {
     fs.writeFileSync(path.join(dir, 'rtk.ts'), '// rtk opencode plugin\nexport const plugin = {};\n');
     break;
   }
+  case '--gemini': {
+    fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK stub (Gemini CLI)\n');
+    break;
+  }
+  case '--agent cursor': {
+    fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK stub (Cursor)\n');
+    break;
+  }
+  case '--agent windsurf': {
+    fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK stub (Windsurf)\n');
+    break;
+  }
+  case '--agent cline': {
+    fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK stub (Cline CLI)\n');
+    break;
+  }
+  case '--agent vibe': {
+    fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK stub (Mistral Vibe)\n');
+    break;
+  }
   default: {
     console.error(`rtk-stub: unexpected args: ${args.join(' ')}`);
     process.exit(1);

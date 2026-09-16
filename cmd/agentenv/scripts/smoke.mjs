@@ -40,17 +40,32 @@ const REAL_TOOLS = [
   ['difft', 'difftastic'],
 ];
 
+const STUB_TIER3 =
+  'ripgrep_all = true\nzoxide = true\nshellcheck = true\nuv = true\nxh = true\nactionlint = true\ngitleaks = true\ngum = true\nglow = true\njless = true\nsd = true\ntealdeer = true\nduckdb = true\nqsv = true\n';
+
 const toolsBlock = REAL
   ? REAL_TOOLS.map(([, key]) => `${key} = true`).join('\n')
-  : 'ripgrep = true\nfd = true\njq = true\nrtk = true';
+  : `ripgrep = true\nfd = true\njq = true\nrtk = true\n${STUB_TIER3}`;
+
+const agentsBlock = REAL
+  ? `claude_code = true
+codex_cli = true
+copilot = true
+opencode = true`
+  : `claude_code = true
+codex_cli = true
+copilot = true
+opencode = true
+gemini_cli = true
+cursor = true
+windsurf = true
+cline = true
+vibe = true`;
 
 const config = `scope = "project"
 
 [agents]
-claude_code = true
-codex_cli = true
-copilot = true
-opencode = true
+${agentsBlock}
 
 [tools]
 ${toolsBlock}
@@ -274,6 +289,28 @@ if (REAL) {
   }
 }
 
+if (!REAL) {
+  expect(/gemini_cli|Gemini CLI|--gemini/.test(applyOut), `stub apply should mention gemini, got:\n${applyOut}`);
+  for (const tool of [
+    'ripgrep_all',
+    'zoxide',
+    'shellcheck',
+    'uv',
+    'xh',
+    'actionlint',
+    'gitleaks',
+    'gum',
+    'glow',
+    'jless',
+    'sd',
+    'tealdeer',
+    'duckdb',
+    'qsv',
+  ]) {
+    expect(statusOut.includes(tool), `status should mention ${tool}, got:\n${statusOut}`);
+  }
+}
+
 console.log(
-  `smoke OK (${REAL ? 'real rtk + full Tier 1+2 install + setup --yes' : 'rtk stub + skip mise'}): apply + status full pipeline verified for all four agents`,
+  `smoke OK (${REAL ? 'real rtk + full Tier 1+2 install + setup --yes' : 'rtk stub + skip mise'}): apply + status full pipeline verified for all configured agents`,
 );

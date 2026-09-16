@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  AGENT_OPTIONS,
   buildConfigFromSelections,
   buildDefaultSimpleConfig,
   formatDiffLines,
@@ -132,5 +133,26 @@ describe('wizard build helpers', () => {
     });
 
     assert.equal(config.integrations, undefined);
+  });
+
+  it('AGENT_OPTIONS lists all nine agents', () => {
+    assert.equal(AGENT_OPTIONS.length, 9);
+    const keys = AGENT_OPTIONS.map((o) => o.value);
+    assert.deepEqual([...keys].sort(), [
+      'claude_code',
+      'cline',
+      'codex_cli',
+      'copilot',
+      'cursor',
+      'gemini_cli',
+      'opencode',
+      'vibe',
+      'windsurf',
+    ]);
+  });
+
+  it('parseAgentsInput accepts the new agent keys', () => {
+    const result = parseAgentsInput('gemini_cli, vibe');
+    assert.deepEqual(result, ['gemini_cli', 'vibe']);
   });
 });

@@ -223,6 +223,11 @@ function getEnabledAgentsForOutput(config: AgentenvConfig): string[] {
   if (agents.codex_cli) enabled.push('Codex CLI');
   if (agents.copilot) enabled.push('GitHub Copilot');
   if (agents.opencode) enabled.push('OpenCode');
+  if (agents.gemini_cli) enabled.push('Gemini CLI');
+  if (agents.cursor) enabled.push('Cursor');
+  if (agents.windsurf) enabled.push('Windsurf');
+  if (agents.cline) enabled.push('Cline CLI');
+  if (agents.vibe) enabled.push('Mistral Vibe');
 
   return enabled;
 }

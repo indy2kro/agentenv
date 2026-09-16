@@ -6,6 +6,11 @@ import * as path from 'path';
 import { CodexCliAdapter } from './codex.js';
 import { CopilotAdapter } from './copilot.js';
 import { OpenCodeAdapter } from './opencode.js';
+import { GeminiCliAdapter } from './gemini.js';
+import { CursorAdapter } from './cursor.js';
+import { WindsurfAdapter } from './windsurf.js';
+import { ClineAdapter } from './cline.js';
+import { VibeAdapter } from './vibe.js';
 import type { RtkInitFn } from '../toolchain/rtk.js';
 import { rtkMessage } from '../toolchain/rtk.js';
 
@@ -37,6 +42,16 @@ function fakeRtkInit(): { fn: RtkInitFn; calls: RtkCall[] } {
       const dir = path.join(home, '.config', 'opencode', 'plugins');
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(path.join(dir, 'rtk.ts'), 'export const rtkPlugin = true;\n');
+    } else if (joined === '--gemini') {
+      fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK (Gemini CLI)\n');
+    } else if (joined === '--agent cursor') {
+      fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK (Cursor)\n');
+    } else if (joined === '--agent windsurf') {
+      fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK (Windsurf)\n');
+    } else if (joined === '--agent cline') {
+      fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK (Cline CLI)\n');
+    } else if (joined === '--agent vibe') {
+      fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK (Mistral Vibe)\n');
     } else {
       calls[calls.length - 1].args = ['UNEXPECTED', ...args];
     }
@@ -245,3 +260,56 @@ describe('rtkMessage transparency log', () => {
     assert.ok(message.length < 430, 'elided message stays bounded');
   });
 });
+
+for (const [label, AdapterCtor, rtkFlags, configDirName] of [
+  ['Gemini CLI', GeminiCliAdapter, ['--gemini'], '.gemini'],
+  ['Cursor', CursorAdapter, ['--agent', 'cursor'], '.cursor'],
+  ['Windsurf', WindsurfAdapter, ['--agent', 'windsurf'], '.windsurf'],
+  ['Cline CLI', ClineAdapter, ['--agent', 'cline'], '.cline'],
+  ['Mistral Vibe', VibeAdapter, ['--agent', 'vibe'], '.vibe'],
+] as const) {
+  describe(`${label} adapter`, () => {
+    it('delegates hooks to rtk init and creates configDir', async () => {
+      await withHome(tempHome(), async () => {
+        const home = process.env.HOME as string;
+        const rtk = fakeRtkInit();
+        const adapter = new AdapterCtor({
+          enabled: true,
+          baseDir: home,
+          rtkEnabled: true,
+          rtkInit: rtk.fn,
+        });
+        const result = await adapter.initialize();
+
+        assert.equal(result.success, true);
+        assert.ok(result.message.includes('rtk init'));
+        assert.ok(fs.existsSync(path.join(home, configDirName)));
+        assert.ok(fs.existsSync(path.join(home, 'RTK.md')));
+        assert.deepEqual(rtk.calls, [{ args: rtkFlags, cwd: home }]);
+        assert.equal(adapter.getName(), label);
+      });
+    });
+
+    it('does not call rtk when rtkEnabled is false', async () => {
+      await withHome(tempHome(), async () => {
+        const home = process.env.HOME as string;
+        const rtk = fakeRtkInit();
+        const adapter = new AdapterCtor({
+          enabled: true,
+          baseDir: home,
+          rtkEnabled: false,
+          rtkInit: rtk.fn,
+        });
+        await adapter.initialize();
+        assert.deepEqual(rtk.calls, []);
+      });
+    });
+
+    it('cleanup is a no-op', async () => {
+      const adapter = new AdapterCtor({ enabled: true, baseDir: '/tmp', rtkEnabled: true });
+      const result = await adapter.cleanup();
+      assert.equal(result.success, true);
+      assert.equal(result.filesCreated.length, 0);
+    });
+  });
+}

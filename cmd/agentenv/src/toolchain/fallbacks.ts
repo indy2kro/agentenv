@@ -147,8 +147,10 @@ export function isFallbackToolInstalled(toolName: string): boolean {
   try {
     // Try each verification command until one succeeds
     for (const cmd of verifyCommands) {
-      child_process.execSync(cmd, { stdio: 'ignore' });
-      return true;
+      const shell = process.platform === 'win32' ? 'cmd.exe' : 'sh';
+      const shellArgs = process.platform === 'win32' ? ['/c', cmd] : ['-c', cmd];
+      const result = child_process.spawnSync(shell, shellArgs, { stdio: 'ignore', shell: true });
+      if (result.status === 0) return true;
     }
     return false;
   } catch {
@@ -176,7 +178,9 @@ export function installFallbackTool(toolName: string): { success: boolean; messa
     // Try each installation command until one succeeds
     for (const cmd of installCommands) {
       try {
-        child_process.execSync(cmd, { stdio: 'inherit' });
+        const shell = process.platform === 'win32' ? 'cmd.exe' : 'sh';
+        const shellArgs = process.platform === 'win32' ? ['/c', cmd] : ['-c', cmd];
+        child_process.spawnSync(shell, shellArgs, { stdio: 'inherit', shell: true });
 
         // Verify installation was successful
         if (isFallbackToolInstalled(toolName)) {

@@ -1,6 +1,6 @@
 /**
  * Agent Installation Detection
- * Determines which of the four v1 agents are installed, based on their CLI
+ * Determines which of the nine agents are installed, based on their CLI
  * binaries being resolvable on the machine (PATH lookup), which is what the
  * interactive wizard's pre-checked defaults depend on.
  */
@@ -17,6 +17,11 @@ export const AGENT_COMMANDS: Record<AgentKey, string[]> = {
   codex_cli: ['codex'],
   copilot: ['gh'],
   opencode: ['opencode'],
+  gemini_cli: ['gemini'],
+  cursor: ['cursor'],
+  windsurf: ['windsurf'],
+  cline: ['cline'],
+  vibe: ['vibe'],
 };
 
 export type DetectFn = (command: string) => boolean;

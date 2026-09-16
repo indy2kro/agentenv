@@ -2,24 +2,30 @@ import { Command } from 'commander';
 import * as fs from 'fs';
 import * as path from 'path';
 import { loadConfig, validateConfig } from '../config/schema.js';
+import type { AgentenvConfig } from '../config/schema.js';
 import { configFilePath, findConfigPath, resolveScopeDir } from '../config/scopes.js';
 import {
   ensureGlobalShimsDir,
   getMiseVersion,
   getUpgradeableTools,
   isMiseInstalled,
+  miseActivationHint,
   miseInstallInstructions,
   runMiseSelfUpdate,
   runMiseUpgrade,
+  toolAvailabilityLine,
   trustMiseToml,
+  verifyHintNeeded,
+  verifySummaryLine,
   verifyToolAvailability,
 } from '../toolchain/mise.js';
-import type { AgentenvConfig } from '../config/schema.js';
+import { normalizeOutput } from '../utils/output.js';
 
 interface UpdateCommandOptions {
   self?: boolean;
   tools?: boolean;
   scope?: string;
+  watch?: boolean;
 }
 
 async function doUpdate(options: UpdateCommandOptions): Promise<void> {
@@ -117,22 +123,19 @@ async function doUpdate(options: UpdateCommandOptions): Promise<void> {
           );
         } else {
           console.error(
-            `  mise up failed (exit ${upgrade.exitCode ?? 'null'}): ${upgrade.stderr || upgrade.stdout}`,
+            `  mise up failed (exit ${upgrade.exitCode ?? 'null'}): ${normalizeOutput(upgrade.stderr || upgrade.stdout).trim()}`,
           );
           failed = true;
         }
 
         const availability = verifyToolAvailability(config);
-        const onPath = availability.filter((tool) => tool.onPath);
-        const notOnPath = availability.filter((tool) => !tool.onPath);
-        console.log(
-          `  Verify: ${onPath.length}/${availability.length} configured tools resolve on PATH`,
-        );
-        for (const tool of onPath) console.log(`    ✓ ${tool.binary} (${tool.key})`);
-        for (const tool of notOnPath) {
-          console.log(
-            `    ✗ ${tool.binary} (${tool.key}) — installed but not resolvable in this shell`,
-          );
+        console.log(`  ${verifySummaryLine(availability)}`);
+        for (const tool of availability) console.log(`    ${toolAvailabilityLine(tool)}`);
+        if (verifyHintNeeded(availability)) {
+          console.log();
+          for (const line of miseActivationHint().split('\n')) {
+            console.log(`    ${line}`);
+          }
         }
       }
     }
@@ -143,6 +146,70 @@ async function doUpdate(options: UpdateCommandOptions): Promise<void> {
   } else {
     console.log('\nUpdate complete!');
   }
+
+  // Optional file watching mode
+  if (options.watch && doTools) {
+    console.log('\nWatching mise.toml for changes (Ctrl+C to stop)...');
+    const scopeDir = resolveScopeDir(config.scope ?? 'project');
+    const miseTomlPath = path.join(scopeDir, 'mise.toml');
+    watchMiseToml(miseTomlPath, scopeDir, config);
+  }
+}
+
+/**
+ * Watch mise.toml for changes and trigger mise up when modified.
+ * Windows-safe: uses path.resolve() and normalizes paths properly.
+ */
+function watchMiseToml(miseTomlPath: string, scopeDir: string, config: AgentenvConfig): void {
+  const resolvedPath = path.resolve(miseTomlPath);
+  const resolvedDir = path.resolve(scopeDir);
+
+  // Normalize the path for Windows (remove redundant segments, etc.)
+  const normalizedPath = path.normalize(resolvedPath);
+
+  let timeout: NodeJS.Timeout | null = null;
+  const DEBOUNCE_MS = 1000;
+
+  try {
+    const watcher = fs.watch(normalizedPath, (eventType) => {
+      if (eventType === 'change') {
+        if (timeout) clearTimeout(timeout);
+        timeout = setTimeout(async () => {
+          console.log(`\nDetected change in ${normalizedPath}, running mise up...`);
+          const targets = getUpgradeableTools(config);
+          if (targets.length > 0) {
+            const upgrade = await runMiseUpgrade(targets, resolvedDir);
+            if (upgrade.success) {
+              console.log(
+                `  ${(upgrade.stdout || upgrade.stderr || '').trim() || 'all tools up to date'}`,
+              );
+            } else {
+              console.error(
+                `  mise up failed (exit ${upgrade.exitCode ?? 'null'}): ${upgrade.stderr || upgrade.stdout}`,
+              );
+            }
+          } else {
+            console.log('  No upgradeable tools: everything enabled is pinned to a version.');
+          }
+        }, DEBOUNCE_MS);
+      }
+    });
+
+    watcher.on('error', (err) => {
+      console.error(`Watch error: ${err instanceof Error ? err.message : String(err)}`);
+    });
+
+    // Handle graceful shutdown
+    process.on('SIGINT', () => {
+      console.log('\nStopping watch...');
+      watcher.close();
+      process.exit(0);
+    });
+  } catch (err) {
+    console.error(
+      `Failed to watch ${normalizedPath}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 }
 
 export const updateCommand = new Command()
@@ -151,4 +218,5 @@ export const updateCommand = new Command()
   .option('--self', 'only update the mise binary itself')
   .option('--tools', 'only upgrade mise-managed tools (pinned tools are skipped)')
   .option('--scope <scope>', 'config scope to update: project|user (default: nearest config)')
+  .option('--watch', 'watch mise.toml for changes and auto-run mise up (optional)')
   .action(doUpdate);

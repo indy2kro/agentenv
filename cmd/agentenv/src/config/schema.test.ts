@@ -5,6 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import toml from 'toml';
 import {
+  AGENT_KEYS,
   BINARY_MAP,
   DEFAULT_CONFIG,
   TOOL_DESCRIPTIONS,
@@ -12,11 +13,12 @@ import {
   TOOL_TIERS,
   configToToml,
   diffConfigs,
+  getEnabledAgents,
   loadConfig,
   resolveIntegrationScope,
   validateConfig,
 } from './schema.js';
-import type { AgentenvConfig, CustomTool } from './schema.js';
+import type { AgentenvConfig, AgentKey, CustomTool } from './schema.js';
 
 describe('configuration persistence', () => {
   it('rejects malformed TOML instead of applying defaults', () => {
@@ -378,5 +380,105 @@ describe('tool catalog: new tier-3 tools', () => {
     const tomlContent = configToToml({ scope: 'project', tools: { uv: true, zoxide: true } });
     assert.ok(tomlContent.includes('uv = true'));
     assert.ok(tomlContent.includes('zoxide = true'));
+  });
+});
+
+describe('agent catalog: five new agents', () => {
+  it('AGENT_KEYS includes all nine agents', () => {
+    for (const key of [
+      'claude_code',
+      'codex_cli',
+      'copilot',
+      'opencode',
+      'gemini_cli',
+      'cursor',
+      'windsurf',
+      'cline',
+      'vibe',
+    ] as AgentKey[]) {
+      assert.ok(AGENT_KEYS.includes(key), `AGENT_KEYS missing: ${key}`);
+    }
+  });
+
+  it('configToToml round-trips new agent and rtk.init keys', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-agt-t3-'));
+    const configPath = path.join(dir, 'agentenv.toml');
+    const config: AgentenvConfig = {
+      scope: 'project',
+      agents: {
+        claude_code: true,
+        codex_cli: false,
+        copilot: false,
+        opencode: false,
+        gemini_cli: true,
+        cursor: true,
+        windsurf: false,
+        cline: false,
+        vibe: false,
+      },
+      tools: {},
+      rtk: {
+        enabled: true,
+        init: {
+          claude_code: true,
+          codex_cli: true,
+          copilot: true,
+          opencode: true,
+          gemini_cli: true,
+          cursor: true,
+          windsurf: true,
+          cline: true,
+          vibe: true,
+        },
+      },
+    };
+    fs.writeFileSync(configPath, configToToml(config));
+    const loaded = loadConfig(configPath);
+    assert.equal(loaded.agents?.gemini_cli, true);
+    assert.equal(loaded.agents?.cursor, true);
+    assert.equal(loaded.agents?.windsurf, false);
+    assert.equal(loaded.agents?.cline, false);
+    assert.equal(loaded.agents?.vibe, false);
+    assert.equal(loaded.rtk?.init?.gemini_cli, true);
+    assert.equal(loaded.rtk?.init?.vibe, true);
+  });
+
+  it('validateConfig accepts the new agent keys', () => {
+    const report = validateConfig({ agents: { gemini_cli: true, vibe: true } });
+    assert.ok(!report.errors.some((e) => e.includes('Unknown agent')), report.errors.join('; '));
+  });
+
+  it('getEnabledAgents returns only agents set to true', () => {
+    const enabled = getEnabledAgents({
+      agents: { claude_code: true, gemini_cli: true, vibe: false, codex_cli: false },
+    });
+    assert.deepEqual(enabled, ['claude_code', 'gemini_cli']);
+  });
+});
+
+describe('default agent set', () => {
+  it('defaults claude_code and codex_cli to enabled', () => {
+    assert.equal(DEFAULT_CONFIG.agents?.claude_code, true);
+    assert.equal(DEFAULT_CONFIG.agents?.codex_cli, true);
+  });
+
+  it('defaults copilot, opencode, and all new agents to disabled', () => {
+    for (const key of [
+      'copilot',
+      'opencode',
+      'gemini_cli',
+      'cursor',
+      'windsurf',
+      'cline',
+      'vibe',
+    ] as const) {
+      assert.equal(DEFAULT_CONFIG.agents?.[key], false, `${key} should default to false`);
+    }
+  });
+
+  it('rtk.init defaults all 9 agents to true', () => {
+    for (const key of AGENT_KEYS) {
+      assert.equal(DEFAULT_CONFIG.rtk?.init?.[key], true, `rtk.init.${key} should default to true`);
+    }
   });
 });

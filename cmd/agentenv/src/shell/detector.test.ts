@@ -3,7 +3,12 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { applyAgentShellFix, bashExecutable, checkAgentShellConfiguration } from './detector.js';
+import {
+  applyAgentShellFix,
+  bashExecutable,
+  checkAgentShellConfiguration,
+  fixShellConfiguration,
+} from './detector.js';
 
 const bashExe = 'C:\\Program Files\\Git\\usr\\bin\\bash.exe';
 
@@ -180,6 +185,37 @@ describe('Tier 0 shell fix', () => {
       const result = checkAgentShellConfiguration('copilot', tempHome());
       assert.equal(result.isConfigured, true);
       assert.equal(result.needsFix, false);
+    });
+
+    it('applyAgentShellFix returns skipped for new delegation agents', () => {
+      for (const agent of ['gemini_cli', 'cursor', 'windsurf', 'cline', 'vibe'] as const) {
+        const result = applyAgentShellFix(agent, bashExe, tempHome());
+        assert.equal(result.action, 'skipped');
+      }
+    });
+
+    it('checkAgentShellConfiguration treats vibe as already configured', () => {
+      const result = checkAgentShellConfiguration('vibe', tempHome());
+      assert.equal(result.isConfigured, true);
+      assert.equal(result.needsFix, false);
+    });
+  });
+
+  describe('copilot message', () => {
+    it('says no change needed and never uses a failure mark', () => {
+      const result = applyAgentShellFix('copilot', bashExe, tempHome());
+      assert.match(result.message, /no change needed/);
+      assert.equal(result.message.includes('✗'), false);
+    });
+  });
+
+  describe('non-TTY Tier 0', () => {
+    it('skips writes when complex is false', () => {
+      const result = fixShellConfiguration('.', ['claude_code'], false);
+      assert.equal(result.success, true);
+      if (process.platform === 'win32') {
+        assert.match(result.message, /non-TTY|POSIX-compatible|Git Bash not found/i);
+      }
     });
   });
 });

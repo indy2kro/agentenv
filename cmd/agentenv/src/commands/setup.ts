@@ -13,7 +13,12 @@ import {
   parseAgentsInput,
   simpleToolSelection,
 } from '../wizard/build.js';
-import { getMiseVersion, isMiseInstalled, miseInstallInstructions } from '../toolchain/mise.js';
+import {
+  getMiseVersion,
+  isMiseInstalled,
+  miseInstallInstructions,
+  prereqLine,
+} from '../toolchain/mise.js';
 import { colorizeLine, theme } from '../ui/theme.js';
 import { withSpinner } from '../ui/spinner.js';
 
@@ -21,9 +26,21 @@ function agentLabel(agent: AgentKey): string {
   return AGENT_OPTIONS.find((option) => option.value === agent)?.label ?? agent;
 }
 
-function misePrereqCheck(): boolean {
-  if (isMiseInstalled()) {
-    console.log(`Prerequisite: mise ${getMiseVersion()}\n`);
+interface MisePrereqCheckDeps {
+  isInstalled?: () => boolean;
+  version?: () => string;
+}
+
+/**
+ * Print the one "Prerequisite: mise X" line (or fail loudly with install
+ * instructions when mise is missing). Injectable so `setup --yes` tests can
+ * skip a real mise subprocess while still counting the printed line.
+ */
+export function misePrereqCheck(deps: MisePrereqCheckDeps = {}): boolean {
+  const installed = deps.isInstalled ?? isMiseInstalled;
+  const version = deps.version ?? getMiseVersion;
+  if (installed()) {
+    console.log(`${prereqLine(version())}\n`);
     return true;
   }
   console.error(
@@ -34,16 +51,27 @@ function misePrereqCheck(): boolean {
   return false;
 }
 
+export interface SaveAndApplyDeps {
+  /** Injectable applyConfiguration (tests stub the apply tail). */
+  applyConfiguration?: typeof applyConfiguration;
+}
+
 /** Save the config and apply it, mirroring the shared setup tail. */
-async function saveAndApply(config: AgentenvConfig, file: string): Promise<void> {
+export async function saveAndApply(
+  config: AgentenvConfig,
+  file: string,
+  deps: SaveAndApplyDeps = {},
+): Promise<void> {
   if (fs.existsSync(file)) {
     console.log(`Note: ${file} already exists — setup is idempotent and updates it in place.\n`);
   }
   saveConfig(config, file);
   console.log(`Saved configuration: ${file}\n`);
 
+  const apply = deps.applyConfiguration ?? applyConfiguration;
   const result = await withSpinner('Applying configuration...', () =>
-    applyConfiguration(config, resolveScopeDir(config.scope ?? 'project')),
+    // setup already printed the prereq line above, so tell apply not to repeat it.
+    apply(config, resolveScopeDir(config.scope ?? 'project'), { skipPrereqMessage: true }),
   );
   for (const message of result.messages) console.log(colorizeLine(message));
   for (const error of result.errors) console.error(theme.fail(error));
@@ -64,6 +92,10 @@ interface SetupCommandOptions {
   config?: string;
 }
 
+export interface UnattendedSetupDeps extends SaveAndApplyDeps {
+  misePrereqCheckDeps?: MisePrereqCheckDeps;
+}
+
 /**
  * Unattended, single-command setup: `agentenv setup --yes`. Resolves the
  * configuration from, in priority order:
@@ -72,9 +104,12 @@ interface SetupCommandOptions {
  *   3. Defaults (detected agents + Tier 1&2 tools + rtk), overridable via
  *      --agents / --no-tier2 / --no-rtk / --scope.
  */
-async function unattendedSetup(options: SetupCommandOptions): Promise<void> {
+export async function unattendedSetup(
+  options: SetupCommandOptions,
+  deps: UnattendedSetupDeps = {},
+): Promise<void> {
   console.log(theme.heading('\n=== agentenv Setup (Unattended) ===\n'));
-  if (!misePrereqCheck()) {
+  if (!misePrereqCheck(deps.misePrereqCheckDeps)) {
     process.exitCode = 1;
     return;
   }

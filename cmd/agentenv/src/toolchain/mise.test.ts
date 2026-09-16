@@ -4,10 +4,14 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import {
+  MISE_TOOL_NAMES,
   generateMiseToml,
   getShimsDirValue,
   getToolsToInstall,
   getUpgradeableTools,
+  classifyToolResolvability,
+  detectEulaPrompt,
+  eulaPreflightHint,
   miseActivationHint,
   miseInstallInstructions,
   miseInstallOutcome,
@@ -18,7 +22,7 @@ import {
   upsertShimsDir,
   verifyToolAvailability,
 } from './mise.js';
-import { DEFAULT_CONFIG } from '../config/schema.js';
+import { DEFAULT_CONFIG, TOOL_KEYS } from '../config/schema.js';
 
 describe('mise.toml generation', () => {
   it('pins rtk (invoked directly by agentenv) to a verified version', () => {
@@ -199,7 +203,7 @@ describe('mise self-diagnosis helpers', () => {
       ['ripgrep:rg', 'difftastic:difft'],
     );
     for (const tool of availability) {
-      assert.equal(typeof tool.onPath, 'boolean');
+      assert.ok(['resolvable', 'needs-new-terminal', 'missing'].includes(tool.status));
     }
   });
 });
@@ -211,5 +215,39 @@ describe('mise trust', () => {
     const result = trustMiseToml('nope.toml', '');
     assert.equal(typeof result.success, 'boolean');
     assert.equal(typeof result.message, 'string');
+  });
+});
+
+describe('MISE_TOOL_NAMES invariant', () => {
+  it('has a mise registry name for every catalog tool except custom-only ones', () => {
+    const customOnly = new Set(['universal_ctags', 'tokei']);
+    for (const key of TOOL_KEYS) {
+      if (customOnly.has(key)) continue;
+      assert.ok(MISE_TOOL_NAMES[key], `MISE_TOOL_NAMES missing entry for tool: ${key}`);
+    }
+  });
+});
+
+describe('Windows 3-state verify and activation hint', () => {
+  it('classifies on-path, shim-only, and missing binaries', () => {
+    assert.equal(classifyToolResolvability(true, false, true), 'resolvable');
+    assert.equal(classifyToolResolvability(false, true, true), 'needs-new-terminal');
+    assert.equal(classifyToolResolvability(false, false, true), 'missing');
+    assert.equal(classifyToolResolvability(false, true, false), 'missing');
+  });
+
+  it('keeps the activation hint to three lines or fewer', () => {
+    const hint = miseActivationHint();
+    assert.ok(hint.split('\n').length <= 3);
+  });
+
+  it('emits a gitleaks EULA instruction without a yes-pipe', () => {
+    const detection = detectEulaPrompt('Accept EULA for gitleaks? [y/n]', '');
+    assert.deepEqual(detection.eulaTools, ['gitleaks']);
+    assert.match(detection.eulaHint, /gitleaks requires accepting a EULA/);
+    assert.equal(detection.eulaHint.includes('echo y'), false);
+    const ahead = eulaPreflightHint({ tools: { gitleaks: true } });
+    assert.match(ahead, /mise install gitleaks/);
+    assert.equal(ahead.includes('echo y'), false);
   });
 });

@@ -20,6 +20,14 @@ All 7 tools were checked for package-name divergence (tool name in mise vs. exec
 
 Only difftastic exhibits the package-name vs. binary-name pattern seen in Task 1's git-delta (registry name `delta` → binary `delta`) and mlr (registry name `miller` → binary `mlr`).
 
+## Catalog status (2026-09-16)
+
+The 14 additional Tier 3 tools (ripgrep-all, zoxide, shellcheck, uv, xh,
+actionlint, gitleaks, gum, glow, jless, sd, tealdeer, duckdb, qsv) are now
+first-class catalog keys in `agentenv.toml` (`DEFAULT_CONFIG.tools`, default
+`false`). They are no longer `custom_tools` candidates.
+
+
 ## Failures
 
 1. **tokei** - Failed to resolve on Windows. Primary backend (cargo:tokei) requires Rust toolchain (cargo), which is not installed on this Windows system. Error: `program not found` when attempting `cargo install tokei@15.0.0`. Fallback backend (aqua:XAMPPRocky/tokei) was not reached, as installation halted on primary backend failure.

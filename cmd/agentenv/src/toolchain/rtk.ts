@@ -22,9 +22,15 @@ export type RtkInitFn = (args: string[], cwd: string) => RtkInitResult;
 
 /** rtk init args per agent, verified against rtk 0.42.4 and 0.49.0. */
 export const RTK_INIT_FLAGS: Record<string, string[]> = {
+  claude_code: ['--claude'],
   codex_cli: ['--codex'],
   copilot: ['--copilot'],
   opencode: ['-g', '--opencode'],
+  gemini_cli: ['--gemini'],
+  cursor: ['--agent', 'cursor'],
+  windsurf: ['--agent', 'windsurf'],
+  cline: ['--agent', 'cline'],
+  vibe: ['--agent', 'vibe'],
 };
 
 const defaultRtkInit: RtkInitFn = (args, cwd) => {
