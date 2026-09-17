@@ -1,18 +1,12 @@
 import { Command } from 'commander';
-import { checkbox, confirm, select } from '@inquirer/prompts';
 import * as fs from 'fs';
 import { detectInstalledAgents } from '../adapters/detect.js';
-import { DEFAULT_CONFIG, loadConfig, saveConfig, validateConfig } from '../config/schema.js';
+import { loadConfig, saveConfig, validateConfig } from '../config/schema.js';
 import type { AgentKey, AgentenvConfig } from '../config/schema.js';
 import { configFilePath, resolveScopeDir } from '../config/scopes.js';
 import { applyConfiguration } from './apply.js';
-import {
-  AGENT_OPTIONS,
-  buildConfigFromSelections,
-  buildDefaultSimpleConfig,
-  parseAgentsInput,
-  simpleToolSelection,
-} from '../wizard/build.js';
+import { runConfigWizard } from './wizard.js';
+import { AGENT_OPTIONS, buildDefaultSimpleConfig, parseAgentsInput } from '../wizard/build.js';
 import {
   getMiseVersion,
   isMiseInstalled,
@@ -184,8 +178,9 @@ export async function unattendedSetup(
 
 export const setupCommand = new Command()
   .name('setup')
+  .alias('configure')
   .description(
-    'Interactive setup wizard (Simple mode); use --yes for unattended single-command setup',
+    'Setup wizard (agents, tools, custom binaries, Superpowers); use --yes for unattended single-command setup',
   )
   .option('-y, --yes', 'unattended: use detected agents + defaults, or an existing config')
   .option('-a, --agents <agents>', 'comma-separated agents to configure (unattended)')
@@ -198,74 +193,5 @@ export const setupCommand = new Command()
       await unattendedSetup(options);
       return;
     }
-
-    console.log(theme.heading('\n=== agentenv Setup (Simple Mode) ===\n'));
-
-    if (!process.stdin.isTTY || !process.stdout.isTTY) {
-      console.error(
-        theme.fail(
-          'Setup is interactive; in a non-TTY run `agentenv setup --yes` or `agentenv apply`.',
-        ),
-      );
-      process.exitCode = 1;
-      return;
-    }
-
-    if (!misePrereqCheck()) {
-      process.exitCode = 1;
-      return;
-    }
-
-    const detected = detectInstalledAgents();
-    console.log(
-      detected.length > 0
-        ? `Detected agents: ${detected.map(agentLabel).join(', ')}`
-        : 'No agents detected on PATH (you can still select agents to configure)',
-    );
-
-    const selectedAgents = (await checkbox({
-      message: 'Select agents to configure:',
-      choices: AGENT_OPTIONS.map((agent) => ({
-        name: agent.label,
-        value: agent.value,
-        checked: detected.includes(agent.value),
-      })),
-    })) as AgentKey[];
-
-    if (selectedAgents.length === 0) {
-      console.log('No agents selected; nothing to configure.');
-      process.exitCode = 1;
-      return;
-    }
-
-    const installTier2 = await confirm({
-      message: 'Install Tier 2 tools (AI-coding value-add: ast-grep, git-delta, gh, difftastic)?',
-      default: true,
-    });
-
-    const scope = (await select({
-      message: 'Where should the configuration live?',
-      choices: [
-        { name: `Project-level (this repo: ${process.cwd()})`, value: 'project' },
-        { name: 'User/global-level', value: 'user' },
-      ],
-    })) as 'project' | 'user';
-
-    let existing: AgentenvConfig;
-    try {
-      existing = loadConfig();
-    } catch {
-      existing = DEFAULT_CONFIG;
-    }
-
-    const config = buildConfigFromSelections({
-      agents: selectedAgents,
-      tools: simpleToolSelection(installTier2),
-      customTools: [],
-      scope,
-      rtkEnabled: true,
-      integrations: existing.integrations,
-    });
-
-    await saveAndApply(config, configFilePath(scope));
+    await runConfigWizard();
   });

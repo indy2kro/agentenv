@@ -82,7 +82,7 @@ export const statusCommand = new Command()
     const configPath = findConfigPath();
     if (!configPath) {
       console.log('No agentenv.toml found (project or user scope).');
-      console.log('  Run `agentenv setup` or `agentenv configure` to create one.\n');
+      console.log('  Run `agentenv setup` (alias: `configure`) to create one.\n');
       process.exitCode = 1;
       return;
     }
