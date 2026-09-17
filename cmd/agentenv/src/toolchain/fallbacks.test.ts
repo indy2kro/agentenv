@@ -11,39 +11,34 @@ import {
 } from './fallbacks.js';
 
 describe('Fallback tools', () => {
-  it('FALLBACK_REQUIRED_TOOLS contains universal_ctags and tokei', () => {
-    assert.deepEqual(FALLBACK_REQUIRED_TOOLS, ['universal_ctags', 'tokei']);
+  it('FALLBACK_REQUIRED_TOOLS contains tokei', () => {
+    assert.deepEqual(FALLBACK_REQUIRED_TOOLS, ['tokei']);
   });
 
   it('requiresFallback returns true for fallback tools', () => {
-    assert.equal(requiresFallback('universal_ctags'), true);
     assert.equal(requiresFallback('tokei'), true);
     assert.equal(requiresFallback('ripgrep'), false);
+    assert.equal(requiresFallback('universal_ctags'), false);
     assert.equal(requiresFallback('unknown_tool'), false);
   });
 
   it('FALLBACK_TOOLS has correct structure', () => {
-    assert.ok(FALLBACK_TOOLS.universal_ctags);
     assert.ok(FALLBACK_TOOLS.tokei);
-
-    const uctags = FALLBACK_TOOLS.universal_ctags;
-    assert.ok(uctags.install);
-    assert.ok(uctags.verify);
-    assert.ok(uctags.paths);
-    assert.ok(uctags.install.macos.length > 0);
-    assert.ok(uctags.install.linux.length > 0);
-    assert.ok(uctags.install.windows.length > 0);
+    assert.ok(!FALLBACK_TOOLS.universal_ctags);
 
     const tokei = FALLBACK_TOOLS.tokei;
+    assert.ok(tokei.install);
+    assert.ok(tokei.verify);
+    assert.ok(tokei.paths);
     assert.ok(tokei.install.macos.length > 0);
     assert.ok(tokei.install.linux.length > 0);
     assert.ok(tokei.install.windows.length > 0);
   });
 
   describe('getInstallCommand', () => {
-    it('returns macOS commands for universal_ctags on macOS', () => {
+    it('returns macOS commands for tokei on macOS', () => {
       // We can't actually change process.platform, so we just verify the structure
-      const macosCommands = FALLBACK_TOOLS.universal_ctags.install.macos;
+      const macosCommands = FALLBACK_TOOLS.tokei.install.macos;
       assert.ok(macosCommands.length > 0);
       assert.ok(macosCommands.some((cmd) => cmd.includes('brew')));
     });
@@ -57,7 +52,7 @@ describe('Fallback tools', () => {
 
   describe('getVerifyCommand', () => {
     it('returns verification commands for known tools', () => {
-      const macosVerify = FALLBACK_TOOLS.universal_ctags.verify.macos;
+      const macosVerify = FALLBACK_TOOLS.tokei.verify.macos;
       assert.ok(macosVerify.length > 0);
     });
 
@@ -69,19 +64,6 @@ describe('Fallback tools', () => {
   });
 
   describe('getFallbackInstallationAdvice', () => {
-    it('returns advice for universal_ctags', () => {
-      const advice = getFallbackInstallationAdvice('universal_ctags');
-      // The advice uses the description "Universal ctags for code navigation"
-      assert.ok(advice.toLowerCase().includes('ctags'));
-      // On Windows, it should mention choco or scoop
-      assert.ok(
-        advice.includes('choco') ||
-          advice.includes('scoop') ||
-          advice.includes('apt') ||
-          advice.includes('brew'),
-      );
-    });
-
     it('returns advice for tokei', () => {
       const advice = getFallbackInstallationAdvice('tokei');
       // The advice uses the description "Fast LOC/code-statistics tool"
@@ -95,14 +77,6 @@ describe('Fallback tools', () => {
   });
 
   describe('generateFallbackCustomToolConfig', () => {
-    it('generates TOML config for universal_ctags', () => {
-      const config = generateFallbackCustomToolConfig('universal_ctags');
-      assert.ok(config.includes('universal_ctags'));
-      assert.ok(config.includes('[[custom_tools]]'));
-      assert.ok(config.includes('already_installed = true'));
-      assert.ok(config.includes('description'));
-    });
-
     it('generates TOML config for tokei', () => {
       const config = generateFallbackCustomToolConfig('tokei');
       assert.ok(config.includes('tokei'));

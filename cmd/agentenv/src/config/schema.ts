@@ -84,7 +84,6 @@ export interface AgentenvConfig {
     rtk?: boolean;
     ast_grep?: boolean;
     git_delta?: boolean;
-    universal_ctags?: boolean;
     gh?: boolean;
     difftastic?: boolean;
     yq?: boolean;
@@ -153,7 +152,6 @@ export const DEFAULT_CONFIG: AgentenvConfig = {
     gh: true,
     difftastic: true,
     // Tier 3 - disabled by default
-    universal_ctags: false,
     yq: false,
     bat: false,
     eza: false,
@@ -240,7 +238,6 @@ export const TOOL_KEYS: Array<keyof NonNullable<AgentenvConfig['tools']>> = [
   'rtk',
   'ast_grep',
   'git_delta',
-  'universal_ctags',
   'gh',
   'difftastic',
   'yq',
@@ -279,7 +276,6 @@ export const TOOL_TIERS: Record<string, number> = {
   // Tier 2 - AI-coding value-add
   ast_grep: 2,
   git_delta: 2,
-  universal_ctags: 2,
   gh: 2,
   difftastic: 2,
   // Tier 3 - power-user
@@ -318,7 +314,6 @@ export const BINARY_MAP: Record<string, string> = {
   rtk: 'rtk',
   ast_grep: 'sg',
   git_delta: 'delta',
-  universal_ctags: 'ctags',
   gh: 'gh',
   difftastic: 'difft',
   yq: 'yq',
@@ -356,7 +351,6 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   rtk: 'CLI proxy that reduces LLM token consumption by 60-90%',
   ast_grep: 'Structural/AST-based code search and rewrite',
   git_delta: 'Syntax-highlighted git diff pager',
-  universal_ctags: 'Universal ctags for code navigation',
   difftastic: 'Structural diff tool that understands syntax',
   gh: 'GitHub CLI for repository operations',
   yq: 'YAML/TOML processor (jq for YAML)',
@@ -476,7 +470,6 @@ export function configToToml(config: AgentenvConfig): string {
       'rtk',
       'ast_grep',
       'git_delta',
-      'universal_ctags',
       'gh',
       'difftastic',
       'yq',
@@ -618,7 +611,6 @@ function mergeWithDefaults(config: AgentenvConfig): AgentenvConfig {
       rtk: config.tools.rtk ?? DEFAULT_CONFIG.tools?.rtk,
       ast_grep: config.tools.ast_grep ?? DEFAULT_CONFIG.tools?.ast_grep,
       git_delta: config.tools.git_delta ?? DEFAULT_CONFIG.tools?.git_delta,
-      universal_ctags: config.tools.universal_ctags ?? DEFAULT_CONFIG.tools?.universal_ctags,
       gh: config.tools.gh ?? DEFAULT_CONFIG.tools?.gh,
       difftastic: config.tools.difftastic ?? DEFAULT_CONFIG.tools?.difftastic,
       yq: config.tools.yq ?? DEFAULT_CONFIG.tools?.yq,
@@ -825,7 +817,6 @@ export function validateConfig(config: AgentenvConfig): {
 
   // Tools Phase 0 flagged as not resolvable from the mise registry.
   const registryGapNote: Record<string, string> = {
-    universal_ctags: 'not in the mise registry; add a custom_tools fallback',
     tokei: 'not in the mise registry; add a custom_tools fallback or local toolchain',
   };
   for (const [tool, note] of Object.entries(registryGapNote)) {
@@ -1093,7 +1084,6 @@ export function getEnabledTools(config: AgentenvConfig): string[] {
     'rtk',
     'ast_grep',
     'git_delta',
-    'universal_ctags',
     'gh',
     'difftastic',
     'yq',

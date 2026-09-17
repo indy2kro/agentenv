@@ -20,7 +20,6 @@ export const MISE_TOOL_NAMES: Record<string, string> = {
   rtk: 'rtk',
   ast_grep: 'ast-grep',
   git_delta: 'delta',
-  universal_ctags: 'universal-ctags',
   gh: 'gh',
   difftastic: 'difftastic',
   yq: 'yq',
@@ -51,7 +50,7 @@ export const MISE_TOOL_NAMES: Record<string, string> = {
 };
 
 // Tools that cannot be installed via mise and require fallback
-// Based on Phase 0 findings: universal-ctags and tokei are not in mise registry
+// Based on Phase 0 findings: tokei is not in the mise registry (needs cargo backend)
 export { FALLBACK_REQUIRED_TOOLS, requiresFallback };
 
 export interface MiseTool {

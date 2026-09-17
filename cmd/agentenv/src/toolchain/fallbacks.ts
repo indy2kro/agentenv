@@ -1,6 +1,6 @@
 /**
  * Platform-specific Fallback Installations
- * Handles tools that cannot be installed via mise (universal-ctags, tokei)
+ * Handles tools that cannot be installed via mise (tokei)
  * Implements platform-specific fallback paths as documented in phase0-findings.md
  */
 
@@ -33,29 +33,9 @@ export interface FallbackTool {
 /**
  * Fallback tools that cannot be installed via mise
  * Based on Phase 0 findings:
- * - universal-ctags: Not in mise registry on any OS
  * - tokei: aqua:XAMPPRocky/tokei doesn't work, needs cargo:tokei (requires Rust)
  */
 export const FALLBACK_TOOLS: Record<string, FallbackTool> = {
-  universal_ctags: {
-    name: 'universal-ctags',
-    description: 'Universal ctags for code navigation',
-    install: {
-      macos: ['brew install --quiet universal-ctags'],
-      linux: ['sudo apt-get install -y universal-ctags', 'sudo apt install -y universal-ctags'],
-      windows: ['choco install ctags', 'scoop install ctags'],
-    },
-    verify: {
-      macos: ['command -v ctags', 'ctags --version'],
-      linux: ['command -v ctags', 'ctags --version'],
-      windows: ['where ctags', 'ctags --version'],
-    },
-    paths: {
-      macos: '/usr/local/bin/ctags',
-      linux: '/usr/bin/ctags',
-      windows: 'C:\\ProgramData\\chocolatey\\bin\\ctags.exe',
-    },
-  },
   tokei: {
     name: 'tokei',
     description: 'Fast LOC/code-statistics tool',
@@ -81,7 +61,7 @@ export const FALLBACK_TOOLS: Record<string, FallbackTool> = {
  * Tools that have special installation requirements
  * These are marked as "Fallback required" in phase0-findings.md
  */
-export const FALLBACK_REQUIRED_TOOLS = ['universal_ctags', 'tokei'];
+export const FALLBACK_REQUIRED_TOOLS = ['tokei'];
 
 /**
  * Check if a tool requires fallback installation

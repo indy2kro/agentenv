@@ -220,7 +220,7 @@ describe('mise trust', () => {
 
 describe('MISE_TOOL_NAMES invariant', () => {
   it('has a mise registry name for every catalog tool except custom-only ones', () => {
-    const customOnly = new Set(['universal_ctags', 'tokei']);
+    const customOnly = new Set(['tokei']);
     for (const key of TOOL_KEYS) {
       if (customOnly.has(key)) continue;
       assert.ok(MISE_TOOL_NAMES[key], `MISE_TOOL_NAMES missing entry for tool: ${key}`);

@@ -271,13 +271,13 @@ supported set explicitly without the wizard.
 | Tier | Tools | Default |
 |---|---|---|
 | **1 — essential** | `ripgrep` (rg), `fd`, `jq`, `rtk` | always on |
-| **2 — AI-coding value-add** | `ast_grep` (sg), `git_delta` (delta), `universal_ctags`, `gh`, `difftastic` (difft) | on by default (pre-checked in the wizard) |
+| **2 — AI-coding value-add** | `ast_grep` (sg), `git_delta` (delta), `gh`, `difftastic` (difft) | on by default (pre-checked in the wizard) |
 | **3 — power-user** | `yq`, `bat`, `eza`, `miller` (mlr), `tokei`, `hyperfine`, `fzf`, `just`, `watchexec`, `direnv`, `ripgrep_all` (rga), `zoxide`, `shellcheck`, `uv`, `xh`, `actionlint`, `gitleaks`, `gum`, `glow`, `jless`, `sd`, `tealdeer` (tldr), `duckdb`, `qsv` | off by default — toggle any in the wizard |
 
 All of Tiers 1–3 install through mise the same way — no separate mechanism.
-Two tools (`universal_ctags`, `tokei`) aren't in mise's registry on every
-platform; enabling them prints a validation warning suggesting a
-`custom_tools` fallback entry instead.
+One tool (`tokei`) isn't in mise's registry on every platform; enabling it
+prints a validation warning suggesting a `custom_tools` fallback entry
+instead.
 
 ## Custom tools
 

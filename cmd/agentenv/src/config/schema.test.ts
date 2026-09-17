@@ -105,9 +105,9 @@ describe('configuration validation', () => {
   });
 
   it('flags registry-gap tools as warnings, not errors', () => {
-    const report = validateConfig({ tools: { universal_ctags: true } });
+    const report = validateConfig({ tools: { tokei: true } });
     assert.equal(report.errors.length, 0);
-    assert.ok(report.warnings.some((warning) => warning.includes('universal_ctags')));
+    assert.ok(report.warnings.some((warning) => warning.includes('tokei')));
   });
 
   it('warns about an already_installed custom tool with no OS path', () => {
@@ -334,7 +334,7 @@ describe('tool catalog: invariant coverage', () => {
   it('defaults enable exactly Tier 1 + the mise-installable Tier 2 tools', () => {
     for (const key of TOOL_KEYS) {
       const enabled = DEFAULT_CONFIG.tools?.[key] === true;
-      const expected = TOOL_TIERS[key] <= 2 && key !== 'universal_ctags';
+      const expected = TOOL_TIERS[key] <= 2;
       assert.equal(enabled, expected, `default for ${key} is off-spec`);
     }
   });

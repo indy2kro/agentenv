@@ -101,7 +101,6 @@ any tool in Tiers 1–3 is even considered on Windows.
 | ast-grep (`sg`) | structural/AST-based code search & rewrite — more precise than regex grep for code edits specifically |
 | git-delta | readable, token-friendlier diff output (a `git diff` display pager) |
 | difftastic (`difft`) | structural/syntax-aware diff engine — computes the diff itself at the AST level (catches renames/reformats line-based diffing misses), complements git-delta rather than replacing it |
-| universal-ctags | symbol/definition lookup for code navigation |
 | gh (GitHub CLI) | PR/issue interaction (often already present) |
 
 ### Tier 3 — power-user (off by default; selectable in the wizard)
@@ -163,7 +162,7 @@ writers."
 A single `agentenv setup` flow (alias `configure`) covers everything, step by
 step — pre-filled from the existing `agentenv.toml` when re-running:
 1. Select which agents to configure (checkbox list, pre-checked = detected + already-enabled ones, one page, no wrap)
-2. Select which tools to include — the full Tier 1–3 picker on one page (pre-checked = Tier 1+2 defaults, Tier 3 off; `universal_ctags` marked as requiring manual install)
+2. Select which tools to include — the full Tier 1–3 picker on one page (pre-checked = Tier 1+2 defaults, Tier 3 off; `tokei` marked as requiring manual install)
 3. Add custom binaries (see 6.3), any number
 4. Choose scope: project-level config (checked into the repo) vs. user/global-level
 5. Choose whether rtk's command-rewriting is enabled or tools are installed "raw"

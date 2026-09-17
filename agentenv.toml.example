@@ -35,7 +35,7 @@ vibe = false
 # TOOL CATALOG (Tier 1-3)
 # =============================================================================
 # Each tool can be enabled/disabled individually, or use tier-level toggles.
-# If a tool is marked as unavailable (e.g., universal-ctags, tokei on Windows),
+# If a tool is marked as unavailable (e.g., tokei on some platforms),
 # agentenv will use the fallback strategy (custom tool or skip with warning).
 
 [tools]
@@ -48,10 +48,8 @@ rtk = true      # Binary: rtk (external install on this machine)
 # --- Tier 2: AI-coding value-add (on by default in Simple mode) ---
 ast_grep = true      # Binary: sg (note: deprecated name, new binary is ast-grep)
 git_delta = true      # Binary: delta (mise registry name is "delta", not "git-delta")
-# universal-ctags is marked as FAIL in Phase 0 research (Task 1) - no mise registry entry
-# Fallback: use custom_tools section below
-universal_ctags = false  # Disabled by default due to install issues
-
+# universal-ctags isn't in the catalog (no mise registry entry on any OS);
+# it's the custom_tools example below, not a [tools] key.
 gh = true         # Binary: gh (GitHub CLI)
 
 # --- Tier 3: Power-user (Advanced mode only) ---

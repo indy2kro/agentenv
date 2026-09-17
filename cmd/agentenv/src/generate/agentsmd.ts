@@ -20,7 +20,6 @@ export const TOOL_CATEGORIES: Record<string, string> = {
   // Code Navigation
   git_delta: 'Code Navigation',
   difftastic: 'Code Navigation',
-  universal_ctags: 'Code Navigation',
   gh: 'Code Navigation',
 
   // Utilities
