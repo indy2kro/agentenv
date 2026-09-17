@@ -299,6 +299,53 @@ describe('integrations config', () => {
   });
 });
 
+describe('tool catalog: invariant coverage', () => {
+  it('every TOOL_KEYS entry has a tier, binary, description, and default', () => {
+    for (const key of TOOL_KEYS) {
+      assert.ok(TOOL_TIERS[key] >= 1 && TOOL_TIERS[key] <= 3, `missing/invalid TOOL_TIERS: ${key}`);
+      assert.ok(BINARY_MAP[key], `missing BINARY_MAP entry: ${key}`);
+      assert.ok(TOOL_DESCRIPTIONS[key], `missing TOOL_DESCRIPTIONS entry: ${key}`);
+      assert.equal(
+        typeof DEFAULT_CONFIG.tools?.[key],
+        'boolean',
+        `missing DEFAULT_CONFIG.tools default: ${key}`,
+      );
+    }
+  });
+
+  it('TOOL_TIERS, BINARY_MAP, TOOL_DESCRIPTIONS, and DEFAULT_CONFIG.tools have no stray keys', () => {
+    const tables: Record<string, unknown>[] = [TOOL_TIERS, BINARY_MAP, TOOL_DESCRIPTIONS];
+    for (const table of tables) {
+      for (const key of Object.keys(table)) {
+        assert.ok(
+          (TOOL_KEYS as readonly string[]).includes(key),
+          `catalog table has a key absent from TOOL_KEYS: ${key}`,
+        );
+      }
+    }
+    for (const key of Object.keys(DEFAULT_CONFIG.tools ?? {})) {
+      assert.ok(
+        (TOOL_KEYS as readonly string[]).includes(key),
+        `DEFAULT_CONFIG.tools has a key absent from TOOL_KEYS: ${key}`,
+      );
+    }
+  });
+
+  it('defaults enable exactly Tier 1 + the mise-installable Tier 2 tools', () => {
+    for (const key of TOOL_KEYS) {
+      const enabled = DEFAULT_CONFIG.tools?.[key] === true;
+      const expected = TOOL_TIERS[key] <= 2 && key !== 'universal_ctags';
+      assert.equal(enabled, expected, `default for ${key} is off-spec`);
+    }
+  });
+
+  it('TOOL_KEYS lists Tier 1, then Tier 2, then Tier 3 contiguously', () => {
+    const tiers = TOOL_KEYS.map((key) => TOOL_TIERS[key]);
+    const sorted = [...tiers].sort((a, b) => a - b);
+    assert.deepEqual(tiers, sorted);
+  });
+});
+
 const NEW_TOOLS: Array<{ key: string; binary: string; description: string }> = [
   {
     key: 'ripgrep_all',
