@@ -74,6 +74,15 @@ export function toolChoices(existing: AgentenvConfig): ToolChoiceEntry[] {
   return entries;
 }
 
+/** Page size for checkbox prompts: fit everything when the terminal allows,
+ *  otherwise fill the terminal without going below a usable minimum.
+ *  Pairs with `loop: false` so short-terminal paging never wraps around. */
+export function promptPageSize(choiceCount: number, rows: number | undefined): number {
+  const reserved = 4; // prompt line + help line + margin
+  const capacity = Math.max(8, (rows ?? 24) - reserved);
+  return Math.min(choiceCount, capacity);
+}
+
 /**
  * Parse a comma-separated agent list (from `--agents`) into valid AgentKeys.
  * Rejects unknown names so a typo can't silently drop an agent.

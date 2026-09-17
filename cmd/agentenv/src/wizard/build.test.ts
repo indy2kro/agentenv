@@ -7,6 +7,7 @@ import {
   defaultToolSelection,
   formatDiffLines,
   parseAgentsInput,
+  promptPageSize,
   simpleToolSelection,
   TIER_LABELS,
   toolChoices,
@@ -247,4 +248,19 @@ it('every catalog tool has a binary and description for the picker', () => {
     assert.ok(BINARY_MAP[key], `missing BINARY_MAP entry for ${key}`);
     assert.ok(TOOL_DESCRIPTIONS[key], `missing TOOL_DESCRIPTIONS entry for ${key}`);
   }
+});
+
+describe('promptPageSize', () => {
+  it('fits all choices when the terminal is tall enough', () => {
+    assert.equal(promptPageSize(36, 50), 36);
+  });
+
+  it('clamps to terminal capacity on short terminals with an 8-row usable minimum', () => {
+    assert.equal(promptPageSize(36, 24), 20);
+    assert.equal(promptPageSize(36, 4), 8);
+  });
+
+  it('assumes a 24-row terminal when rows are unknown', () => {
+    assert.equal(promptPageSize(36, undefined), 20);
+  });
 });
