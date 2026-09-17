@@ -3,7 +3,14 @@
  * Kept free of inquirer/CLI so the logic is unit-testable.
  */
 
-import { AGENT_KEYS, DEFAULT_CONFIG, TOOL_KEYS, TOOL_TIERS } from '../config/schema.js';
+import {
+  AGENT_KEYS,
+  BINARY_MAP,
+  DEFAULT_CONFIG,
+  TOOL_DESCRIPTIONS,
+  TOOL_KEYS,
+  TOOL_TIERS,
+} from '../config/schema.js';
 import type {
   AgentKey,
   AgentenvConfig,
@@ -11,6 +18,7 @@ import type {
   CustomTool,
   IntegrationsConfig,
 } from '../config/schema.js';
+import { requiresFallback } from '../toolchain/fallbacks.js';
 
 export const AGENT_OPTIONS: Array<{ value: AgentKey; label: string }> = [
   { value: 'claude_code', label: 'Claude Code' },
@@ -31,6 +39,39 @@ export function defaultToolSelection(): string[] {
 export function simpleToolSelection(includeTier2: boolean): string[] {
   const maxTier = includeTier2 ? 2 : 1;
   return defaultToolSelection().filter((key) => (TOOL_TIERS[key] ?? 0) <= maxTier);
+}
+
+export const TIER_LABELS: Record<number, string> = {
+  1: 'Essential',
+  2: 'AI-coding value-add',
+  3: 'Power-user',
+};
+
+// Discriminated union: the value branch must carry `type?: never` so that
+// (`e.type === 'separator'`) narrows correctly, and so the branch stays
+// assignable to @inquirer's Choice type (which also declares `type?: never`).
+export type ToolChoiceEntry =
+  | { type: 'separator'; line: string }
+  | { type?: never; value: string; name: string; checked: boolean };
+
+export function toolChoices(existing: AgentenvConfig): ToolChoiceEntry[] {
+  const entries: ToolChoiceEntry[] = [];
+  for (const tier of [1, 2, 3]) {
+    const keys = TOOL_KEYS.filter((key) => TOOL_TIERS[key] === tier);
+    if (keys.length === 0) continue;
+    entries.push({ type: 'separator', line: `── Tier ${tier} · ${TIER_LABELS[tier]} ──` });
+    for (const key of keys) {
+      const tierTag = requiresFallback(key)
+        ? `[Tier ${tier} · fallback tool · requires manual install]`
+        : `[Tier ${tier}]`;
+      entries.push({
+        value: key,
+        name: `${BINARY_MAP[key]} — ${TOOL_DESCRIPTIONS[key]} ${tierTag}`,
+        checked: existing.tools?.[key] === true,
+      });
+    }
+  }
+  return entries;
 }
 
 /**

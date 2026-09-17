@@ -8,9 +8,25 @@ import {
   formatDiffLines,
   parseAgentsInput,
   simpleToolSelection,
+  TIER_LABELS,
+  toolChoices,
 } from './build.js';
-import { TOOL_KEYS, TOOL_TIERS } from '../config/schema.js';
+import type { ToolChoiceEntry } from './build.js';
+import {
+  BINARY_MAP,
+  DEFAULT_CONFIG,
+  TOOL_DESCRIPTIONS,
+  TOOL_KEYS,
+  TOOL_TIERS,
+} from '../config/schema.js';
 import type { ConfigDiffEntry } from '../config/schema.js';
+
+type ChoiceEntry = Extract<ToolChoiceEntry, { value: string }>;
+type SeparatorEntry = Extract<ToolChoiceEntry, { line: string }>;
+const choicesOf = (entries: ToolChoiceEntry[]): ChoiceEntry[] =>
+  entries.filter((e) => e.type !== 'separator') as ChoiceEntry[];
+const separatorsOf = (entries: ToolChoiceEntry[]): SeparatorEntry[] =>
+  entries.filter((e) => e.type === 'separator') as SeparatorEntry[];
 
 describe('wizard build helpers', () => {
   it('simpleToolSelection includes Tier 2 only when requested', () => {
@@ -180,4 +196,55 @@ describe('wizard build helpers', () => {
       TOOL_KEYS.filter((key) => sel.includes(key)),
     );
   });
+});
+
+describe('toolChoices', () => {
+  it('orders all tools by tier with one separator between tiers', () => {
+    const entries = toolChoices(DEFAULT_CONFIG);
+    const separators = separatorsOf(entries);
+    assert.equal(separators.length, 3);
+    assert.match(separators[0].line, /Tier 1/);
+    assert.match(separators[1].line, /Tier 2/);
+    assert.match(separators[2].line, /Tier 3/);
+
+    const values = choicesOf(entries).map((e) => e.value);
+    assert.deepEqual(values, TOOL_KEYS);
+
+    const labels = separators.map((e) => e.line);
+    assert.deepEqual(labels, [
+      `── Tier 1 · ${TIER_LABELS[1]} ──`,
+      `── Tier 2 · ${TIER_LABELS[2]} ──`,
+      `── Tier 3 · ${TIER_LABELS[3]} ──`,
+    ]);
+  });
+
+  it('renders "binary — description [Tier N]" labels', () => {
+    const entries = toolChoices(DEFAULT_CONFIG);
+    const rg = choicesOf(entries).find((e) => e.value === 'ripgrep');
+    assert.equal(rg?.name, 'rg — Fast text search (use instead of grep -r) [Tier 1]');
+  });
+
+  it('marks fallback tools with a manual-install note', () => {
+    const entries = toolChoices(DEFAULT_CONFIG);
+    const ctags = choicesOf(entries).find((e) => e.value === 'universal_ctags');
+    assert.match(ctags?.name ?? '', /\[Tier 2 · fallback tool · requires manual install\]/);
+  });
+
+  it('pre-checks exactly the tools enabled in the supplied config', () => {
+    const config = { ...DEFAULT_CONFIG, tools: { ...DEFAULT_CONFIG.tools, fzf: true } };
+    const all = choicesOf(toolChoices(config));
+    const fzf = all.find((e) => e.value === 'fzf');
+    const rg = all.find((e) => e.value === 'ripgrep');
+    const tokei = all.find((e) => e.value === 'tokei');
+    assert.equal(fzf?.checked, true);
+    assert.equal(rg?.checked, true);
+    assert.equal(tokei?.checked, false);
+  });
+});
+
+it('every catalog tool has a binary and description for the picker', () => {
+  for (const key of TOOL_KEYS) {
+    assert.ok(BINARY_MAP[key], `missing BINARY_MAP entry for ${key}`);
+    assert.ok(TOOL_DESCRIPTIONS[key], `missing TOOL_DESCRIPTIONS entry for ${key}`);
+  }
 });
