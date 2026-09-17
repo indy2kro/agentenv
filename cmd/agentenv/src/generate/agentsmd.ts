@@ -6,6 +6,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { AgentenvConfig, BINARY_MAP, TOOL_DESCRIPTIONS, DEFAULT_CONFIG } from '../config/schema.js';
+import { writeFileWithRetry } from '../utils/fs-retry.js';
 
 // Tool categories for organization
 export const TOOL_CATEGORIES: Record<string, string> = {
@@ -301,7 +302,7 @@ export function saveGeneratedFiles(files: GeneratedFile[]): {
   for (const file of files) {
     try {
       fs.mkdirSync(path.dirname(file.path), { recursive: true });
-      fs.writeFileSync(file.path, file.content);
+      writeFileWithRetry(file.path, file.content);
       saved.push(file.path);
     } catch (err) {
       errors.push({
@@ -336,7 +337,7 @@ export function updateWithMarkers(
     if (!fs.existsSync(filePath)) {
       // File doesn't exist, just create it
       fs.mkdirSync(path.dirname(filePath), { recursive: true });
-      fs.writeFileSync(filePath, newContent);
+      writeFileWithRetry(filePath, newContent);
       return {
         success: true,
         updated: true,
@@ -362,7 +363,7 @@ export function updateWithMarkers(
       const managedBlock = newContent.substring(newStartIndex, newEndIndex + markerEnd.length);
       const separator =
         existingContent.length === 0 || existingContent.endsWith('\n') ? '\n' : '\n\n';
-      fs.writeFileSync(filePath, `${existingContent}${separator}${managedBlock}\n`);
+      writeFileWithRetry(filePath, `${existingContent}${separator}${managedBlock}\n`);
       return {
         success: true,
         updated: true,
@@ -404,7 +405,7 @@ export function updateWithMarkers(
 
     // Only write if content actually changed
     if (updatedContent !== existingContent) {
-      fs.writeFileSync(filePath, updatedContent);
+      writeFileWithRetry(filePath, updatedContent);
       return {
         success: true,
         updated: true,

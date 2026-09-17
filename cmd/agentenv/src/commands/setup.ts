@@ -179,7 +179,7 @@ export async function unattendedSetup(
     }
   }
 
-  await saveAndApply(config, file);
+  await saveAndApply(config, file, deps);
 }
 
 export const setupCommand = new Command()

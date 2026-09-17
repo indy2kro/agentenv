@@ -15,7 +15,12 @@ import type { AgentKey, AgentenvConfig, CustomTool } from '../config/schema.js';
 import { configFilePath, resolveScopeDir } from '../config/scopes.js';
 import { applyConfiguration } from './apply.js';
 import { AGENT_OPTIONS, buildConfigFromSelections, formatDiffLines } from '../wizard/build.js';
-import { getMiseVersion, isMiseInstalled, miseInstallInstructions } from '../toolchain/mise.js';
+import {
+  getMiseVersion,
+  isMiseInstalled,
+  miseInstallInstructions,
+  prereqLine,
+} from '../toolchain/mise.js';
 import { colorizeLine, theme } from '../ui/theme.js';
 import { withSpinner } from '../ui/spinner.js';
 
@@ -53,7 +58,7 @@ export const configureCommand = new Command()
       process.exitCode = 1;
       return;
     }
-    console.log(`Prerequisite: mise ${getMiseVersion()}\n`);
+    console.log(`${prereqLine(getMiseVersion())}\n`);
 
     let existing: AgentenvConfig;
     try {
@@ -238,7 +243,8 @@ export const configureCommand = new Command()
     console.log(`\nSaved configuration: ${file}`);
 
     const result = await withSpinner('Applying configuration...', () =>
-      applyConfiguration(config, resolveScopeDir(scope)),
+      // configure printed the prereq line above; tell apply not to repeat it.
+      applyConfiguration(config, resolveScopeDir(scope), { skipPrereqMessage: true }),
     );
     for (const message of result.messages) console.log(colorizeLine(message));
     for (const error of result.errors) console.error(theme.fail(error));
