@@ -58,30 +58,30 @@ already taken on the registry). Installing from source instead? See
 agentenv setup
 ```
 
-This is Simple mode: it auto-detects which supported agents are installed,
-offers the default tool set (Tier 1 always, Tier 2 unless you decline),
-writes `agentenv.toml`, and wires everything up in one pass — including the
-Windows shell fix if you're on Windows. Answer three prompts (agents, Tier 2
-on/off, project vs. user scope) and you're done.
+The wizard walks you through agents, the full tool picker (Tiers 1–3 on one
+page; Tier 1 and Tier 2 pre-checked, Tier 3 off), optional custom binaries,
+scope, rtk, and the optional Superpowers integration, then shows you a diff
+and applies in one pass — including the Windows shell fix if you're on
+Windows. It pre-fills every prompt from an existing `agentenv.toml`, so it's
+safe to re-run any time.
 
-Prefer full control over exactly which tools and agents get configured? Run
-`agentenv configure` instead. Not in an interactive terminal (CI, a script)?
-`setup`/`configure` both refuse to run and tell you to use `agentenv apply`
-against a hand-written or previously-saved `agentenv.toml` instead.
+The same flow is also reached via `agentenv configure` (an alias of `setup`).
+Not in an interactive terminal (CI, a script)? `setup` refuses to run and
+tells you to use `agentenv apply` against a hand-written or previously-saved
+`agentenv.toml` instead.
 
 ## Commands
 
 | Command | What it does |
 |---|---|
-| `agentenv setup` | Interactive first-run wizard, Simple mode: detect agents, pick Tier 1(+2) tools, pick scope, then applies immediately. |
-| `agentenv configure` | Interactive Advanced-mode wizard: pick agents, the full Tier 1–3 tool picker, add custom binaries, choose scope, toggle rtk, optionally opt into Superpowers, review a diff, then confirm before applying. Re-run any time — it pre-fills every prompt from your current `agentenv.toml`. |
+| `agentenv setup` (alias `configure`) | Interactive wizard: pick agents, the full Tier 1–3 tool picker (one page, Tier 1+2 pre-checked, Tier 3 off), add custom binaries, choose scope, toggle rtk, optionally opt into Superpowers, review a diff, then confirm before applying. Pre-fills every prompt from your current `agentenv.toml`. |
 | `agentenv apply [--skip-mise-install]` | Non-interactive: read `agentenv.toml` and (re)generate everything — `mise.toml`, `AGENTS.md`/`CLAUDE.md`, per-agent hook files, the Tier 0 shell fix. Safe to run in CI or a script. |
 | `agentenv status` | Read-only report: what's configured, what's actually installed, and where the two disagree (drift) — per agent, per tool, per generated file, plus optional integrations and `gh` auth. |
 | `agentenv doctor` | Standalone environment sanity check (mise, shims, config, tools, agents) — independent of any `agentenv.toml`. |
 | `agentenv update` | Unattended update of mise itself and the mise-managed tools in your config. |
 
-`setup`/`configure` both write `agentenv.toml` and then call the same `apply`
-logic internally, so the end state is identical either way. Output is
+`setup` (alias `configure`) writes `agentenv.toml` and then calls the same
+`apply` logic internally, so a hand-run `apply` reaches the same end state. Output is
 colorized when your terminal supports it; pass `--no-color` to force it off.
 
 Full command reference, `agentenv.toml` schema, tool catalog, custom tools,

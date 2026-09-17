@@ -106,32 +106,31 @@ Maintainers: see [`docs/guides/releasing.md`](../../docs/guides/releasing.md).
 agentenv setup
 ```
 
-This is Simple mode: it auto-detects which supported agents are installed,
-offers the default tool set (Tier 1 always, Tier 2 unless you decline),
-writes `agentenv.toml`, and wires everything up in one pass — including the
-Windows shell fix if you're on Windows. Answer three prompts (agents, Tier 2
-on/off, project vs. user scope) and you're done.
+The wizard walks you through agents, the full tool picker (Tiers 1–3 on one
+page; Tier 1 and Tier 2 pre-checked, Tier 3 off), optional custom binaries,
+scope, rtk, and the optional Superpowers integration, then shows you a diff
+and applies in one pass — including the Windows shell fix if you're on
+Windows. It pre-fills every prompt from an existing `agentenv.toml`, so it's
+safe to re-run any time.
 
-Prefer full control over exactly which tools and agents get configured?
-Run `agentenv configure` instead (see [Commands](#commands)).
+The same flow is also reached via `agentenv configure` (an alias of `setup`;
+see [Commands](#commands)).
 
-Not in an interactive terminal (CI, a script)? `setup`/`configure` both
-refuse to run and tell you to use `agentenv apply` against a hand-written or
-previously-saved `agentenv.toml` instead.
+Not in an interactive terminal (CI, a script)? `setup` refuses to run and
+tells you to use `agentenv apply` against a hand-written or previously-saved
+`agentenv.toml` instead.
 
 ## Commands
 
 | Command | What it does |
 |---|---|
-| `agentenv setup` | Interactive first-run wizard, Simple mode: detect agents, pick Tier 1(+2) tools, pick scope, then applies immediately. |
-| `agentenv configure` | Interactive Advanced-mode wizard: pick agents, the full Tier 1–3 tool picker, add custom binaries, choose scope, toggle rtk, review a diff of what will change, then confirm before applying. Re-run any time — it pre-fills every prompt from your current `agentenv.toml`. |
+| `agentenv setup` (alias `configure`) | Interactive wizard: pick agents, the full Tier 1–3 tool picker (one page, Tier 1+2 pre-checked), add custom binaries, choose scope, toggle rtk, optionally opt into Superpowers, review a diff of what will change, then confirm before applying. Re-run any time — it pre-fills every prompt from your current `agentenv.toml`. |
 | `agentenv apply [--skip-mise-install]` | Non-interactive: read `agentenv.toml` and (re)generate everything — `mise.toml`, `AGENTS.md`/`CLAUDE.md`, per-agent hook files, the Tier 0 shell fix. Safe to run in CI or a script. `--skip-mise-install` generates files only, without running `mise install` (useful for a fast dry-run or when mise isn't available). |
 | `agentenv status` | Read-only report: what's configured, what's actually installed, and where the two disagree (drift) — per agent, per tool, per generated file. |
 | `agentenv --version` / `agentenv --help` | Standard `commander`-generated version/help output; every subcommand also takes `--help`. |
 
-`setup`/`configure` both write `agentenv.toml` and then call the same
-`apply` logic internally, so the end state is identical either way — the
-only difference is how you got there.
+`setup` (alias `configure`) writes `agentenv.toml` and then calls the same
+`apply` logic internally, so a hand-run `apply` reaches the same end state.
 
 Output is colorized when your terminal supports it (auto-detected, honors
 `NO_COLOR`/`FORCE_COLOR`); pass `--no-color` (before or after the subcommand)
@@ -148,7 +147,8 @@ project directory first, then fall back to the user-scope file.
 
 `mise.toml`, `AGENTS.md`, `CLAUDE.md`, and the per-agent hook files are all
 **generated outputs** of `agentenv apply` — never hand-edit them; edit
-`agentenv.toml` and re-run `apply` (or `configure`) instead. Regeneration
+`agentenv.toml` and re-run `apply` instead (or run the `setup` wizard to
+edit interactively). Regeneration
 only touches a marker-block section of `AGENTS.md`/`CLAUDE.md`, so any
 content you've added outside that block survives.
 
@@ -244,7 +244,7 @@ enabled = false
 ```
 
 Every field is optional — omit anything and it falls back to the documented
-default. Run `agentenv configure` if you'd rather build this file
+default. Run `agentenv setup` if you'd rather build this file
 interactively than hand-write it; the review screen at the end shows you the
 exact diff before anything is written.
 
@@ -262,17 +262,17 @@ exact diff before anything is written.
 | Cline CLI | `cline` | off |
 | Mistral Vibe | `vibe` | off |
 
-`agentenv setup` detects installed agents and offers the Simple-mode defaults.
-Use `agentenv configure` or `--agents` when you need to select the full
-supported set explicitly.
+`agentenv setup` detects installed agents and pre-checks them in the wizard.
+Use `--agents` (with unattended `setup --yes`) when you need to select the
+supported set explicitly without the wizard.
 
 ## Tool catalog
 
 | Tier | Tools | Default |
 |---|---|---|
 | **1 — essential** | `ripgrep` (rg), `fd`, `jq`, `rtk` | always on |
-| **2 — AI-coding value-add** | `ast_grep` (sg), `git_delta` (delta), `universal_ctags`, `gh`, `difftastic` (difft) | on (Simple mode asks once) |
-| **3 — power-user** | `yq`, `bat`, `eza`, `miller` (mlr), `tokei`, `hyperfine`, `fzf`, `just`, `watchexec`, `direnv`, `ripgrep_all` (rga), `zoxide`, `shellcheck`, `uv`, `xh`, `actionlint`, `gitleaks`, `gum`, `glow`, `jless`, `sd`, `tealdeer` (tldr), `duckdb`, `qsv` | off — pick individually via `agentenv configure` |
+| **2 — AI-coding value-add** | `ast_grep` (sg), `git_delta` (delta), `universal_ctags`, `gh`, `difftastic` (difft) | on by default (pre-checked in the wizard) |
+| **3 — power-user** | `yq`, `bat`, `eza`, `miller` (mlr), `tokei`, `hyperfine`, `fzf`, `just`, `watchexec`, `direnv`, `ripgrep_all` (rga), `zoxide`, `shellcheck`, `uv`, `xh`, `actionlint`, `gitleaks`, `gum`, `glow`, `jless`, `sd`, `tealdeer` (tldr), `duckdb`, `qsv` | off by default — toggle any in the wizard |
 
 All of Tiers 1–3 install through mise the same way — no separate mechanism.
 Two tools (`universal_ctags`, `tokei`) aren't in mise's registry on every
@@ -328,11 +328,11 @@ allow_external_requests = false
 and warning if `allow_hooks` isn't explicitly `true`, since Superpowers
 registers a `SessionStart` hook), and `agentenv status` reports an
 **Integrations** section with enabled/disabled, source, ref, scope, and each
-agent's installed/missing/unsupported/drifted state. `agentenv configure`
-(Advanced mode) also offers this as an explicit opt-in step, showing the
-full source/ref/scope/agents/hooks/external-request summary before
-installing anything. `agentenv setup` (Simple mode) never enables it and
-always preserves whatever is already configured.
+agent's installed/missing/unsupported/drifted state. The `setup` wizard
+offers this as an explicit opt-in step (Step 6), showing the full
+source/ref/scope/agents/hooks/external-request summary before installing
+anything. Outside the wizard, `apply`/`status` always preserve whatever is
+already configured.
 
 `agentenv` also never touches GitHub credentials: `agentenv status` reports
 `gh` authentication (authenticated/unauthenticated/unknown) via a read-only
@@ -341,9 +341,9 @@ always preserves whatever is already configured.
 
 ## Troubleshooting
 
-- **`agentenv setup`/`configure` exits immediately saying it's
-  interactive** — you're running it in a non-TTY context (CI, a piped
-  script). Use `agentenv apply` against a config file instead.
+- **`agentenv setup` exits immediately saying it's interactive** — you're
+  running it in a non-TTY context (CI, a piped script). Use `agentenv apply`
+  against a config file instead (or unattended `agentenv setup --yes`).
 - **A tool shows as enabled in `agentenv status` but not found on PATH** —
   run `agentenv apply` (it calls `mise install`), or check that mise itself
   is installed and on PATH. `--skip-mise-install` intentionally leaves tools

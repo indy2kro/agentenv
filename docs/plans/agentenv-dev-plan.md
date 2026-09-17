@@ -87,7 +87,7 @@ bash tool for Unix-style scripts) as well as a single-shell one. This is a
 **configuration step** either way, not an install, and should happen before
 any tool in Tiers 1–3 is even considered on Windows.
 
-### Tier 1 — essential (always installed, "Simple mode" default)
+### Tier 1 — essential (always installed, on by default)
 | Tool | Purpose |
 |---|---|
 | ripgrep (`rg`) | fast/smart text search — what most agents call under the hood anyway |
@@ -104,7 +104,7 @@ any tool in Tiers 1–3 is even considered on Windows.
 | universal-ctags | symbol/definition lookup for code navigation |
 | gh (GitHub CLI) | PR/issue interaction (often already present) |
 
-### Tier 3 — power-user (Advanced mode picker only)
+### Tier 3 — power-user (off by default; selectable in the wizard)
 | Tool | Purpose |
 |---|---|
 | yq | YAML/TOML querying, jq's counterpart |
@@ -149,25 +149,26 @@ writers."
 | Rewrite/optimize commands at runtime | Hook into tool calls, swap in faster binaries, cut token cost | rtk |
 | Shared instructions content | One `AGENTS.md` (+ thin `CLAUDE.md` pointer) | us (generated, not hand-maintained) |
 | Per-agent hook registration | Translate our "capabilities changed" event into each agent's native hook format | us (adapters, §4) |
-| Interactive setup/reconfigure | Simple vs. advanced wizard, persistent config, custom binaries | us (the `agentenv` CLI) |
+| Interactive setup/reconfigure | single wizard (`setup`, alias `configure`), persistent config, custom binaries | us (the `agentenv` CLI) |
 
 ## 6. The `agentenv` CLI
 
 ### 6.1 Commands
-- `agentenv setup` — first-run interactive wizard (see 6.2)
-- `agentenv configure` — re-run the wizard later, pre-filled with current config, to add/remove tools, agents, or custom binaries
-- `agentenv apply` — non-interactive: read the config file and (re)generate everything (mise.toml, AGENTS.md/CLAUDE.md, per-agent hooks). Used by `setup`/`configure` internally, and directly in CI or scripted installs
+- `agentenv setup` — interactive wizard (see 6.2); `agentenv configure` is an alias of it, so a re-run is pre-filled from the current config
+- `agentenv apply` — non-interactive: read the config file and (re)generate everything (mise.toml, AGENTS.md/CLAUDE.md, per-agent hooks). Used by `setup` internally, and directly in CI or scripted installs
 - `agentenv status` — show what's installed, what's configured, what's out of sync (including Tier 0 shell status)
 
 ### 6.2 Interactive wizard flow
-- **Simple mode** (default, one keypress): checks/fixes Tier 0 shell config on Windows, auto-detects which of the four target agents are installed, installs Tier 1 (and Tier 2 unless declined via the single toggle), wires hooks for whichever agents were detected. Done.
-- **Advanced mode**: step-by-step —
-  1. Select which agents to configure (checkbox list, pre-checked = detected ones)
-  2. Select which tools to include, full Tier 1–3 picker (checkbox list, pre-checked = Tier 1+2 defaults)
-  3. Add custom binaries (see 6.3), any number
-  4. Choose scope: project-level config (checked into the repo) vs. user/global-level
-  5. Choose whether rtk's command-rewriting is enabled or tools are installed "raw"
-  6. Review screen showing the resulting config diff before writing anything
+
+A single `agentenv setup` flow (alias `configure`) covers everything, step by
+step — pre-filled from the existing `agentenv.toml` when re-running:
+1. Select which agents to configure (checkbox list, pre-checked = detected + already-enabled ones, one page, no wrap)
+2. Select which tools to include — the full Tier 1–3 picker on one page (pre-checked = Tier 1+2 defaults, Tier 3 off; `universal_ctags` marked as requiring manual install)
+3. Add custom binaries (see 6.3), any number
+4. Choose scope: project-level config (checked into the repo) vs. user/global-level
+5. Choose whether rtk's command-rewriting is enabled or tools are installed "raw"
+6. Optionally opt into the Superpowers integration (see 6.6)
+7. Review screen showing the resulting config diff before writing anything
 
 Implementation note: this needs a real interactive terminal UI (menus,
 checkboxes, confirmation screens) that behaves identically on Windows/macOS/Linux
@@ -209,12 +210,12 @@ Reasoning for TOML over YAML/INI:
 
 `agentenv.toml` is the master file; `mise.toml`, `AGENTS.md`, `CLAUDE.md`,
 and the per-agent hook files are all **generated outputs** of `agentenv apply`,
-not hand-edited directly. This is what makes `agentenv configure` safe to
-re-run at any time — it always regenerates from one authoritative source
+not hand-edited directly. This is what makes re-running the `setup` wizard
+safe at any time — it always regenerates from one authoritative source
 rather than trying to merge edits across five files.
 
 ### 6.5 Re-configuration semantics
-- `agentenv configure` diffs the new answers against the existing `agentenv.toml`, shows exactly what will change (tools added/removed, agents added/removed, custom binaries changed, Tier 0 shell status) before writing
+- The setup wizard diffs the new answers against the existing `agentenv.toml`, shows exactly what will change (tools added/removed, agents added/removed, custom binaries changed, Tier 0 shell status) before writing
 - Regeneration of `AGENTS.md`/`CLAUDE.md`/hook files only touches the managed marker-block sections, never the rest of the file, so user-added content in those files survives
 - `agentenv apply` is idempotent: running it twice with no config change produces zero file diffs and does not reinstall anything already present
 
@@ -227,7 +228,7 @@ agentenv/
 │   ├── tsconfig.json        # TypeScript compiler configuration
 │   └── src/
 │       ├── index.ts         # Main entrypoint
-│       ├── commands/       # CLI commands (setup, configure, apply, status)
+│       ├── commands/       # CLI commands (setup, apply, status)
 │       ├── config/          # agentenv.toml schema, load/save/diff
 │       ├── shell/           # Tier 0: detect/configure POSIX shell on Windows
 │       ├── adapters/        # Per-agent adapters (claude, codex, copilot, opencode)
@@ -280,14 +281,14 @@ agentenv/
 - **Acceptance:** one `agentenv.toml` with all four agents enabled produces correct, working configs for each, verified manually per agent
 
 ### Phase 3 — Interactive wizard
-- `agentenv setup` (Simple mode: Tier 0 fix + auto-detect + Tier 1/2 defaults, one confirmation)
-- Advanced path within the wizard (agent picker, full tool picker, custom binaries, scope choice, review-before-write screen)
-- `agentenv configure` (re-run, pre-filled, diffed)
-- **Status:** first-pass implemented (`cmd/agentenv/src/commands/setup.ts`,
-  `commands/configure.ts`, `src/wizard/build.ts`). Both wizards guard
-  non-TTY/headless runs (instruct to use `apply` instead, exit 1); the review
-  screen shows a `diffConfigs`-driven diff before writing.
-- **Acceptance:** a first-time Windows user gets a fully working setup — including the shell fix — in under a minute in Simple mode; an advanced user can add a custom binary and re-run without disturbing existing config
+- `agentenv setup` (unified flow: Tier 0 fix + auto-detect + agents, one-page Tier 1–3 tool picker, custom binaries, scope, rtk, Superpowers, review-before-write)
+- `agentenv configure` is an alias of `setup` (re-run, pre-filled, diffed)
+- **Status:** unified wizard implemented (`cmd/agentenv/src/commands/wizard.ts`,
+  delegating to pure helpers in `src/wizard/build.ts`; `commands/configure.ts`
+  removed, `setup` gained the `configure` alias). The wizard guards
+  non-TTY/headless runs (instructs to use `apply`/`setup --yes` instead, exit 1);
+  the review screen shows a `diffConfigs`-driven diff before writing.
+- **Acceptance:** a first-time Windows user gets a fully working setup — including the shell fix — in under a minute; an experienced user can add a custom binary and re-run without disturbing existing config
 
 ### Phase 4 — Safety, idempotency, transparency
 - Marker-block-only regeneration (never full-file overwrite) for AGENTS.md/CLAUDE.md and per-agent hook files
@@ -365,10 +366,10 @@ agentenv/
   registers a Claude Code `SessionStart` hook); `agentenv status` reports an
   Integrations section (enabled/disabled, source, ref, scope, per-agent
   state) and a `gh` auth line under Tools; `agentenv setup` preserves
-  whatever integrations config already exists and never enables one itself;
-  `agentenv configure` (Advanced mode) adds an explicit opt-in step showing
-  the full source/ref/scope/agents/hooks/external-request summary before
-  installing anything. Shared rendering helpers for both `apply` and
+  whatever integrations config already exists and offers an explicit opt-in
+  step (Superpowers, in the wizard) showing the full
+  source/ref/scope/agents/hooks/external-request summary before installing
+  anything. Shared rendering helpers for both `apply` and
   `status` live in `cmd/agentenv/src/integrations/render.ts`. `npm test` runs
   every `*.test.js` under `dist/` via Node's built-in recursive test
   discovery (`node --test`, run from `dist/`) instead of a hand-maintained
@@ -376,8 +377,7 @@ agentenv/
 - **Acceptance (met):** `agentenv apply` with
   `integrations.superpowers.enabled = true` and `allow_hooks = true`
   installs Superpowers for Claude Code idempotently; `agentenv status` shows
-  its state; `setup`/`configure` preserve and (Advanced mode only) offer
-  explicit opt-in.
+  its state; `setup` preserves existing config and offers an explicit opt-in.
 
 ## 9. Testing strategy
 
@@ -401,7 +401,7 @@ agentenv/
 
 ## 11. Success criteria
 
-- One command (`agentenv setup`) gets a new machine — including a fresh Windows box — to a working state for all four target agents, in Simple mode
+- One command (`agentenv setup`) gets a new machine — including a fresh Windows box — to a working state for all four target agents
 - Advanced users can add a custom binary and reconfigure without hand-editing five different files
 - AGENTS.md/CLAUDE.md content stays short and stable regardless of how many tools are configured
 - Adding a fifth agent later requires only a new adapter module, no core changes

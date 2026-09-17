@@ -55,8 +55,8 @@ export interface ApplyOptions {
    */
   skipMiseInstall?: boolean;
   /**
-   * Skip pushing the "Prerequisite: mise X" line. `setup`/`configure` pass
-   * this so the line is printed exactly once per run (their own prereq check
+   * Skip pushing the "Prerequisite: mise X" line. `setup` passes
+   * this so the line is printed exactly once per run (its own prereq check
    * already printed it).
    */
   skipPrereqMessage?: boolean;

@@ -890,8 +890,8 @@ export interface ConfigDiffEntry {
 }
 
 /**
- * Structurally diff two configs for the pre-write review in `agentenv
- * configure` and for drift reporting in `agentenv status` (§6.5).
+ * Structurally diff two configs for the pre-write review in the `setup`
+ * wizard and for drift reporting in `agentenv status` (§6.5).
  * Tools/agents flip toggles as added/removed; scalar settings as changed.
  */
 export function diffConfigs(
