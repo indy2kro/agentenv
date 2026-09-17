@@ -183,8 +183,26 @@ if (!REAL) {
   );
 }
 
-const statusOut = run(['status'], project);
-expect(/Status complete/.test(statusOut), `status should complete, got:\n${statusOut}`);
+function runAllowingExit(args, cwd) {
+  try {
+    return { status: 0, stdout: run(args, cwd) };
+  } catch (err) {
+    return { status: err.status ?? -1, stdout: err.stdout ?? '' };
+  }
+}
+
+const statusResult = runAllowingExit(['status'], project);
+const statusOut = statusResult.stdout;
+// The fixture enables tools that `apply --skip-mise-install` never installs,
+// so drift (exit 1) is the expected signal — but a dev machine with every
+// fixture tool already globally on PATH can legitimately exit 0, so accept
+// both. The deterministic drift assertion lives in the built-CLI contract test
+// (empty dir → 1), not here.
+expect(
+  statusResult.status === 0 || statusResult.status === 1,
+  `status should exit 0 or 1, got ${statusResult.status}`,
+);
+expect(/Config:/.test(statusOut), `status should print a data line, got:\n${statusOut}`);
 
 if (REAL) {
   // Acceptance: actually install the full Tier 1+2 catalog for real (against
