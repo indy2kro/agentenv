@@ -10,11 +10,7 @@ const cli = fileURLToPath(new URL('../index.js', import.meta.url));
 
 function run(args: string[], cwd: string): { status: number; stdout: string; stderr: string } {
   try {
-    // Windows-only: the CLI's own Tier 0 shell probe spawns `cmd.exe /c where`
-    // with `shell: true`, which Node >= 22 flags with a DEP0190 deprecation
-    // warning on stderr. That runtime noise is unrelated to the contract under
-    // test, so keep the spawned CLI silent about it.
-    const stdout = execFileSync(process.execPath, ['--disable-warning=DEP0190', cli, ...args], {
+    const stdout = execFileSync(process.execPath, [cli, ...args], {
       cwd,
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'pipe'],

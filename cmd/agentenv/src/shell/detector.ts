@@ -306,7 +306,7 @@ function checkMissingUtilities(isPosixCompatible: boolean): string[] {
   for (const util of POSIX_UTILITIES) {
     try {
       // Try to find the utility
-      child_process.spawnSync('cmd.exe', ['/c', `where ${util}`], { stdio: 'ignore', shell: true });
+      child_process.spawnSync('cmd.exe', ['/c', 'where', util], { stdio: 'ignore' });
     } catch {
       try {
         child_process.spawnSync('sh', ['-c', `which ${util}`], { stdio: 'ignore' });
