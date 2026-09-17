@@ -48,6 +48,8 @@ export function misePrereqCheck(deps: MisePrereqCheckDeps = {}): boolean {
 export interface SaveAndApplyDeps {
   /** Injectable applyConfiguration (tests stub the apply tail). */
   applyConfiguration?: typeof applyConfiguration;
+  /** Success line printed after applying (default: "Setup complete!"). */
+  successMessage?: string;
 }
 
 /** Save the config and apply it, mirroring the shared setup tail. */
@@ -74,7 +76,7 @@ export async function saveAndApply(
     return;
   }
 
-  console.log(theme.ok('\nSetup complete!\n'));
+  console.log(theme.ok(`\n${deps.successMessage ?? 'Setup complete!'}\n`));
 }
 
 interface SetupCommandOptions {

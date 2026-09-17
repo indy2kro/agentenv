@@ -83,6 +83,19 @@ export function promptPageSize(choiceCount: number, rows: number | undefined): n
   return Math.min(choiceCount, capacity);
 }
 
+/** Whether a wizard agent row starts pre-checked: already enabled in a real
+ *  existing config, or detected on PATH. A fresh machine with no config file
+ *  therefore only pre-checks detected agents — `DEFAULT_CONFIG` defaults like
+ *  `claude_code`/`codex_cli` are NOT treated as "already enabled". */
+export function shouldPreCheckAgent(
+  existing: AgentenvConfig,
+  detected: AgentKey[],
+  agent: AgentKey,
+  hasExistingConfig: boolean,
+): boolean {
+  return (existing.agents?.[agent] === true && hasExistingConfig) || detected.includes(agent);
+}
+
 /**
  * Parse a comma-separated agent list (from `--agents`) into valid AgentKeys.
  * Rejects unknown names so a typo can't silently drop an agent.

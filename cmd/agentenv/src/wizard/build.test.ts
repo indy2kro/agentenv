@@ -8,6 +8,7 @@ import {
   formatDiffLines,
   parseAgentsInput,
   promptPageSize,
+  shouldPreCheckAgent,
   simpleToolSelection,
   TIER_LABELS,
   toolChoices,
@@ -187,7 +188,7 @@ describe('wizard build helpers', () => {
       'gh',
       'difftastic',
     ]);
-    assert.equal(sel.includes('universal_ctags'), false);
+    assert.equal(sel.includes('tokei'), false);
     assert.equal(
       sel.some((key) => TOOL_TIERS[key] === 3),
       false,
@@ -227,8 +228,8 @@ describe('toolChoices', () => {
 
   it('marks fallback tools with a manual-install note', () => {
     const entries = toolChoices(DEFAULT_CONFIG);
-    const ctags = choicesOf(entries).find((e) => e.value === 'universal_ctags');
-    assert.match(ctags?.name ?? '', /\[Tier 2 · fallback tool · requires manual install\]/);
+    const tokei = choicesOf(entries).find((e) => e.value === 'tokei');
+    assert.match(tokei?.name ?? '', /\[Tier 3 · fallback tool · requires manual install\]/);
   });
 
   it('pre-checks exactly the tools enabled in the supplied config', () => {
@@ -240,6 +241,25 @@ describe('toolChoices', () => {
     assert.equal(fzf?.checked, true);
     assert.equal(rg?.checked, true);
     assert.equal(tokei?.checked, false);
+  });
+});
+
+describe('shouldPreCheckAgent', () => {
+  it('pre-checks agents already enabled in an existing config', () => {
+    const existing = { ...DEFAULT_CONFIG, agents: { ...DEFAULT_CONFIG.agents, cursor: true } };
+    assert.equal(shouldPreCheckAgent(existing, [], 'cursor', true), true);
+  });
+
+  it('does not treat DEFAULT_CONFIG defaults as enabled on a fresh machine', () => {
+    const existing = DEFAULT_CONFIG;
+    assert.equal(shouldPreCheckAgent(existing, [], 'claude_code', false), false);
+    assert.equal(shouldPreCheckAgent(existing, [], 'codex_cli', false), false);
+  });
+
+  it('pre-checks installed agents regardless of config', () => {
+    const existing = { ...DEFAULT_CONFIG, agents: { ...DEFAULT_CONFIG.agents, copilot: false } };
+    assert.equal(shouldPreCheckAgent(existing, ['copilot'], 'copilot', true), true);
+    assert.equal(shouldPreCheckAgent(existing, ['copilot'], 'copilot', false), true);
   });
 });
 

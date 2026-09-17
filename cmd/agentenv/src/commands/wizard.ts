@@ -1,15 +1,15 @@
 import { checkbox, confirm, input, select, Separator } from '@inquirer/prompts';
-import * as fs from 'fs';
 import { detectInstalledAgents } from '../adapters/detect.js';
-import { DEFAULT_CONFIG, diffConfigs, loadConfig, saveConfig } from '../config/schema.js';
+import { DEFAULT_CONFIG, diffConfigs, loadConfig } from '../config/schema.js';
 import type { AgentKey, AgentenvConfig, CustomTool } from '../config/schema.js';
-import { configFilePath, resolveScopeDir } from '../config/scopes.js';
-import { applyConfiguration } from './apply.js';
+import { configFilePath, findConfigPath } from '../config/scopes.js';
+import { saveAndApply } from './setup.js';
 import {
   AGENT_OPTIONS,
   buildConfigFromSelections,
   formatDiffLines,
   promptPageSize,
+  shouldPreCheckAgent,
   toolChoices,
 } from '../wizard/build.js';
 import {
@@ -18,8 +18,7 @@ import {
   miseInstallInstructions,
   prereqLine,
 } from '../toolchain/mise.js';
-import { colorizeLine, theme } from '../ui/theme.js';
-import { withSpinner } from '../ui/spinner.js';
+import { theme } from '../ui/theme.js';
 
 /**
  * Shared interactive setup wizard — the single flow behind `agentenv setup`
@@ -57,9 +56,10 @@ export async function runConfigWizard(): Promise<void> {
   } catch {
     existing = DEFAULT_CONFIG;
   }
+  const hasExistingConfig = findConfigPath() !== undefined;
   const detected = detectInstalledAgents();
 
-  // Step 1: Select agents (pre-checked = enabled or detected; one page; no wrap).
+  // Step 1: Select agents (pre-checked = already enabled or detected; one page; no wrap).
   console.log('Step 1/7: Select agents to configure');
   const agents = (await checkbox({
     message: 'Select agents:',
@@ -68,7 +68,7 @@ export async function runConfigWizard(): Promise<void> {
     choices: AGENT_OPTIONS.map((agent) => ({
       name: agent.label,
       value: agent.value,
-      checked: existing.agents?.[agent.value] === true || detected.includes(agent.value),
+      checked: shouldPreCheckAgent(existing, detected, agent.value, hasExistingConfig),
     })),
   })) as AgentKey[];
 
@@ -234,21 +234,5 @@ export async function runConfigWizard(): Promise<void> {
   }
 
   const file = configFilePath(scope);
-  if (fs.existsSync(file)) {
-    console.log(`Note: ${file} already exists — setup is idempotent and updates it in place.\n`);
-  }
-  saveConfig(config, file);
-  console.log(`\nSaved configuration: ${file}`);
-
-  const result = await withSpinner('Applying configuration...', () =>
-    applyConfiguration(config, resolveScopeDir(scope), { skipPrereqMessage: true }),
-  );
-  for (const message of result.messages) console.log(colorizeLine(message));
-  for (const error of result.errors) console.error(theme.fail(error));
-  if (!result.success) {
-    process.exitCode = 1;
-    return;
-  }
-
-  console.log(theme.ok('\nConfiguration applied successfully!\n'));
+  await saveAndApply(config, file, { successMessage: 'Configuration applied successfully!' });
 }
