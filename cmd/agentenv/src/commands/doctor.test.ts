@@ -39,3 +39,36 @@ describe('doctor renderer', () => {
     assert.match(output, /\[ok\] {3}plain\n/);
   });
 });
+
+import { doctorToJson } from './doctor.js';
+
+describe('doctorToJson', () => {
+  const sections: DoctorSection[] = [
+    { title: 'System', items: [{ status: 'ok', label: 'OS', detail: 'linux' }] },
+    { title: 'Tools', items: [{ status: 'warn', label: 'rg', detail: 'not on PATH' }] },
+  ];
+
+  it('reports ok / exit 0 when no item fails', () => {
+    const json = doctorToJson(sections);
+    assert.equal(json.command, 'doctor');
+    assert.equal(json.status, 'ok');
+    assert.equal(json.exitCode, 0);
+    assert.deepEqual(json.sections, sections);
+  });
+
+  it('reports fail / exit 1 when any item fails', () => {
+    const json = doctorToJson([
+      { title: 'X', items: [{ status: 'fail', label: 'shims_dir', detail: 'unset' }] },
+    ]);
+    assert.equal(json.status, 'fail');
+    assert.equal(json.exitCode, 1);
+  });
+
+  it('omits the heading when includeHeading is false', () => {
+    assert.doesNotMatch(
+      renderDoctor(sections, { includeHeading: false }),
+      /=== agentenv Doctor ===/,
+    );
+    assert.match(renderDoctor(sections), /=== agentenv Doctor ===/);
+  });
+});

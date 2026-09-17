@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import * as fs from 'fs';
 import * as path from 'path';
 import { AGENT_COMMANDS, isAgentInstalled, resolveBinary } from '../adapters/detect.js';
+import { isQuiet, setQuietEnabled, shouldPrintBanner } from '../ui/output.js';
 import { theme } from '../ui/theme.js';
 import {
   BINARY_MAP,
@@ -42,8 +43,31 @@ const STATUS_COLOR: Record<DoctorStatus, (text: string) => string> = {
   fail: theme.fail,
 };
 
-export function renderDoctor(sections: DoctorSection[]): string {
-  const lines: string[] = [`\n${theme.heading('=== agentenv Doctor ===')}\n`];
+export interface DoctorJson {
+  command: 'doctor';
+  status: 'ok' | 'fail';
+  exitCode: 0 | 1;
+  sections: DoctorSection[];
+}
+
+export function doctorToJson(sections: DoctorSection[]): DoctorJson {
+  const hasFail = sections.some((section) => section.items.some((item) => item.status === 'fail'));
+  return {
+    command: 'doctor',
+    status: hasFail ? 'fail' : 'ok',
+    exitCode: hasFail ? 1 : 0,
+    sections,
+  };
+}
+
+export function renderDoctor(
+  sections: DoctorSection[],
+  options: { includeHeading?: boolean } = {},
+): string {
+  const lines: string[] = [];
+  if (options.includeHeading !== false) {
+    lines.push(`\n${theme.heading('=== agentenv Doctor ===')}\n`);
+  }
   for (const section of sections) {
     lines.push(theme.bold(section.title));
     for (const item of section.items) {
@@ -220,12 +244,22 @@ function gatherDoctor(): DoctorSection[] {
 export const doctorCommand = new Command()
   .name('doctor')
   .description('Diagnose the machine: mise, shims, config, tools and agents (read-only)')
-  .action(() => {
+  .option('--json', 'emit a machine-readable JSON document on stdout')
+  .action((options: { json?: boolean }) => {
+    const json = options.json === true;
+    if (json) setQuietEnabled(true);
+
     const sections = gatherDoctor();
-    const output = renderDoctor(sections);
-    console.log(output.startsWith('\n') ? output.slice(1) : output);
-    const hasFail = sections.some((section) =>
-      section.items.some((item) => item.status === 'fail'),
-    );
-    if (hasFail) process.exitCode = 1;
+    const payload = doctorToJson(sections);
+
+    if (json) {
+      console.log(JSON.stringify(payload, null, 2));
+    } else {
+      const output = renderDoctor(sections, {
+        includeHeading: shouldPrintBanner(process.stdout.isTTY === true, isQuiet()),
+      });
+      console.log(output.startsWith('\n') ? output.slice(1) : output);
+    }
+
+    if (payload.exitCode === 1) process.exitCode = 1;
   });
