@@ -19,6 +19,7 @@ import {
   prereqLine,
 } from '../toolchain/mise.js';
 import { theme } from '../ui/theme.js';
+import { banner } from '../ui/output.js';
 
 /**
  * Shared interactive setup wizard — the single flow behind `agentenv setup`
@@ -27,7 +28,7 @@ import { theme } from '../ui/theme.js';
  *   -> 4. scope -> 5. rtk -> 6. Superpowers -> 7. diff review -> apply
  */
 export async function runConfigWizard(): Promise<void> {
-  console.log(theme.heading('\n=== agentenv Setup Wizard ===\n'));
+  banner('\n=== agentenv Setup Wizard ===\n');
 
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     console.error(
