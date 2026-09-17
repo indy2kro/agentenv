@@ -378,6 +378,40 @@ agentenv/
   installs Superpowers for Claude Code idempotently; `agentenv status` shows
   its state; `setup` preserves existing config and offers an explicit opt-in.
 
+### Phase 7 — CLI contract & docs foundation
+
+A documented, test-enforced process-exit contract, a machine-readable `--json`
+surface for the read-only commands, a global quiet mode, and truthful
+prerequisite docs. Design: `docs/superpowers/specs/2026-09-16-cli-contract-docs-design.md`;
+implementation: `docs/superpowers/plans/2026-09-17-cli-contract-docs.md`.
+No new runtime dependencies.
+
+- **Exit contract:** usage errors (unknown command/option, missing required
+  argument) exit `2` with `--help`/`--version` keeping `0`, enforced at the
+  commander boundary (`src/cli/exit.ts`). Every command keeps `0` ok / `1`
+  operational+drift semantics, with `status` and `doctor` computing drift as
+  an explicit exit code (`computeStatusExitCode`, `doctorToJson`).
+- **`--json` on `status`/`doctor`:** a single JSON document on stdout (stderr
+  silent on success), implies quiet, and always emits a complete document even
+  on missing/invalid config. `status` was refactored from print-as-you-go to
+  `gatherStatus()` → (`renderStatus()` | `statusToJson()`). Mutating commands
+  reject `--json` as a usage error (exit `2`).
+- **Global `-q/--quiet`:** suppresses `=== ... ===` banner/footer chrome while
+  keeping data and result lines (`src/ui/output.ts`); banners are additionally
+  gated on `stdout.isTTY`; `--json` implies quiet (quiet does not imply JSON).
+- **Docs:** mise documented as a hard prerequisite with a dedicated guide
+  (`docs/guides/installing.md`, `--skip-mise-install` as the only exception),
+  the exit contract documented per command (`docs/guides/exit-codes.md`), and
+  the stale "no mise still works" / "interactive-only setup" /
+  "integrations not wired" claims corrected in `README.md` and
+  `cmd/agentenv/README.md`.
+- **Status: complete — all 10 tasks landed.** Contract asserted by a built-CLI
+  integration test (`src/cli/contract.test.ts`: `0`/`1`/`2` for clean, drift,
+  missing-config, and usage-error runs) and unit tests for the exit mapping,
+  quiet/gating, both JSON shapes, and the status drift matrix. `npm test`,
+  `npm run lint`, `npm run format:check`, and stub-mode `npm run smoke` are
+  green.
+
 ## 9. Testing strategy
 
 - CI matrix across the three OSes × four agents is the primary safety net
