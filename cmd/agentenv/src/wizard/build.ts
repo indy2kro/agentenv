@@ -3,7 +3,7 @@
  * Kept free of inquirer/CLI so the logic is unit-testable.
  */
 
-import { AGENT_KEYS, TOOL_KEYS } from '../config/schema.js';
+import { AGENT_KEYS, DEFAULT_CONFIG, TOOL_KEYS, TOOL_TIERS } from '../config/schema.js';
 import type {
   AgentKey,
   AgentenvConfig,
@@ -24,11 +24,13 @@ export const AGENT_OPTIONS: Array<{ value: AgentKey; label: string }> = [
   { value: 'vibe', label: 'Mistral Vibe' },
 ];
 
-export const TIER_1_TOOLS = ['ripgrep', 'fd', 'jq', 'rtk'] as const;
-export const TIER_2_TOOLS = ['ast_grep', 'git_delta', 'gh', 'difftastic'] as const;
+export function defaultToolSelection(): string[] {
+  return TOOL_KEYS.filter((key) => DEFAULT_CONFIG.tools?.[key] === true);
+}
 
 export function simpleToolSelection(includeTier2: boolean): string[] {
-  return includeTier2 ? [...TIER_1_TOOLS, ...TIER_2_TOOLS] : [...TIER_1_TOOLS];
+  const maxTier = includeTier2 ? 2 : 1;
+  return defaultToolSelection().filter((key) => (TOOL_TIERS[key] ?? 0) <= maxTier);
 }
 
 /**

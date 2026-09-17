@@ -4,10 +4,12 @@ import {
   AGENT_OPTIONS,
   buildConfigFromSelections,
   buildDefaultSimpleConfig,
+  defaultToolSelection,
   formatDiffLines,
   parseAgentsInput,
   simpleToolSelection,
 } from './build.js';
+import { TOOL_KEYS, TOOL_TIERS } from '../config/schema.js';
 import type { ConfigDiffEntry } from '../config/schema.js';
 
 describe('wizard build helpers', () => {
@@ -154,5 +156,28 @@ describe('wizard build helpers', () => {
   it('parseAgentsInput accepts the new agent keys', () => {
     const result = parseAgentsInput('gemini_cli, vibe');
     assert.deepEqual(result, ['gemini_cli', 'vibe']);
+  });
+
+  it('defaultToolSelection returns Tier 1 + the four mise-installable Tier 2 tools, no Tier 3', () => {
+    const sel = defaultToolSelection();
+    assert.deepEqual(sel, [
+      'ripgrep',
+      'fd',
+      'jq',
+      'rtk',
+      'ast_grep',
+      'git_delta',
+      'gh',
+      'difftastic',
+    ]);
+    assert.equal(sel.includes('universal_ctags'), false);
+    assert.equal(
+      sel.some((key) => TOOL_TIERS[key] === 3),
+      false,
+    );
+    assert.deepEqual(
+      sel,
+      TOOL_KEYS.filter((key) => sel.includes(key)),
+    );
   });
 });
