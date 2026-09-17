@@ -19,6 +19,7 @@ import {
   verifySummaryLine,
   verifyToolAvailability,
 } from '../toolchain/mise.js';
+import { banner } from '../ui/output.js';
 import { normalizeOutput } from '../utils/output.js';
 
 interface UpdateCommandOptions {
@@ -36,7 +37,7 @@ async function doUpdate(options: UpdateCommandOptions): Promise<void> {
     return;
   }
 
-  console.log('\n=== agentenv Update ===\n');
+  banner('\n=== agentenv Update ===\n');
   console.log(`Mise: ${getMiseVersion()}\n`);
 
   let configPath: string | null;
@@ -82,8 +83,12 @@ async function doUpdate(options: UpdateCommandOptions): Promise<void> {
   let failed = false;
 
   const shims = ensureGlobalShimsDir();
-  if (shims.success) console.log(`Shims: ${shims.message}`);
-  else console.error(`Shims: ${shims.message}`);
+  if (shims.success) {
+    console.log(`Shims: ${shims.message}`);
+  } else {
+    console.error(`Shims: ${shims.message}`);
+    failed = true;
+  }
 
   if (doSelf) {
     console.log('\nUpdating mise itself...');
