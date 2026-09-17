@@ -31,10 +31,13 @@ different config file format, that's what this fixes:
 ## Requirements
 
 - **Node.js >= 22.13** to run the CLI itself.
-- **[mise](https://mise.jdx.dev)** installed and on PATH — agentenv generates
-  a `mise.toml` and delegates all tool installation to it. Without mise,
-  `agentenv apply`/`setup` can still generate config files but can't install
-  anything.
+- **[mise](https://mise.jdx.dev)** installed and on PATH — a hard
+  prerequisite. agentenv never installs tools itself: it generates a
+  `mise.toml` and delegates 100% of tool installation to mise (whose shims dir
+  is where agent PATH stays consistent). `agentenv apply`/`setup` fail fast
+  with install instructions when mise is missing; the only exception is
+  `apply --skip-mise-install`, which generates files without installing
+  (advanced/CI). See [`docs/guides/installing.md`](docs/guides/installing.md).
 - **Git for Windows**, if you're on Windows — agentenv's Tier 0 shell fix
   relies on the POSIX toolchain it bundles.
 - Optionally, whichever supported agents you want configured already
@@ -66,9 +69,10 @@ Windows. It pre-fills every prompt from an existing `agentenv.toml`, so it's
 safe to re-run any time.
 
 The same flow is also reached via `agentenv configure` (an alias of `setup`).
-Not in an interactive terminal (CI, a script)? `setup` refuses to run and
-tells you to use `agentenv apply` against a hand-written or previously-saved
-`agentenv.toml` instead.
+The interactive `setup`/`configure` wizard requires a terminal (TTY); not in
+one? Run it unattended instead — `agentenv setup --yes` picks defaults (or
+re-applies your existing `agentenv.toml`), and `agentenv apply` works against
+any hand-written or previously-saved config.
 
 ## Commands
 
