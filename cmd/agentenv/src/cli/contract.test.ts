@@ -223,6 +223,20 @@ direnv = false
     assert.equal(run(['uninstall', '--json'], clean).status, 2);
   });
 
+  it('suggests a close command name on typos', () => {
+    const typo = run(['statsu'], clean);
+    assert.equal(typo.status, 2);
+    assert.match(typo.stderr, /did you mean/i);
+  });
+
+  it('apply --dry-run previews without writing (no "wrote" lines, exit 0)', () => {
+    const dry = run(['apply', '--dry-run'], clean);
+    assert.equal(dry.status, 0);
+    assert.match(dry.stdout, /Config: /);
+    assert.match(dry.stdout, /Dry run complete/);
+    assert.doesNotMatch(dry.stdout, /wrote/);
+  });
+
   it('exits 1 for uninstall with no config and for unknown tool args', () => {
     const missing = run(['uninstall'], empty);
     assert.equal(missing.status, 1);

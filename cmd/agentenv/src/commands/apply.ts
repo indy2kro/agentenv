@@ -15,6 +15,7 @@ import type { BaseAdapter } from '../adapters/index.js';
 import { getEnabledAgents, loadConfig, validateConfig } from '../config/schema.js';
 import type { AgentKey } from '../config/schema.js';
 import { resolveScopeDir } from '../config/scopes.js';
+import { configFilePath, findConfigPath } from '../config/scopes.js';
 import type { AgentenvConfig } from '../config/schema.js';
 import { SuperpowersAdapter, integrationResultLines } from '../integrations/index.js';
 import type { SuperpowersAdapterDeps } from '../integrations/index.js';
@@ -213,8 +214,10 @@ export const applyCommand = new Command()
   .name('apply')
   .description('Non-interactive: read config and generate everything')
   .option('--skip-mise-install', 'skip mise install (files only; for CI/dry-run)')
-  .action(async (options: { skipMiseInstall?: boolean }) => {
+  .option('--dry-run', 'show what would be written without changing anything')
+  .action(async (options: { skipMiseInstall?: boolean; dryRun?: boolean }) => {
     renderLogo();
+    const dryRun = options.dryRun === true;
     let config: AgentenvConfig;
     try {
       config = loadConfig();
@@ -223,16 +226,40 @@ export const applyCommand = new Command()
       process.exitCode = 1;
       return;
     }
+    const configPath = findConfigPath() ?? configFilePath(config.scope ?? 'project');
+    console.log(`Config: ${configPath}`);
 
     const report = validateConfig(config);
     for (const warning of report.warnings) console.log(theme.warn(`warning: ${warning}`));
     if (report.errors.length > 0) {
       for (const error of report.errors) console.error(theme.fail(`error: ${error}`));
+      console.error(theme.fail('Configuration invalid — not applying.'));
       process.exitCode = 1;
       return;
     }
 
     const baseDir = resolveScopeDir(config.scope);
+    if (dryRun) {
+      const enabledToolCount = Object.values(config.tools ?? {}).filter((on) => on === true).length;
+      const files = generateInstructionFiles(config, baseDir);
+      const agents = [...getEnabledAgents(config)];
+      const integrations = enabledIntegrations(config, options);
+      console.log(
+        `  Tools:          ${enabledToolCount} enabled -> ${path.join(baseDir, 'mise.toml')}`,
+      );
+      console.log(`  Generated files: ${files.map((file) => file.path).join(', ') || '(none)'}`);
+      console.log(
+        `  Agents:         ${agents.join(', ') || '(none)'}${config.rtk?.enabled === true ? ' (rtk rewriting on)' : ''}`,
+      );
+      console.log(
+        `  Integrations:   ${integrations.length > 0 ? integrations.map((i) => i.getName()).join(', ') : '(none)'}`,
+      );
+      console.log(
+        `\n${resolveResultLine({ severity: 'ok', headline: 'Dry run complete', summary: 'no changes were made' })}\n`,
+      );
+      return;
+    }
+
     const result = await withSpinner('Applying configuration...', () =>
       applyConfiguration(config, baseDir, {
         skipMiseInstall: options.skipMiseInstall === true,
