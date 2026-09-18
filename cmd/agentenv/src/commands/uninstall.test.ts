@@ -62,8 +62,14 @@ describe('resolveToolArgs', () => {
     assert.deepEqual(result.matched, [{ key: 'ripgrep', miseName: 'ripgrep', binary: 'rg' }]);
   });
 
-  it('matches all targets when given no args (all-targets fallback lives in doUninstall)', () => {
+  it('returns no matches for empty args (all-targets fallback lives in doUninstall)', () => {
     assert.deepEqual(resolveToolArgs([], targets), { matched: [], unknown: [] });
+  });
+
+  it('dedupes a target matched by multiple arg forms', () => {
+    const result = resolveToolArgs(['rg', 'ripgrep'], targets);
+    assert.deepEqual(result.unknown, []);
+    assert.deepEqual(result.matched, [{ key: 'ripgrep', miseName: 'ripgrep', binary: 'rg' }]);
   });
 });
 
