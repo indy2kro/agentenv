@@ -5,9 +5,12 @@
  * fixture and mise install skipped. Fast; runs on every push (ci.yml).
  * `--real` (full acceptance): runs against a real `rtk init` on PATH, installs
  * the full Tier 1+2 tool catalog for real via mise, verifies each tool
- * actually runs (not just "detected"), and also exercises the unattended
- * `setup --yes` path. Slower and network-dependent; runs on `main` only
- * (smoke.yml).
+ * actually runs (not just "detected"), enables all nine agents (real `rtk init`
+ * for each), exercises the unattended `setup --yes` path, and drives every
+ * read-only/dry-run command against the installed catalog (`apply --dry-run`,
+ * `status --json`, `doctor --section`/`--json`, `update --dry-run`,
+ * `uninstall --dry-run`) so CI regression-covers the full command surface.
+ * Slower and network-dependent; runs on `main` only (smoke.yml).
  */
 import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
@@ -79,12 +82,13 @@ const INSTALLABLE_TOOLS = FULL_TOOLS.filter((tool) => !INSTALL_EXCLUDED[tool.mis
 
 const toolsBlock = INSTALLABLE_TOOLS.map((tool) => `${tool.key} = true`).join('\n');
 
-const agentsBlock = REAL
-  ? `claude_code = true
-codex_cli = true
-copilot = true
-opencode = true`
-  : `claude_code = true
+// All nine agents in both modes. The stub mode never invokes real rtk, and
+// real rtk init 0.49.0 resolves every delegated agent (--gemini, --agent
+// cursor|windsurf|cline|vibe — phase0-linux-verification.md), so the real
+// acceptance can enable the full agent catalog too: a future adapter or rtk
+// change that breaks any agent must fail `npm run smoke:real`, not just the
+// original four v1 targets.
+const ALL_AGENTS = `claude_code = true
 codex_cli = true
 copilot = true
 opencode = true
@@ -93,6 +97,8 @@ cursor = true
 windsurf = true
 cline = true
 vibe = true`;
+
+const agentsBlock = ALL_AGENTS;
 
 const config = `scope = "project"
 
@@ -323,13 +329,20 @@ if (REAL) {
 
   // Acceptance: the unattended setup path (`setup --yes`), a separate code
   // path from `apply` that most users on a fresh machine actually run first,
-  // and which had no CI coverage at all before this.
+  // and which had no CI coverage at all before this. Enables all nine agents
+  // so the real `rtk init` delegation for the non-v1 adapters is exercised.
   const setupProject = path.join(temp, 'setup-project');
   fs.mkdirSync(setupProject, { recursive: true });
   let setupOut;
   try {
     setupOut = run(
-      ['setup', '--yes', '--agents', 'claude_code,codex_cli,copilot,opencode', '--no-tier2'],
+      [
+        'setup',
+        '--yes',
+        '--agents',
+        'claude_code,codex_cli,copilot,opencode,gemini_cli,cursor,windsurf,cline,vibe',
+        '--no-tier2',
+      ],
       setupProject,
     );
   } catch (err) {
@@ -356,6 +369,63 @@ if (REAL) {
   } catch (err) {
     console.log(err.stdout ?? '');
   }
+
+  // Command sweep (CI-01): drive every remaining read-only/dry-run command
+  // against the just-installed full catalog and assert the exit-code/output
+  // contracts hold with the catalog fully present. None of these mutate
+  // anything, so they're cheap and deterministic after the install above.
+  const tomlBefore = fs.readFileSync(path.join(project, 'agentenv.toml'), 'utf-8');
+
+  const dryApply = runAllowingExit(['apply', '--dry-run'], project);
+  expect(dryApply.status === 0, `apply --dry-run should exit 0, got ${dryApply.status}:\n${dryApply.stdout}`);
+  expect(/Config:/.test(dryApply.stdout), `apply --dry-run should show the config path, got:\n${dryApply.stdout}`);
+  expect(/Dry run complete/.test(dryApply.stdout), `apply --dry-run should finish with a dry-run box, got:\n${dryApply.stdout}`);
+  const tomlAfter = fs.readFileSync(path.join(project, 'agentenv.toml'), 'utf-8');
+  expect(tomlBefore === tomlAfter, 'apply --dry-run must not mutate agentenv.toml');
+
+  const statusJson = runAllowingExit(['status', '--json'], project);
+  expect(
+    statusJson.status === 0 || statusJson.status === 1,
+    `status --json should exit 0 or 1, got ${statusJson.status}:\n${statusJson.stdout}`,
+  );
+  let statusDoc;
+  try {
+    statusDoc = JSON.parse(statusJson.stdout);
+  } catch {
+    console.error('smoke FAIL: status --json did not emit valid JSON');
+    process.exit(1);
+  }
+  expect(statusDoc.command === 'status', `status --json should identify itself, got:\n${statusJson.stdout}`);
+  for (const key of ['agents', 'tools', 'generated']) {
+    expect(key in statusDoc, `status --json should carry a "${key}" section, got:\n${statusJson.stdout}`);
+  }
+
+  const doctorSection = runAllowingExit(['doctor', '--section', 'tools'], project);
+  expect(doctorSection.status === 0, `doctor --section tools should exit 0, got ${doctorSection.status}:\n${doctorSection.stdout}`);
+  expect(/Tools \(/.test(doctorSection.stdout), `doctor --section tools should print only the tools section, got:\n${doctorSection.stdout}`);
+
+  const doctorJson = runAllowingExit(['doctor', '--json'], project);
+  expect(
+    doctorJson.status === 0 || doctorJson.status === 1,
+    `doctor --json should exit 0 or 1, got ${doctorJson.status}:\n${doctorJson.stdout}`,
+  );
+  let doctorDoc;
+  try {
+    doctorDoc = JSON.parse(doctorJson.stdout);
+  } catch {
+    console.error('smoke FAIL: doctor --json did not emit valid JSON');
+    process.exit(1);
+  }
+  expect(doctorDoc.command === 'doctor', `doctor --json should identify itself, got:\n${doctorJson.stdout}`);
+  expect(doctorDoc.exitCode === doctorJson.status, 'doctor --json exitCode should match the process exit status');
+
+  const dryUpdate = runAllowingExit(['update', '--dry-run'], project);
+  expect(dryUpdate.status === 0, `update --dry-run should exit 0, got ${dryUpdate.status}:\n${dryUpdate.stdout}`);
+  expect(/Dry run complete/.test(dryUpdate.stdout), `update --dry-run should finish with a dry-run box, got:\n${dryUpdate.stdout}`);
+
+  const dryUninstall = runAllowingExit(['uninstall', '--dry-run'], project);
+  expect(dryUninstall.status === 0, `uninstall --dry-run should exit 0, got ${dryUninstall.status}:\n${dryUninstall.stdout}`);
+  expect(/Dry run complete/.test(dryUninstall.stdout), `uninstall --dry-run should finish with a dry-run box, got:\n${dryUninstall.stdout}`);
 
   // Roundtrip: what the catalog install just put in the store must come back
   // out via `agentenv uninstall`. Runs under real process.env via execFileSync
@@ -473,5 +543,5 @@ if (!REAL) {
 }
 
 console.log(
-  `smoke OK (${REAL ? 'real rtk + full-catalog install + uninstall roundtrip + setup --yes' : 'rtk stub + skip mise + mise-less uninstall paths'}): apply + status + uninstall verified for all configured agents`,
+  `smoke OK (${REAL ? 'real rtk + full-catalog install + all-9-agents setup + full command sweep + uninstall roundtrip' : 'rtk stub + skip mise + mise-less uninstall paths'}): apply + status + uninstall verified for all configured agents`,
 );
