@@ -2,7 +2,14 @@ import { Command } from 'commander';
 import * as fs from 'fs';
 import * as path from 'path';
 import { AGENT_COMMANDS, isAgentInstalled, resolveBinary } from '../adapters/detect.js';
-import { isQuiet, setQuietEnabled, shouldPrintBanner } from '../ui/output.js';
+import {
+  isQuiet,
+  LOGO,
+  resolveResultLine,
+  setQuietEnabled,
+  shouldPrintBanner,
+} from '../ui/output.js';
+import type { ResultBoxContent } from '../ui/output.js';
 import { theme } from '../ui/theme.js';
 import {
   BINARY_MAP,
@@ -66,7 +73,7 @@ export function renderDoctor(
 ): string {
   const lines: string[] = [];
   if (options.includeHeading !== false) {
-    lines.push(`\n${theme.heading('=== agentenv Doctor ===')}\n`);
+    lines.push(`\n${theme.heading(LOGO)}\n`);
   }
   for (const section of sections) {
     lines.push(theme.bold(section.title));
@@ -241,6 +248,32 @@ function gatherDoctor(): DoctorSection[] {
   return sections;
 }
 
+function doctorSummary(payload: DoctorJson): ResultBoxContent {
+  let failCount = 0;
+  let warnCount = 0;
+  for (const section of payload.sections) {
+    for (const item of section.items) {
+      if (item.status === 'fail') failCount += 1;
+      else if (item.status === 'warn') warnCount += 1;
+    }
+  }
+  if (failCount > 0) {
+    return {
+      severity: 'fail',
+      headline: `${failCount} problem${failCount === 1 ? '' : 's'} found`,
+      summary: 'fix the issues above, or run `agentenv apply` to reconfigure',
+    };
+  }
+  if (warnCount > 0) {
+    return {
+      severity: 'warn',
+      headline: 'Environment looks OK',
+      summary: `${warnCount} warning${warnCount === 1 ? '' : 's'} — check the notes above`,
+    };
+  }
+  return { severity: 'ok', headline: 'Environment healthy' };
+}
+
 export const doctorCommand = new Command()
   .name('doctor')
   .description('Diagnose the machine: mise, shims, config, tools and agents (read-only)')
@@ -259,6 +292,7 @@ export const doctorCommand = new Command()
         includeHeading: shouldPrintBanner(process.stdout.isTTY === true, isQuiet()),
       });
       console.log(output.startsWith('\n') ? output.slice(1) : output);
+      console.log(resolveResultLine(doctorSummary(payload)));
     }
 
     if (payload.exitCode === 1) process.exitCode = 1;

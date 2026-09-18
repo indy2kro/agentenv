@@ -40,6 +40,7 @@ import {
 } from '../toolchain/mise.js';
 import { normalizeOutput } from '../utils/output.js';
 import { colorizeLine, theme } from '../ui/theme.js';
+import { renderLogo, resolveResultLine } from '../ui/output.js';
 import { withSpinner } from '../ui/spinner.js';
 
 export interface ApplyResult {
@@ -213,6 +214,7 @@ export const applyCommand = new Command()
   .description('Non-interactive: read config and generate everything')
   .option('--skip-mise-install', 'skip mise install (files only; for CI/dry-run)')
   .action(async (options: { skipMiseInstall?: boolean }) => {
+    renderLogo();
     let config: AgentenvConfig;
     try {
       config = loadConfig();
@@ -238,5 +240,14 @@ export const applyCommand = new Command()
     );
     for (const message of result.messages) console.log(colorizeLine(message));
     for (const error of result.errors) console.error(theme.fail(error));
-    if (!result.success) process.exitCode = 1;
+    if (!result.success) {
+      process.exitCode = 1;
+      console.log(
+        `\n${resolveResultLine({ severity: 'fail', headline: 'Apply failed', summary: 'fix the errors above and re-run `agentenv apply`' })}\n`,
+      );
+      return;
+    }
+    console.log(
+      `\n${resolveResultLine({ severity: 'ok', headline: 'Apply complete!', summary: 'everything is configured and verified' })}\n`,
+    );
   });

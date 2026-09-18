@@ -19,7 +19,7 @@ import {
   prereqLine,
 } from '../toolchain/mise.js';
 import { theme } from '../ui/theme.js';
-import { banner } from '../ui/output.js';
+import { renderLogo, resolveResultLine } from '../ui/output.js';
 
 /**
  * Shared interactive setup wizard — the single flow behind `agentenv setup`
@@ -28,7 +28,7 @@ import { banner } from '../ui/output.js';
  *   -> 4. scope -> 5. rtk -> 6. Superpowers -> 7. diff review -> apply
  */
 export async function runConfigWizard(): Promise<void> {
-  banner('\n=== agentenv Setup Wizard ===\n');
+  renderLogo();
 
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     console.error(
@@ -230,7 +230,9 @@ export async function runConfigWizard(): Promise<void> {
 
   const proceed = await confirm({ message: 'Apply this configuration?', default: true });
   if (!proceed) {
-    console.log('\nCancelled. No changes made.\n');
+    console.log(
+      `\n${resolveResultLine({ severity: 'warn', headline: 'Cancelled', summary: 'No changes were made' })}\n`,
+    );
     return;
   }
 

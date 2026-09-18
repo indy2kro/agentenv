@@ -14,6 +14,7 @@ import {
   type InstalledToolState,
 } from '../toolchain/mise.js';
 import { normalizeOutput } from '../utils/output.js';
+import { renderLogo, resolveResultLine } from '../ui/output.js';
 
 export interface UninstallTarget {
   /** agentenv TOML key (the custom tool's name for custom tools). */
@@ -155,6 +156,7 @@ interface UninstallCommandOptions {
  * re-installs everything.
  */
 export async function doUninstall(options: UninstallCommandOptions): Promise<void> {
+  renderLogo();
   // 1. Config resolution (mirrors update.ts).
   let configPath: string | null;
   if (options.scope) {
@@ -204,7 +206,9 @@ export async function doUninstall(options: UninstallCommandOptions): Promise<voi
 
   // 3. No-op path needs no mise.
   if (requested.length === 0) {
-    console.log('Nothing to uninstall.');
+    console.log(
+      `\n${resolveResultLine({ severity: 'warn', headline: 'Nothing to uninstall.' })}\n`,
+    );
     return;
   }
 
@@ -217,6 +221,9 @@ export async function doUninstall(options: UninstallCommandOptions): Promise<voi
     if (!isMiseInstalled()) {
       const plan = { toUninstall: [] as string[], alreadyGone: [] as string[] };
       console.log(renderUninstallSummary(requested, plan, 'preview', true).join('\n'));
+      console.log(
+        `\n${resolveResultLine({ severity: 'warn', headline: 'Dry run complete', summary: 'nothing was uninstalled (mise not installed)' })}\n`,
+      );
       return;
     }
     const state = readInstalledState();
@@ -228,6 +235,9 @@ export async function doUninstall(options: UninstallCommandOptions): Promise<voi
       renderUninstallSummary(requested, uninstallPlan(requested, state), 'preview', false).join(
         '\n',
       ),
+    );
+    console.log(
+      `\n${resolveResultLine({ severity: 'warn', headline: 'Dry run complete', summary: 'no changes were made' })}\n`,
     );
     return;
   }
@@ -248,7 +258,9 @@ export async function doUninstall(options: UninstallCommandOptions): Promise<voi
   }
   const plan = uninstallPlan(requested, state);
   if (plan.toUninstall.length === 0) {
-    console.log('Nothing to uninstall.');
+    console.log(
+      `\n${resolveResultLine({ severity: 'warn', headline: 'Nothing to uninstall.' })}\n`,
+    );
     return;
   }
 
@@ -260,7 +272,9 @@ export async function doUninstall(options: UninstallCommandOptions): Promise<voi
         default: false,
       });
       if (!proceed) {
-        console.log('Aborted.');
+        console.log(
+          `\n${resolveResultLine({ severity: 'warn', headline: 'Aborted', summary: 'no changes were made' })}\n`,
+        );
         return;
       }
     } else {
@@ -283,7 +297,12 @@ export async function doUninstall(options: UninstallCommandOptions): Promise<voi
   }
   console.log(renderUninstallSummary(requested, plan, 'result', false).join('\n'));
   console.log(
-    `Removed ${plan.toUninstall.length} tool(s). These are no longer installed in the mise store; \`agentenv apply\` will reinstall them.`,
+    `\n${resolveResultLine({
+      severity: 'ok',
+      headline: `Removed ${plan.toUninstall.length} tool(s)`,
+      summary:
+        'These are no longer installed in the mise store; `agentenv apply` will reinstall them.',
+    })}\n`,
   );
 }
 

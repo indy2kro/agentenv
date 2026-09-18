@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { renderDoctor } from './doctor.js';
 import type { DoctorSection } from './doctor.js';
+import { LOGO } from '../ui/output.js';
 
 describe('doctor renderer', () => {
   it('renders ok/warn/fail glyphs and sections in order', () => {
@@ -24,7 +25,7 @@ describe('doctor renderer', () => {
     ];
 
     const output = renderDoctor(sections);
-    assert.match(output, /=== agentenv Doctor ===/);
+    assert.ok(output.includes(LOGO));
     assert.match(output, /\[ok\] {3}Shell — PowerShell/);
     assert.match(output, /\[fail\] shims_dir — not set — run `agentenv apply`/);
     assert.match(output, /\[warn\] rg \(ripgrep\) — not on PATH/);
@@ -65,10 +66,7 @@ describe('doctorToJson', () => {
   });
 
   it('omits the heading when includeHeading is false', () => {
-    assert.doesNotMatch(
-      renderDoctor(sections, { includeHeading: false }),
-      /=== agentenv Doctor ===/,
-    );
-    assert.match(renderDoctor(sections), /=== agentenv Doctor ===/);
+    assert.ok(!renderDoctor(sections, { includeHeading: false }).includes(LOGO));
+    assert.ok(renderDoctor(sections).includes(LOGO));
   });
 });

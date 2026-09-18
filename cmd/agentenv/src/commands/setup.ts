@@ -14,7 +14,7 @@ import {
   prereqLine,
 } from '../toolchain/mise.js';
 import { colorizeLine, theme } from '../ui/theme.js';
-import { banner } from '../ui/output.js';
+import { renderLogo, resolveResultLine } from '../ui/output.js';
 import { withSpinner } from '../ui/spinner.js';
 
 function agentLabel(agent: AgentKey): string {
@@ -74,10 +74,13 @@ export async function saveAndApply(
   for (const error of result.errors) console.error(theme.fail(error));
   if (!result.success) {
     process.exitCode = 1;
+    console.log(`\n${resolveResultLine({ severity: 'fail', headline: 'Setup failed' })}\n`);
     return;
   }
 
-  console.log(theme.ok(`\n${deps.successMessage ?? 'Setup complete!'}\n`));
+  console.log(
+    `\n${resolveResultLine({ severity: 'ok', headline: deps.successMessage ?? 'Setup complete!' })}\n`,
+  );
 }
 
 interface SetupCommandOptions {
@@ -105,9 +108,10 @@ export async function unattendedSetup(
   options: SetupCommandOptions,
   deps: UnattendedSetupDeps = {},
 ): Promise<void> {
-  banner('\n=== agentenv Setup (Unattended) ===\n');
+  renderLogo();
   if (!misePrereqCheck(deps.misePrereqCheckDeps)) {
     process.exitCode = 1;
+    console.log(`\n${resolveResultLine({ severity: 'fail', headline: 'Setup failed' })}\n`);
     return;
   }
 

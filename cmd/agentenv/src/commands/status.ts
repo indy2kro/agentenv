@@ -26,7 +26,8 @@ import {
   getMiseVersion,
 } from '../toolchain/mise.js';
 import { colorizeLine, theme } from '../ui/theme.js';
-import { banner, setQuietEnabled } from '../ui/output.js';
+import { renderLogo, resolveResultLine, setQuietEnabled } from '../ui/output.js';
+import type { ResultBoxContent } from '../ui/output.js';
 
 const AGENT_CONFIG_FILES: Record<AgentKey, { label: string; check: (baseDir: string) => string }> =
   {
@@ -459,6 +460,31 @@ export async function gatherStatus(deps: StatusDeps = {}): Promise<StatusReport>
   return { ...report, exitCode: computeStatusExitCode(report) };
 }
 
+function statusSummary(report: StatusReport): ResultBoxContent {
+  if (report.config === null) {
+    return {
+      severity: 'fail',
+      headline: 'No configuration found',
+      summary: 'run `agentenv setup` or `agentenv apply` to get started',
+    };
+  }
+  const issues =
+    report.validation.errors.length +
+    report.tools.filter((tool) => tool.drift).length +
+    report.agents.filter((agent) => agent.drift).length +
+    report.customTools.filter((tool) => tool.drift).length +
+    report.generated.filter((entry) => !entry.exists || !entry.managed).length +
+    report.integrations.filter((integration) => integration.drift).length;
+  if (issues === 0) {
+    return { severity: 'ok', headline: 'Environment is clean' };
+  }
+  return {
+    severity: 'fail',
+    headline: `Status: ${issues} issue${issues === 1 ? '' : 's'} found`,
+    summary: 'run `agentenv apply` to fix, or `agentenv update` for new versions',
+  };
+}
+
 export function statusToJson(report: StatusReport): StatusJson {
   return {
     command: report.command,
@@ -632,14 +658,15 @@ export const statusCommand = new Command()
     const json = options.json === true;
     if (json) setQuietEnabled(true);
 
-    banner('\n=== agentenv status ===\n');
+    renderLogo();
     const report = await gatherStatus();
 
     if (json) {
       console.log(JSON.stringify(statusToJson(report), null, 2));
     } else {
       process.stdout.write(renderStatus(report));
-      banner('\n=== Status complete ===\n');
+      const summary = statusSummary(report);
+      console.log(resolveResultLine(summary));
     }
 
     if (report.exitCode === 1) process.exitCode = 1;

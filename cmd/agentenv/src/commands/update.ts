@@ -21,7 +21,7 @@ import {
   verifySummaryLine,
   verifyToolAvailability,
 } from '../toolchain/mise.js';
-import { banner } from '../ui/output.js';
+import { renderLogo, resolveResultLine } from '../ui/output.js';
 import { normalizeOutput } from '../utils/output.js';
 
 interface UpdateCommandOptions {
@@ -41,7 +41,7 @@ async function doUpdate(options: UpdateCommandOptions): Promise<void> {
     return;
   }
 
-  banner('\n=== agentenv Update ===\n');
+  renderLogo();
   console.log(`Mise: ${getMiseVersion()}\n`);
 
   let configPath: string | null;
@@ -177,10 +177,17 @@ async function doUpdate(options: UpdateCommandOptions): Promise<void> {
 
   if (failed) {
     process.exitCode = 1;
+    console.log(
+      `\n${resolveResultLine({ severity: 'fail', headline: 'Update failed', summary: 'one or more tools could not be upgraded — see the messages above' })}\n`,
+    );
   } else if (dryRun) {
-    console.log('\nDry run complete — nothing was changed.');
+    console.log(
+      `\n${resolveResultLine({ severity: 'ok', headline: 'Dry run complete', summary: 'no changes were made' })}\n`,
+    );
   } else {
-    console.log('\nUpdate complete!');
+    console.log(
+      `\n${resolveResultLine({ severity: 'ok', headline: 'Update complete!', summary: 'tools are up to date' })}\n`,
+    );
   }
 
   // Optional file watching mode
