@@ -28,7 +28,8 @@ program
   .version(version)
   .showSuggestionAfterError()
   .option('--no-color', 'disable colored output (also honors the NO_COLOR env var)')
-  .option('-q, --quiet', 'suppress banner/footer chrome (data lines are kept)');
+  .option('-q, --quiet', 'suppress banner/footer chrome (data lines are kept)')
+  .option('--debug', 'print the failing command and stack trace for unhandled errors');
 
 // Color auto-detects from TTY + NO_COLOR/FORCE_COLOR by default (chalk);
 // --no-color and -q are explicit overrides, applied before any command runs.
@@ -53,6 +54,16 @@ program.parseAsync(process.argv).catch((error: unknown) => {
   // The override rethrew a CommanderError after setting process.exitCode
   // (0 for help/version, 2 for usage errors); nothing more to do.
   if (error instanceof CommanderError) return;
-  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+  const debug = process.argv.includes('--debug');
+  if (debug) {
+    process.stderr.write(
+      `agentenv failed while running: ${process.argv.slice(2).join(' ') || '(no arguments)'}\n`,
+    );
+    if (error instanceof Error) process.stderr.write(`${error.stack ?? error.message}\n`);
+    else process.stderr.write(`${String(error)}\n`);
+  } else {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    process.stderr.write('Run again with `--debug` for a stack trace.\n');
+  }
   process.exitCode = 1;
 });
