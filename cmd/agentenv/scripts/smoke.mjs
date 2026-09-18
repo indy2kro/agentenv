@@ -66,6 +66,14 @@ if (process.platform === 'win32') {
   INSTALL_EXCLUDED.direnv = 'Windows: mise 2026.9.9 aqua extracts without .exe extension';
 }
 
+// jless is a terminal GUI that links against X11 client libraries: on a
+// headless Linux machine (CI runner) the binary installs fine but `--version`
+// aborts with "error while loading shared libraries: libxcb-shape.so.0"
+// (exit 127). Install stays verified; only the run check is skipped here.
+if (process.platform === 'linux') {
+  EXECUTE_EXCLUDED.jless = 'Linux headless: jless --version needs libxcb (X11), absent on CI';
+}
+
 // The catalog actually installable on this OS — everything not exempted above.
 const INSTALLABLE_TOOLS = FULL_TOOLS.filter((tool) => !INSTALL_EXCLUDED[tool.miseName]);
 
