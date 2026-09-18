@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-09-18
 
-Target: 20 · Found: 23 deduplicated items · Completed: 20/23
+Target: 20 · Found: 23 deduplicated items · Completed: 21/23
 
 > **How to use this document.** As you finish each item, change `- [ ]` to `- [x]`,
 > append ` ✅ <commit-sha>`, and bump the "Completed" counter. This file is the source
@@ -89,14 +89,23 @@ recorded as a pass.
 
 ## CI & acceptance   (CI-NN)
 
-- [ ] **CI-01** Full-catalog, every-command acceptance matrix: in CI, install the
+- [x] **CI-01** Full-catalog, every-command acceptance matrix: in CI, install the
   entire 32-tool catalog via mise (not the current Tier 1+2 subset), enable all
   9 agents, then drive **every** command — `setup --yes`, `apply`, `status`,
   `status --json`, `doctor`, `update --dry-run`, `uninstall --dry-run` —
   asserting exit codes + output contracts on the windows/macos/ubuntu matrix —
-  `cmd/agentenv/.github/workflows/*.yml` · effort M · impact high
+  `cmd/agentenv/.github/workflows/*.yml` · effort M · impact high  ✅ c14b625
   Rationale: the stub smoke plus the Tier 1+2 acceptance subset do not exercise
   every command against every catalog entry, so a tool-specific regression (CATALOG record, tier, path probe) can slip past CI and only surface on a real user machine.
+  Note: smoke.yml already ran `smoke:real` (full catalog install + per-tool
+  execution verify + uninstall roundtrip) on main for all three OSes; c14b625
+  extended `--real` to enable all nine agents (real `rtk init` for each — the
+  delegated `--gemini`/`--agent` flags are supported by rtk 0.49.0, see
+  phase0-linux-verification.md) and added a zero-mutation command sweep
+  (`apply --dry-run`, `status --json`, `doctor --section`/`--json`,
+  `update --dry-run`, `uninstall --dry-run`) asserting exit codes + JSON/output
+  contracts against the installed catalog. The deterministic contract coverage
+  for the same commands already lives in `src/cli/contract.test.ts` on every PR.
 
 ## Docs   (D-NN)
 
@@ -111,8 +120,8 @@ recorded as a pass.
   summary line), TTY-only with plain-headline fallback on pipe/`-q`; `status
   --json`/`doctor --json` stay byte-identical. `cmd/agentenv/src/ui/output.ts`
   ✅ 4d11428
-- **CI-01** is the remaining user-directed item: a CI matrix driving every
-  command against the full 32-tool catalog.
+- **CI-01** (2026-09-18, user-directed) CI matrix driving every command against
+  the full catalog — done ✅ c14b625.
 
 ---
 ## Execution Instructions
