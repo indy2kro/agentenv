@@ -29,7 +29,7 @@ There are two supported styles; prefer the first:
 
 1. Add the id to the `AGENT_KEYS` tuple.
 2. Add `agents.<id>` boolean to `AgentenvConfig`, `DEFAULT_CONFIG`,
-   `configToToml`, and `mergeWithDefaults` (follow the existing four entries).
+   `configToToml`, and `mergeWithDefaults` (follow the existing agent entries).
 3. Optionally add `rtk.init.<id>` to `RtkConfig` if rtk can wire this agent,
    and its TOML serialization/merge + `diffConfigs` entry.
 

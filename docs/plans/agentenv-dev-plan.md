@@ -230,7 +230,7 @@ agentenv/
 │       ├── commands/       # CLI commands (setup, apply, status)
 │       ├── config/          # agentenv.toml schema, load/save/diff
 │       ├── shell/           # Tier 0: detect/configure POSIX shell on Windows
-│       ├── adapters/        # Per-agent adapters (claude, codex, copilot, opencode)
+│       ├── adapters/        # Per-agent adapters (claude + 8 rtk-delegated)
 │       ├── generate/        # AGENTS.md / CLAUDE.md marker-block writer
 │       └── toolchain/       # mise.toml generation, mise/rtk invocation
 ├── dist/                   # Compiled JavaScript output (generated)
@@ -277,7 +277,7 @@ agentenv/
   (injectable runner for CI; Claude adapter stays hand-written since it is the
   exact hook shape rtk produces). `agentenv status` drift checks follow the
   delegated file locations. `apply` remains zero-diff on re-runs.
-- **Acceptance:** one `agentenv.toml` with all four agents enabled produces correct, working configs for each, verified manually per agent
+- **Acceptance:** one `agentenv.toml` with all enabled agents produces correct, working configs for each, verified manually per agent
 
 ### Phase 3 — Interactive wizard
 - `agentenv setup` (unified flow: Tier 0 fix + auto-detect + agents, one-page Tier 1–3 tool picker, custom binaries, scope, rtk, Superpowers, review-before-write)
@@ -310,8 +310,8 @@ agentenv/
 ### Phase 5 — Distribution & generalization
 - Package `agentenv` as an npm package (`npm install -g agentenv`)
 - Publish to npm registry for seamless installation and updates via `npm update -g agentenv`
-- Add a documented "how to add a new agent adapter" guide, so growing beyond the four v1 targets doesn't require touching the core
-- CI matrix (GitHub Actions: windows-latest, macos-latest, ubuntu-latest) running full setup + a smoke test for each of the four agents on every push
+- Add a documented "how to add a new agent adapter" guide, so adding agents doesn't require touching the core
+- CI matrix (GitHub Actions: windows-latest, macos-latest, ubuntu-latest) running full setup + a smoke test for each agent on every push
 - **Status:** npm packaging done — `files`/`types`/`publishConfig`/`repository`
   metadata, `LICENSE` (MIT), and a package `README.md` added; `npm pack` is
   clean (70 kB, dist only) and a temp-prefix `npm install -g` +
@@ -345,7 +345,7 @@ agentenv/
   caveat).
 - First integration: Superpowers (`github:obra/superpowers`). Upstream now
   documents installers for many more coding-agent harnesses than agentenv's
-  four v1 targets, but among those four, only Claude Code has a documented,
+  target agents, but among those, only Claude Code has a documented,
   non-interactive, ref-pinnable installer (`claude plugin marketplace add` /
   `claude plugin install`). Copilot documents a command of the same shape
   but no way to pin a ref, and Codex CLI/OpenCode have no fixed
@@ -472,8 +472,8 @@ install→uninstall roundtrip. Design:
 
 ## 11. Success criteria
 
-- One command (`agentenv setup`) gets a new machine — including a fresh Windows box — to a working state for all four target agents
+- One command (`agentenv setup`) gets a new machine — including a fresh Windows box — to a working state for all target agents
 - Advanced users can add a custom binary and reconfigure without hand-editing five different files
 - AGENTS.md/CLAUDE.md content stays short and stable regardless of how many tools are configured
-- Adding a fifth agent later requires only a new adapter module, no core changes
+- Adding an agent later requires only a new adapter module, no core changes
 - Zero custom binaries/installers maintained by us for the underlying dev tools — mise and rtk still do all of that
