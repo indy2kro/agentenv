@@ -9,6 +9,10 @@ import * as os from 'os';
 import * as path from 'path';
 
 export function userConfigDir(): string {
+  const xdg = process.env.XDG_CONFIG_HOME;
+  if (xdg && path.isAbsolute(xdg)) {
+    return path.join(xdg, 'agentenv');
+  }
   const home = process.env.HOME || process.env.USERPROFILE || os.homedir();
   return path.join(home, '.config', 'agentenv');
 }

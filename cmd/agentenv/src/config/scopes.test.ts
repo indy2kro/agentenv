@@ -8,12 +8,15 @@ import { configFilePath, findConfigPath, resolveScopeDir, userConfigDir } from '
 describe('scope resolution', () => {
   const originalHome = process.env.HOME;
   const originalUserProfile = process.env.USERPROFILE;
+  const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
 
   after(() => {
     if (originalHome === undefined) delete process.env.HOME;
     else process.env.HOME = originalHome;
     if (originalUserProfile === undefined) delete process.env.USERPROFILE;
     else process.env.USERPROFILE = originalUserProfile;
+    if (originalXdgConfigHome === undefined) delete process.env.XDG_CONFIG_HOME;
+    else process.env.XDG_CONFIG_HOME = originalXdgConfigHome;
   });
 
   it('project scope resolves to the current working directory', () => {
@@ -25,10 +28,30 @@ describe('scope resolution', () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-scopes-'));
     process.env.HOME = home;
     process.env.USERPROFILE = home;
+    delete process.env.XDG_CONFIG_HOME;
 
     const expected = path.join(home, '.config', 'agentenv');
     assert.equal(userConfigDir(), expected);
     assert.equal(resolveScopeDir('user'), expected);
+  });
+
+  it('honors an absolute XDG_CONFIG_HOME for the user scope', () => {
+    const xdg = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-xdg-'));
+    process.env.XDG_CONFIG_HOME = xdg;
+
+    const expected = path.join(xdg, 'agentenv');
+    assert.equal(userConfigDir(), expected);
+    assert.equal(resolveScopeDir('user'), expected);
+    assert.equal(configFilePath('user'), path.join(expected, 'agentenv.toml'));
+  });
+
+  it('ignores a relative XDG_CONFIG_HOME (spec), falling back to ~/.config', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-scopes-'));
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    process.env.XDG_CONFIG_HOME = 'relative/not-absolute';
+
+    assert.equal(userConfigDir(), path.join(home, '.config', 'agentenv'));
   });
 
   it('configFilePath appends agentenv.toml', () => {
