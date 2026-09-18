@@ -9,6 +9,7 @@ import {
   getShimsDirValue,
   getToolsToInstall,
   getUpgradeableTools,
+  getInstalledToolState,
   classifyToolResolvability,
   detectEulaPrompt,
   eulaPreflightHint,
@@ -249,5 +250,49 @@ describe('Windows 3-state verify and activation hint', () => {
     const ahead = eulaPreflightHint({ tools: { gitleaks: true } });
     assert.match(ahead, /mise install gitleaks/);
     assert.equal(ahead.includes('echo y'), false);
+  });
+});
+
+describe('getInstalledToolState', () => {
+  it('parses the real object-keyed mise ls --json shape', () => {
+    const state = getInstalledToolState(
+      JSON.stringify({
+        'ast-grep': [{ version: '0.45.3', install_path: 'x', installed: true, active: false }],
+        delta: [{ version: '0.19.2', install_path: 'x', installed: false, active: true }],
+      }),
+    );
+    assert.equal(state['ast-grep'].installed, true);
+    assert.deepEqual(state['ast-grep'].versions, ['0.45.3']);
+    assert.equal(state['delta'].installed, false);
+    assert.deepEqual(state['delta'].versions, ['0.19.2']);
+  });
+
+  it('marks a tool installed when any of its versions is installed', () => {
+    const state = getInstalledToolState(
+      JSON.stringify({
+        uv: [
+          { version: '0.7.1', install_path: 'z', installed: false, active: false },
+          { version: '0.8.2', install_path: 'y', installed: true, active: false },
+        ],
+      }),
+    );
+    assert.equal(state['uv'].installed, true);
+    assert.deepEqual(state['uv'].versions, ['0.7.1', '0.8.2']);
+  });
+
+  it('parses a legacy array of {name, version}', () => {
+    const state = getInstalledToolState(
+      JSON.stringify([
+        { name: 'jq', version: '1.8.2' },
+        { name: 'fd', version: '10.5.0' },
+      ]),
+    );
+    assert.equal(state['jq'].installed, true);
+    assert.deepEqual(state['jq'].versions, ['1.8.2']);
+  });
+
+  it('returns an empty map for unparseable or empty output', () => {
+    assert.deepEqual(getInstalledToolState(''), {});
+    assert.deepEqual(getInstalledToolState('not json'), {});
   });
 });

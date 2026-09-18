@@ -804,27 +804,52 @@ export async function runMiseInstall(
   };
 }
 
+export interface InstalledToolState {
+  installed: boolean;
+  versions: string[];
+}
+
 /**
- * Get installed tool versions via mise
+ * Installed tool state from `mise ls --json`. mise's real output is an object
+ * keyed by tool name mapping to entries like `{version, install_path,
+ * installed, active}`; declared-but-uninstalled tools still appear with
+ * `installed: false`. A legacy `[{name, version}]` array shape is tolerated
+ * so an older/downgraded mise cannot silently regress the caller to "nothing
+ * installed". Unparseable output yields an empty map.
  */
-export function getInstalledVersions(): Record<string, string> {
-  const versions: Record<string, string> = {};
-  const result = runMiseCaptured(['ls', '--json']);
-
+export function getInstalledToolState(raw?: string): Record<string, InstalledToolState> {
+  const input = raw ?? runMiseCaptured(['ls', '--json']).stdout;
+  const state: Record<string, InstalledToolState> = {};
+  let parsed: unknown;
   try {
-    const tools = JSON.parse(result.stdout) as Array<{
-      name: string;
-      version: string;
-    }>;
-
-    for (const tool of tools) {
-      versions[tool.name] = tool.version;
-    }
+    parsed = JSON.parse(input);
   } catch {
-    // Ignore errors (mise might not be installed or might not support --json)
+    return state;
   }
 
-  return versions;
+  if (Array.isArray(parsed)) {
+    for (const item of parsed as Array<{ name?: string; version?: string }>) {
+      if (typeof item?.name !== 'string') continue;
+      const entry = (state[item.name] ??= { installed: true, versions: [] });
+      if (typeof item.version === 'string') entry.versions.push(item.version);
+    }
+    return state;
+  }
+
+  if (parsed && typeof parsed === 'object') {
+    for (const [name, entries] of Object.entries(parsed as Record<string, unknown>)) {
+      const list = Array.isArray(entries)
+        ? (entries as Array<{ version?: string; installed?: boolean }>)
+        : [];
+      state[name] = {
+        installed: list.some((entry) => entry.installed === true),
+        versions: list
+          .map((entry) => (typeof entry.version === 'string' ? entry.version : ''))
+          .filter((version) => version !== ''),
+      };
+    }
+  }
+  return state;
 }
 
 /**
