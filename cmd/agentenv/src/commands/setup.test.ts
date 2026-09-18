@@ -81,4 +81,39 @@ describe('unattended setup pipeline', () => {
     assert.equal(seenOptions?.skipPrereqMessage, true);
     assert.equal(logs.filter((line) => line.startsWith('Prerequisite: mise')).length, 1);
   });
+
+  it('enables the Superpowers integration when --superpowers is passed', async () => {
+    const dir = tempDir('agentenv-setup-');
+    let saved: import('../config/schema.js').AgentenvConfig | undefined;
+    const stubApply: typeof applyConfiguration = async (config) => {
+      saved = config;
+      return { success: true, messages: [], errors: [] };
+    };
+
+    const originalLog = console.log;
+    const originalError = console.error;
+    const originalCwd = process.cwd();
+    console.log = () => {};
+    console.error = () => {};
+    try {
+      process.chdir(dir);
+      await unattendedSetup(
+        { yes: true, agents: 'claude_code', superpowers: 'v7.0.0', tier2: false, rtk: false },
+        {
+          misePrereqCheckDeps: { isInstalled: () => true, version: () => '3.2.1' },
+          applyConfiguration: stubApply,
+        },
+      );
+    } finally {
+      process.chdir(originalCwd);
+      console.log = originalLog;
+      console.error = originalError;
+    }
+
+    assert.equal(saved?.integrations?.superpowers?.enabled, true);
+    assert.equal(saved?.integrations?.superpowers?.ref, 'v7.0.0');
+    assert.deepEqual(saved?.integrations?.superpowers?.agents, ['claude_code']);
+    const toml = fs.readFileSync(path.join(dir, 'agentenv.toml'), 'utf-8');
+    assert.match(toml, /\[integrations\.superpowers\]/);
+  });
 });

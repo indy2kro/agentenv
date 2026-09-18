@@ -90,6 +90,7 @@ interface SetupCommandOptions {
   tier2?: boolean;
   rtk?: boolean;
   config?: string;
+  superpowers?: string | boolean;
 }
 
 export interface UnattendedSetupDeps extends SaveAndApplyDeps {
@@ -102,7 +103,7 @@ export interface UnattendedSetupDeps extends SaveAndApplyDeps {
  *   1. --config <path>  (an existing agentenv.toml to apply verbatim)
  *   2. An existing agentenv.toml at the target scope (idempotent re-apply)
  *   3. Defaults (detected agents + Tier 1&2 tools + rtk), overridable via
- *      --agents / --no-tier2 / --no-rtk / --scope.
+ *      --agents / --no-tier2 / --no-rtk / --scope / --superpowers.
  */
 export async function unattendedSetup(
   options: SetupCommandOptions,
@@ -173,9 +174,17 @@ export async function unattendedSetup(
 
       const includeTier2 = options.tier2 !== false;
       const rtkEnabled = options.rtk !== false;
-      config = buildDefaultSimpleConfig(agents, includeTier2, rtkEnabled, scope);
+      const superpowersRef =
+        options.superpowers === undefined
+          ? undefined
+          : typeof options.superpowers === 'string'
+            ? options.superpowers
+            : undefined;
+      config = buildDefaultSimpleConfig(agents, includeTier2, rtkEnabled, scope, superpowersRef);
       console.log(
-        `Defaults: agents ${agents.join(', ')}, Tier 2 tools ${includeTier2 ? 'on' : 'off'}, rtk ${rtkEnabled ? 'on' : 'off'}`,
+        `Defaults: agents ${agents.join(', ')}, Tier 2 tools ${includeTier2 ? 'on' : 'off'}, rtk ${rtkEnabled ? 'on' : 'off'}, Superpowers ${
+          superpowersRef === undefined ? 'off' : `on (ref ${superpowersRef || 'default'})`
+        }`,
       );
     }
   }
@@ -194,6 +203,10 @@ export const setupCommand = new Command()
   .option('--scope <scope>', 'configuration scope: project|user (default: project)')
   .option('--no-tier2', 'skip Tier 2 tools (unattended)')
   .option('--no-rtk', 'disable rtk command rewriting (unattended)')
+  .option(
+    '--superpowers [ref]',
+    'enable the Superpowers integration (unattended); optional github tag/branch/commit ref',
+  )
   .option('--config <path>', 'path to an existing agentenv.toml to apply (unattended)')
   .action(async (options: SetupCommandOptions) => {
     if (options.yes) {
