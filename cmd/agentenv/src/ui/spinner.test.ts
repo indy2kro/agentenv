@@ -1,5 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { afterEach } from 'node:test';
+import { isQuiet, setQuietEnabled } from './output.js';
 import { withSpinner } from './spinner.js';
 import type { Spinner, SpinnerFactory } from './spinner.js';
 
@@ -52,5 +54,15 @@ describe('withSpinner', () => {
       /boom/,
     );
     assert.deepEqual(calls, ['start', 'fail:Applying...']);
+  });
+
+  it('is a no-op under -q/--quiet so quiet output stays quiet on a TTY', async () => {
+    afterEach(() => setQuietEnabled(false));
+    setQuietEnabled(true);
+    assert.equal(isQuiet(), true);
+    const { factory, calls } = fakeSpinnerFactory();
+    const result = await withSpinner('Applying...', async () => ({ success: true }), factory);
+    assert.deepEqual(result, { success: true });
+    assert.deepEqual(calls, [], 'quiet mode should never touch the real spinner');
   });
 });

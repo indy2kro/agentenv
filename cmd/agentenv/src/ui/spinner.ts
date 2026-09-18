@@ -8,6 +8,7 @@
  */
 
 import ora from 'ora';
+import { isQuiet } from './output.js';
 
 export interface Spinner {
   start(): Spinner;
@@ -19,13 +20,24 @@ export type SpinnerFactory = (text: string) => Spinner;
 
 const defaultSpinnerFactory: SpinnerFactory = (text) => ora(text) as unknown as Spinner;
 
-/** Run fn() under a spinner labeled `label`, resolving succeed/fail from the result's `success` field. */
+const quietSpinner: Spinner = {
+  start: () => quietSpinner,
+  succeed: () => quietSpinner,
+  fail: () => quietSpinner,
+};
+
+/**
+ * Run fn() under a spinner labeled `label`, resolving succeed/fail from the
+ * result's `success` field. `-q/--quiet` swaps in a no-op spinner so quiet
+ * output is actually silent even on a TTY.
+ */
 export async function withSpinner<T extends { success: boolean }>(
   label: string,
   fn: () => Promise<T>,
   spinnerFactory: SpinnerFactory = defaultSpinnerFactory,
 ): Promise<T> {
-  const spinner = spinnerFactory(label).start();
+  const factory = isQuiet() ? (): Spinner => quietSpinner : spinnerFactory;
+  const spinner = factory(label).start();
   try {
     const result = await fn();
     if (result.success) spinner.succeed(label);
