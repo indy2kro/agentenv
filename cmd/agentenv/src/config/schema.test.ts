@@ -19,6 +19,8 @@ import {
   validateConfig,
 } from './schema.js';
 import type { AgentenvConfig, AgentKey, CustomTool } from './schema.js';
+import { MISE_TOOL_NAMES, PINNED_TOOL_VERSIONS } from '../toolchain/mise.js';
+import { TOOL_CATEGORIES } from '../generate/agentsmd.js';
 
 describe('configuration persistence', () => {
   it('rejects malformed TOML instead of applying defaults', () => {
@@ -343,6 +345,34 @@ describe('tool catalog: invariant coverage', () => {
     const tiers = TOOL_KEYS.map((key) => TOOL_TIERS[key]);
     const sorted = [...tiers].sort((a, b) => a - b);
     assert.deepEqual(tiers, sorted);
+  });
+
+  it('MISE_TOOL_NAMES covers TOOL_KEYS exactly (no missing or stray tool keys)', () => {
+    for (const key of TOOL_KEYS) {
+      assert.ok(MISE_TOOL_NAMES[key], `missing MISE_TOOL_NAMES entry: ${key}`);
+    }
+    for (const key of Object.keys(MISE_TOOL_NAMES)) {
+      assert.ok(
+        (TOOL_KEYS as readonly string[]).includes(key),
+        `MISE_TOOL_NAMES has a key absent from TOOL_KEYS: ${key}`,
+      );
+    }
+  });
+
+  it('PINNED_TOOL_VERSIONS only pins known mise names (no dead pins)', () => {
+    const knownMiseNames = new Set(Object.values(MISE_TOOL_NAMES));
+    for (const key of Object.keys(PINNED_TOOL_VERSIONS)) {
+      assert.ok(knownMiseNames.has(key), `PINNED_TOOL_VERSIONS pin has no mise tool: ${key}`);
+    }
+  });
+
+  it('TOOL_CATEGORIES has no stray keys (every category key is a real tool)', () => {
+    for (const key of Object.keys(TOOL_CATEGORIES)) {
+      assert.ok(
+        (TOOL_KEYS as readonly string[]).includes(key),
+        `TOOL_CATEGORIES has a key absent from TOOL_KEYS: ${key}`,
+      );
+    }
   });
 });
 
