@@ -163,17 +163,22 @@ if (REAL) {
 }
 
 // Cursor's global rtk delegation (`rtk init -g --agent cursor`) writes a
-// shared RTK.md anchor into Claude Code's `~/.claude`. On Windows, real rtk
-// resolves that path via the native profile API rather than honoring the
-// sandboxed HOME/USERPROFILE `env` used for isolation above (same quirk as
-// the OpenCode plugin-dir note below), so it targets the REAL
-// %USERPROFILE%\.claude — which agentenv's own CursorAdapter now also
+// shared RTK.md anchor into Claude Code's `~/.claude`, plus its own
+// `~/.cursor`. On Windows, real rtk resolves both via the native profile API
+// rather than honoring the sandboxed HOME/USERPROFILE `env` used for
+// isolation above (same quirk as the OpenCode plugin-dir note below) — and
+// unlike the `--gemini`/`--agent windsurf`/`--agent vibe` paths (which
+// `create_dir_all` their own target dirs and succeeded here without help),
+// rtk's `--agent cursor` path assumes both directories already exist instead
+// of creating them, so it targets the REAL %USERPROFILE%\.claude and
+// %USERPROFILE%\.cursor — which agentenv's own CursorAdapter now also
 // pre-creates (see src/adapters/cursor.ts), but only under the sandboxed
-// home. Pre-create the real one too, or a fresh Windows runner with no
-// pre-existing ~/.claude fails `apply` outright instead of just mismatching
-// an assertion.
+// home. Pre-create the real ones too, or a fresh Windows runner fails
+// `apply` outright instead of just mismatching an assertion.
 if (REAL && process.platform === 'win32') {
-  fs.mkdirSync(path.join(process.env.USERPROFILE || os.homedir(), '.claude'), { recursive: true });
+  const realHome = process.env.USERPROFILE || os.homedir();
+  fs.mkdirSync(path.join(realHome, '.claude'), { recursive: true });
+  fs.mkdirSync(path.join(realHome, '.cursor'), { recursive: true });
 }
 
 function run(args, cwd, runEnv = env) {
