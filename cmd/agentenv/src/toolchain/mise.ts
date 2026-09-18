@@ -392,6 +392,30 @@ export async function runMiseUpgrade(
   }
 }
 
+/**
+ * Uninstall the given tools from the mise store (`mise uninstall <name>...`,
+ * name-only so every installed version of a tool is removed). Surfaces the
+ * captured subprocess result like runMiseUpgrade does.
+ */
+export function runMiseUninstall(
+  tools: string[],
+  cwd: string = '.',
+  miseTomlPath?: string,
+): {
+  success: boolean;
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+} {
+  const result = runMiseCaptured(['uninstall', ...tools], { cwd, miseTomlPath });
+  return {
+    success: result.status === 0,
+    stdout: result.stdout || '',
+    stderr: result.stderr || '',
+    exitCode: result.status ?? null,
+  };
+}
+
 export interface RunMiseCapturedOptions {
   cwd?: string;
   /** When known, point mise at the project's mise.toml via MISE_CONFIG_FILE. */
