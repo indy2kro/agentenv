@@ -98,22 +98,24 @@ of `setup`/`configure`/`apply` funnel into, in this fixed order:
    blocks in output repos, but this repo's own `CLAUDE.md`/`AGENTS.md` are
    hand-maintained project docs, not `agentenv apply` output.
 5. **Per-agent adapters** (`src/adapters/`) — one `BaseAdapter` subclass per
-   agent (`claude.ts`, `codex.ts`, `copilot.ts`, `opencode.ts`), each
-   implementing `initialize()`/`configureHooks()`/`cleanup()`. Claude Code's
-   adapter is hand-written (matches the exact hook shape `rtk init` would
-   produce); Codex/Copilot/OpenCode delegate to a real or injectable
-   `rtk init` runner (`src/toolchain/rtk.ts`) rather than hand-rolling hook
-   files — see `docs/research/rtk-init-delegation.md` for why.
+   agent: hand-written `claude.ts` plus thin `RtkDelegationAdapter` subclasses
+   for `codex.ts`, `copilot.ts`, `opencode.ts`, `gemini.ts`, `cursor.ts`,
+   `windsurf.ts`, `cline.ts`, `vibe.ts` — the full list in `adapters/index.ts`.
+   Claude Code's adapter is hand-written (matches the exact hook shape
+   `rtk init` would produce); every other adapter delegates to a real or
+   injectable `rtk init` runner (`src/toolchain/rtk.ts`,
+   `src/adapters/rtk-delegation.ts`) rather than hand-rolling hook files — see
+   `docs/research/rtk-init-delegation.md` for why.
 6. **Optional integrations** (`src/integrations/`) — a second, parallel
    adapter contract (`IntegrationAdapter` in `integrations/base.ts`) for
    third-party installers that agentenv invokes but doesn't own the config
    of (currently Superpowers, `integrations/superpowers.ts`). Contrast with
    step 5: agent adapters *own* agentenv-generated files; integration
    adapters *observe/invoke* someone else's installer and report
-   `detect`/`apply`/`status` results. As of the current `main`, the schema
-   and adapter are implemented and tested but **not yet wired into
-   `apply`/`status`/`setup`/`configure`** — check
-   `docs/plans/agentenv-dev-plan.md` §Phase 6 before assuming otherwise.
+   `detect`/`apply`/`status` results. Superpowers is wired into
+   `apply`/`status`/`setup` (`src/commands/apply.ts`,
+   `src/commands/status.ts`, `src/integrations/`) behind
+   `[integrations.superpowers]` in the config schema.
 
 `agentenv status` (`src/commands/status.ts`) walks the same config to report
 drift (configured vs. actually installed/on-PATH) without changing anything.
@@ -121,11 +123,13 @@ drift (configured vs. actually installed/on-PATH) without changing anything.
 sanity check (mise, shims dir, shell, per-agent binary detection) independent
 of any `agentenv.toml`.
 
-Adding a fifth agent means adding one `BaseAdapter` implementation and
-wiring it into `adaptersFor()` in `apply.ts` plus the detection table in
-`adapters/detect.ts` — see `docs/guides/adding-an-adapter.md`. The core
-(config schema, mise/rtk invocation, marker-block generation) should not need
-to change.
+Adding a new agent means adding one `BaseAdapter` implementation (for the
+common rtk-delegated case a one-file `RtkDelegationAdapter` subclass, see
+`src/adapters/windsurf.ts` as the template) and wiring it into the index
+(`src/adapters/index.ts`), `AGENT_COMMANDS` in `src/adapters/detect.ts`, and
+any config-key mapping in `src/config/schema.ts` — see
+`docs/guides/adding-an-adapter.md`. The core (config schema, mise/rtk
+invocation, marker-block generation) should not need to change.
 
 ## Testing conventions
 
