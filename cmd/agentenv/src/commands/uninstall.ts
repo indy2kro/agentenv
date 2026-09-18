@@ -1,6 +1,18 @@
-import type { AgentenvConfig } from '../config/schema.js';
-import { BINARY_MAP } from '../config/schema.js';
-import { getToolsToInstall, type InstalledToolState } from '../toolchain/mise.js';
+import { Command } from 'commander';
+import * as fs from 'fs';
+import * as path from 'path';
+import { confirm } from '@inquirer/prompts';
+import { BINARY_MAP, loadConfig, validateConfig, type AgentenvConfig } from '../config/schema.js';
+import { configFilePath, findConfigPath, resolveScopeDir } from '../config/scopes.js';
+import {
+  getInstalledToolState,
+  getToolsToInstall,
+  isMiseInstalled,
+  miseInstallInstructions,
+  runMiseUninstall,
+  type InstalledToolState,
+} from '../toolchain/mise.js';
+import { normalizeOutput } from '../utils/output.js';
 
 export interface UninstallTarget {
   /** agentenv TOML key (the custom tool's name for custom tools). */
@@ -105,3 +117,149 @@ export function renderUninstallSummary(
     ...plan.alreadyGone.map((name) => `  ${label(name)} — already gone`),
   ];
 }
+
+interface UninstallCommandOptions {
+  tools?: string[];
+  yes?: boolean;
+  dryRun?: boolean;
+  scope?: string;
+}
+
+/**
+ * Cleanup: remove the config-declared, mise-managed tools from the mise store.
+ * Does not modify agentenv.toml or the generated mise.toml — `agentenv apply`
+ * re-installs everything.
+ */
+export async function doUninstall(options: UninstallCommandOptions): Promise<void> {
+  // 1. Config resolution (mirrors update.ts).
+  let configPath: string | null;
+  if (options.scope) {
+    const scope: 'project' | 'user' = options.scope === 'user' ? 'user' : 'project';
+    configPath = configFilePath(scope);
+    if (!fs.existsSync(configPath)) {
+      console.error(`No agentenv.toml found at ${configPath} (scope ${scope}).`);
+      process.exitCode = 1;
+      return;
+    }
+  } else {
+    configPath = findConfigPath() ?? null;
+    if (!configPath) {
+      console.error('No agentenv.toml found. Run `agentenv setup` first.');
+      process.exitCode = 1;
+      return;
+    }
+  }
+  console.log(`Config: ${configPath}`);
+
+  let config;
+  try {
+    config = loadConfig(configPath);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+    return;
+  }
+  const report = validateConfig(config);
+  for (const warning of report.warnings) console.log(`warning: ${warning}`);
+  if (report.errors.length > 0) {
+    for (const error of report.errors) console.error(`error: ${error}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  // 2. Argument validation runs immediately after config resolution, before
+  //    confirmation, the mise gate, or any uninstall.
+  const targets = calculateUninstallTargets(config);
+  const { matched, unknown } = resolveToolArgs(options.tools ?? [], targets);
+  if (unknown.length > 0) {
+    console.error(`Unknown tool(s) to uninstall: ${unknown.join(', ')}`);
+    process.exitCode = 1;
+    return;
+  }
+  const requested = options.tools && options.tools.length > 0 ? matched : targets;
+
+  // 3. No-op path needs no mise.
+  if (requested.length === 0) {
+    console.log('Nothing to uninstall.');
+    return;
+  }
+
+  const scopeDir = resolveScopeDir(config.scope ?? 'project');
+  const miseTomlPath = path.join(scopeDir, 'mise.toml');
+
+  // 4. Dry run never mutates; single allowlisted probe when mise is present.
+  if (options.dryRun) {
+    const stateKnown = isMiseInstalled();
+    const plan = stateKnown
+      ? uninstallPlan(requested, getInstalledToolState())
+      : { toUninstall: [] as string[], alreadyGone: [] as string[] };
+    const lines = renderUninstallSummary(requested, plan, 'preview', !stateKnown);
+    console.log(lines.join('\n'));
+    return;
+  }
+
+  // 5. Fail-closed mise gate: unknown installed state is not "already gone".
+  if (!isMiseInstalled()) {
+    console.error('agentenv uninstall requires mise, but mise was not found.');
+    for (const line of miseInstallInstructions()) console.error(`  ${line}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  // 6. Plan from live state.
+  const plan = uninstallPlan(requested, getInstalledToolState());
+  if (plan.toUninstall.length === 0) {
+    console.log('Nothing to uninstall.');
+    return;
+  }
+
+  // 7. Confirmation, only when there is actually something to remove.
+  if (!options.yes) {
+    if (process.stdin.isTTY && process.stdout.isTTY) {
+      const proceed = await confirm({
+        message: `Uninstall ${plan.toUninstall.length} tool(s) from the mise store?`,
+        default: false,
+      });
+      if (!proceed) {
+        console.log('Aborted.');
+        return;
+      }
+    } else {
+      console.error(
+        'Interactive confirmation requires a TTY; pass `--yes` (or `--dry-run` to preview) to run non-interactively.',
+      );
+      process.exitCode = 1;
+      return;
+    }
+  }
+
+  // 8. Uninstall.
+  const result = runMiseUninstall(plan.toUninstall, scopeDir, miseTomlPath);
+  if (!result.success) {
+    console.error(
+      `mise uninstall failed (exit ${result.exitCode ?? 'null'}): ${normalizeOutput(result.stderr || result.stdout).trim()}`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+  console.log(renderUninstallSummary(requested, plan, 'result', false).join('\n'));
+  console.log(
+    `Removed ${plan.toUninstall.length} tool(s). These are no longer installed in the mise store; \`agentenv apply\` will reinstall them.`,
+  );
+}
+
+export const uninstallCommand = new Command()
+  .name('uninstall')
+  .description(
+    'Uninstall mise-managed tools in your config from the mise store (cleanup); `apply` re-installs them',
+  )
+  .argument(
+    '[tools...]',
+    'specific tools to uninstall (config key, binary name, or mise name); default: all enabled',
+  )
+  .option('--yes', 'skip the confirmation prompt (required when non-interactive)')
+  .option('--dry-run', 'print what would be uninstalled without changing anything')
+  .option('--scope <scope>', 'config scope to use: project|user (default: nearest config)')
+  .action((tools: string[], options: UninstallCommandOptions) =>
+    doUninstall({ ...options, tools }),
+  );

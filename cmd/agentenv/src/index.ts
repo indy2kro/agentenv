@@ -12,6 +12,7 @@ import { applyCommand } from './commands/apply.js';
 import { statusCommand } from './commands/status.js';
 import { updateCommand } from './commands/update.js';
 import { doctorCommand } from './commands/doctor.js';
+import { uninstallCommand } from './commands/uninstall.js';
 import { setColorEnabled } from './ui/theme.js';
 import { setQuietEnabled } from './ui/output.js';
 import { installExitOverride } from './cli/exit.js';
@@ -42,6 +43,7 @@ program.addCommand(applyCommand);
 program.addCommand(statusCommand);
 program.addCommand(updateCommand);
 program.addCommand(doctorCommand);
+program.addCommand(uninstallCommand);
 
 // After addCommand, so the override is installed on every subcommand too.
 installExitOverride(program);
