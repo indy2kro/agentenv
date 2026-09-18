@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-09-18
 
-Target: 20 · Found: 23 deduplicated items · Completed: 16/23
+Target: 20 · Found: 23 deduplicated items · Completed: 20/23
 
 > **How to use this document.** As you finish each item, change `- [ ]` to `- [x]`,
 > append ` ✅ <commit-sha>`, and bump the "Completed" counter. This file is the source
@@ -42,15 +42,16 @@ recorded as a pass.
   Rationale: the repo's own agent-facing instructions are stale and will misdirect the next contributing agent (superpowers is wired in all three flows).
 - [x] **UX-02** `apply` neither prints which `agentenv.toml` it used nor a "configuration invalid — not applying" line — `cmd/agentenv/src/commands/apply.ts` · effort S · impact med  ✅ 785be95
   Rationale: with project + user configs coexisting, apply gives no hint which file produced the state, unlike setup and uninstall.
-- [ ] **UX-03** `apply` unhandled errors print a bare message with no command context or stack; add `--debug` to append the failing command + trace — `cmd/agentenv/src/index.ts` · effort S · impact med
+- [x] **UX-03** `apply` unhandled errors print a bare message with no command context or stack; add `--debug` to append the failing command + trace — `cmd/agentenv/src/index.ts` · effort S · impact med  ✅ f999e1c
   Rationale: a user hitting an internal error can't produce a useful bug report.
-- [ ] **UX-04** `apply`/`update` silently mutate the user-global mise config PATH (`ensureGlobalShimsDir`) on every run with no summary line — `cmd/agentenv/src/toolchain/mise.ts` · effort S · impact low
+- [x] **UX-04** `apply`/`update` silently mutate the user-global mise config PATH (`ensureGlobalShimsDir`) on every run with no summary line — `cmd/agentenv/src/toolchain/mise.ts` · effort S · impact low  ✅ (no change needed)
   Rationale: users can't tell that a global file outside the project was modified.
-- [ ] **UX-05** Superpowers opt-in in the wizard fires five immediate follow-up prompts with no upfront summary of the consequences — `cmd/agentenv/src/commands/wizard.ts` · effort S · impact low
+  Note: verified during implementation that both commands already surface it — `apply` pushes `ensureGlobalShimsDir()`'s `message` ("mise: set shims_dir in <path>; <path> is on PATH") through `ApplyResult.messages`, and `update` prints `Shims: <message>`; no silent-mutation gap exists.
+- [x] **UX-05** Superpowers opt-in in the wizard fires five immediate follow-up prompts with no upfront summary of the consequences — `cmd/agentenv/src/commands/wizard.ts` · effort S · impact low  ✅ 8643062
   Rationale: answering "yes" to one integration drops users into a mini-wizard with no idea what they're agreeing to.
 - [x] **UX-06** 14 of 32 catalog tools render under a generic "Other" heading in generated AGENTS.md — `cmd/agentenv/src/generate/agentsmd.ts` · effort M · impact low  ✅ 496860b
   Rationale: half the catalog loses the search/code-navigation organization, making generated instructions harder to scan.
-- [ ] **UX-07** `status` renders every drift/integration entry with no `--short`/collapsed compaction — `cmd/agentenv/src/commands/status.ts` · effort S · impact low
+- [x] **UX-07** `status` renders every drift/integration entry with no `--short`/collapsed compaction — `cmd/agentenv/src/commands/status.ts` · effort S · impact low  ✅ da5e0fb
   Rationale: users with many custom tools and integrations get a long report for a one-glance check.
 - [x] **UX-08** `-q/--quiet` suppresses banners but the apply spinner still renders on a TTY — `cmd/agentenv/src/ui/spinner.ts` · effort S · impact low  ✅ e477e81
   Rationale: quiet output is not actually quiet.
