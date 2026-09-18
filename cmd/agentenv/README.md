@@ -375,7 +375,7 @@ npm test        # build + node:test suites
 npm run lint    # eslint --max-warnings 0
 npm run format:check
 npm run smoke           # stub mode — deterministic, no real mise/rtk
-npm run smoke:real      # real mise + rtk; installs the full tool catalog, verifies every binary, and exercises the install→uninstall roundtrip
+npm run smoke:real      # real mise + rtk; installs the full tool catalog, verifies every binary, and exercises the install→uninstall roundtrip (destructive on dev machines: the uninstall step removes every installed version of each catalog tool, including ones you already had)
 ```
 
 See [`docs/guides/adding-an-adapter.md`](../../docs/guides/adding-an-adapter.md)

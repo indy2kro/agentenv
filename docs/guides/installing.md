@@ -89,6 +89,10 @@ hasn't loaded yet. Full setup and configuration docs (shell activation, etc.):
   `setup --yes` — fails the same way with the same instructions (exit `1`).
 - **`agentenv update`** requires mise to self-update and to bump tools; it
   refuses with instructions when mise is missing (exit `1`).
+- **`agentenv uninstall`** with real targets fails fast with the same install
+  instructions when mise is missing (exit `1`). The no-op path
+  ("Nothing to uninstall.") needs no mise; `--dry-run` reports "state unknown"
+  and exits `0`.
 - **`agentenv doctor`** reports mise as a `fail` item when it is not on PATH
   (exit `1`), so it surfaces before you ever get to a tool check.
 

@@ -26,6 +26,7 @@ successful informational exits, not errors.
 | `apply` | all steps completed with no failures | any step failed (mise missing, install failed, tool verification failed, …) |
 | `status` | no validation errors AND no drift (see below) | config missing or invalid, or drift detected |
 | `update` | tools/runtime updated to latest | an update step failed, including a failed shims precondition |
+| `uninstall` | targets removed from the mise store (or nothing to remove — "Nothing to uninstall."); `--dry-run` previews and exits `0` | no config found, unknown tool argument, mise missing with real targets, a failed `mise ls --json`/`mise uninstall`, or a non-TTY run without `--yes` |
 | `doctor` | no `fail` items | any `fail` item (`warn` items do not flip the code) |
 
 ### `status` drift definition
@@ -65,9 +66,9 @@ invalid config:
   or validation message(s) in `validation.errors`, all other collections
   empty, `exitCode: 1`.
 
-Passing `--json` to `setup`/`configure`/`apply`/`update` is a usage error: it
-hits commander's unknown-option handling and exits `2`. The mutating commands'
-meaningful contract is the exit code, not a parsed body.
+Passing `--json` to `setup`/`configure`/`apply`/`update`/`uninstall` is a usage
+error: it hits commander's unknown-option handling and exits `2`. The
+mutating commands' meaningful contract is the exit code, not a parsed body.
 
 Example:
 

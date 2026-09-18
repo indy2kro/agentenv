@@ -422,21 +422,24 @@ install→uninstall roundtrip. Design:
 - `agentenv uninstall` derives its target set from the active `agentenv.toml`:
   non-fallback `[tools]` plus `custom_tools` with `mise_source`, deduped by
   mise name. Extra tool arguments resolve by config key, binary name, or mise
-  name. `--dry-run` previews the plan without changing anything (exit 0; mise
-  not installed → "state unknown" but still exit 0); `--yes` skips the
-  confirmation prompt (without it in a non-TTY context the command exits 1
-  before doing anything). Empty target set → "Nothing to uninstall." exit 0,
-  no mise required; an unknown tool argument exits 1 with the plan, no action.
-  No mise installed with real targets fails fast with install instructions
-  (exit 1), confirmed *after* the plan is computed so nothing inert is ever
-  confirmed. The confirmation prompt reuses `@inquirer/prompts`.
+  name (an unknown argument exits 1 and aborts without acting). `--dry-run`
+  previews the plan without changing anything (exit 0; mise not installed →
+  "state unknown" but still exit 0); `--yes` skips the confirmation prompt
+  (without it in a non-TTY context the command exits 1 before doing anything).
+  Empty target set → "Nothing to uninstall." exit 0, no mise required. No mise
+  installed with real targets fails fast with install instructions (exit 1),
+  confirmed *after* the plan is computed so nothing inert is ever confirmed.
+  The plan comes from a live `mise ls --json` read that **fails closed** — a
+  failed or unrecognized read exits 1 rather than treating the state as
+  "already uninstalled". The confirmation prompt reuses `@inquirer/prompts`.
 - The uninstall path calls `mise uninstall --all <name>...` so a tool with
   multiple installed versions is fully removed — mise 2026.x otherwise errors
   with `multiple tools specified, use --all` when any named tool has more than
   one version installed.
-- **Contract enforcement:** `src/cli/contract.test.ts` extended — exit `0`/`1`/`2`
-  for clean/dry-run/no-op/unknown-arg/missing-mise runs, non-TTY without
-  `--yes` exits `1`.
+- **Contract enforcement:** `src/cli/contract.test.ts` extended — exit
+  `0`/`1`/`2` for clean/dry-run/no-op/unknown-arg/missing-mise runs and the
+  `--json` usage error on the mutating command; a non-interactive run without
+  `--yes` (with something to remove) refuses with exit `1`.
 - **Smoke:** `npm run smoke:real` now installs the *full* tool catalog
   (varies by OS; on Windows `jless`/`ripgrep_all`/`direnv` are excluded from
   the catalog smoke since they can't install via mise on win32), verifies

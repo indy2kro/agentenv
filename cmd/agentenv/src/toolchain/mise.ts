@@ -837,23 +837,24 @@ export interface InstalledToolState {
 }
 
 /**
- * Installed tool state from `mise ls --json`. mise's real output is an object
- * keyed by tool name mapping to entries like `{version, install_path,
+ * Parse `mise ls --json` output into installed-tool state, or `null` when the
+ * output is not valid JSON in a recognizable shape. mise's real output is an
+ * object keyed by tool name mapping to entries like `{version, install_path,
  * installed, active}`; declared-but-uninstalled tools still appear with
  * `installed: false`. A legacy `[{name, version}]` array shape is tolerated
  * so an older/downgraded mise cannot silently regress the caller to "nothing
- * installed". Unparseable output yields an empty map.
+ * installed". Callers that mutate the store must fail closed on `null` —
+ * unrecognized output is never evidence that nothing is installed.
  */
-export function getInstalledToolState(raw?: string): Record<string, InstalledToolState> {
-  const input = raw ?? runMiseCaptured(['ls', '--json']).stdout;
-  const state: Record<string, InstalledToolState> = {};
+export function parseInstalledToolState(raw: string): Record<string, InstalledToolState> | null {
   let parsed: unknown;
   try {
-    parsed = JSON.parse(input);
+    parsed = JSON.parse(raw);
   } catch {
-    return state;
+    return null;
   }
 
+  const state: Record<string, InstalledToolState> = {};
   if (Array.isArray(parsed)) {
     for (const item of parsed as Array<{ name?: string; version?: string }>) {
       if (typeof item?.name !== 'string') continue;
@@ -875,8 +876,19 @@ export function getInstalledToolState(raw?: string): Record<string, InstalledToo
           .filter((version) => version !== ''),
       };
     }
+    return state;
   }
-  return state;
+
+  return null;
+}
+
+/**
+ * Tolerant installed-tool state view for read-only callers: unlike
+ * `parseInstalledToolState`, unparseable or unrecognized `mise ls --json`
+ * output (or an absent mise) yields an empty map rather than `null`.
+ */
+export function getInstalledToolState(raw?: string): Record<string, InstalledToolState> {
+  return parseInstalledToolState(raw ?? runMiseCaptured(['ls', '--json']).stdout) ?? {};
 }
 
 /**

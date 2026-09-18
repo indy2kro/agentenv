@@ -10,6 +10,7 @@ import {
   getToolsToInstall,
   getUpgradeableTools,
   getInstalledToolState,
+  parseInstalledToolState,
   classifyToolResolvability,
   detectEulaPrompt,
   eulaPreflightHint,
@@ -294,5 +295,31 @@ describe('getInstalledToolState', () => {
   it('returns an empty map for unparseable or empty output', () => {
     assert.deepEqual(getInstalledToolState(''), {});
     assert.deepEqual(getInstalledToolState('not json'), {});
+  });
+});
+
+describe('parseInstalledToolState', () => {
+  it('parses the same shapes as getInstalledToolState', () => {
+    const state = parseInstalledToolState(
+      JSON.stringify({ 'ast-grep': [{ version: '0.45.3', installed: true }] }),
+    );
+    assert.equal(state?.['ast-grep'].installed, true);
+    assert.deepEqual(
+      parseInstalledToolState(JSON.stringify([{ name: 'jq', version: '1.8.2' }]))?.['jq'].versions,
+      ['1.8.2'],
+    );
+  });
+
+  it('returns null for unparseable or unrecognized output (fail closed)', () => {
+    assert.equal(parseInstalledToolState(''), null);
+    assert.equal(parseInstalledToolState('not json'), null);
+    assert.equal(parseInstalledToolState('['), null);
+    assert.equal(parseInstalledToolState('null'), null);
+    assert.equal(parseInstalledToolState('"jq"'), null);
+  });
+
+  it('treats "{}" as a valid empty state, not a failure', () => {
+    assert.deepEqual(parseInstalledToolState('{}'), {});
+    assert.notEqual(parseInstalledToolState('{}'), null);
   });
 });

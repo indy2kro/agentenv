@@ -5,10 +5,11 @@ import { confirm } from '@inquirer/prompts';
 import { BINARY_MAP, loadConfig, validateConfig, type AgentenvConfig } from '../config/schema.js';
 import { configFilePath, findConfigPath, resolveScopeDir } from '../config/scopes.js';
 import {
-  getInstalledToolState,
   getToolsToInstall,
   isMiseInstalled,
   miseInstallInstructions,
+  parseInstalledToolState,
+  runMiseCaptured,
   runMiseUninstall,
   type InstalledToolState,
 } from '../toolchain/mise.js';
@@ -76,6 +77,29 @@ export function resolveToolArgs(
 export interface UninstallPlan {
   toUninstall: string[];
   alreadyGone: string[];
+}
+
+/**
+ * Live installed-state read that fails closed: a failed or unrecognized
+ * `mise ls --json` is an error (returns null), never treated as "nothing
+ * installed". Callers must set exit code 1 on null.
+ */
+function readInstalledState(): Record<string, InstalledToolState> | null {
+  const ls = runMiseCaptured(['ls', '--json']);
+  if (ls.status !== 0) {
+    console.error(
+      `mise ls --json failed (exit ${ls.status ?? 'null'}): ${normalizeOutput(ls.stderr || ls.stdout).trim()}`,
+    );
+    return null;
+  }
+  const state = parseInstalledToolState(ls.stdout);
+  if (state === null) {
+    console.error(
+      'mise ls --json returned unrecognized output (not a JSON object or array of tools).',
+    );
+    return null;
+  }
+  return state;
 }
 
 /** Plan from a live installed-state map: installed ⇒ toUninstall, else alreadyGone. */
@@ -190,12 +214,21 @@ export async function doUninstall(options: UninstallCommandOptions): Promise<voi
 
   // 4. Dry run never mutates; single allowlisted probe when mise is present.
   if (options.dryRun) {
-    const stateKnown = isMiseInstalled();
-    const plan = stateKnown
-      ? uninstallPlan(requested, getInstalledToolState())
-      : { toUninstall: [] as string[], alreadyGone: [] as string[] };
-    const lines = renderUninstallSummary(requested, plan, 'preview', !stateKnown);
-    console.log(lines.join('\n'));
+    if (!isMiseInstalled()) {
+      const plan = { toUninstall: [] as string[], alreadyGone: [] as string[] };
+      console.log(renderUninstallSummary(requested, plan, 'preview', true).join('\n'));
+      return;
+    }
+    const state = readInstalledState();
+    if (!state) {
+      process.exitCode = 1;
+      return;
+    }
+    console.log(
+      renderUninstallSummary(requested, uninstallPlan(requested, state), 'preview', false).join(
+        '\n',
+      ),
+    );
     return;
   }
 
@@ -208,7 +241,12 @@ export async function doUninstall(options: UninstallCommandOptions): Promise<voi
   }
 
   // 6. Plan from live state.
-  const plan = uninstallPlan(requested, getInstalledToolState());
+  const state = readInstalledState();
+  if (!state) {
+    process.exitCode = 1;
+    return;
+  }
+  const plan = uninstallPlan(requested, state);
   if (plan.toUninstall.length === 0) {
     console.log('Nothing to uninstall.');
     return;
