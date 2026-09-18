@@ -8,6 +8,7 @@ import {
   AGENT_OPTIONS,
   buildConfigFromSelections,
   formatDiffLines,
+  missingCustomToolPaths,
   promptPageSize,
   shouldPreCheckAgent,
   toolChoices,
@@ -96,26 +97,52 @@ export async function runConfigWizard(): Promise<void> {
     const alreadyInstalled = await confirm({ message: 'Already installed?', default: true });
 
     if (alreadyInstalled) {
-      const pathWindows = await input({
-        message: 'Windows path (e.g. C:\\tools\\my-tool.exe):',
-        default: '',
-      });
-      const pathMacOS = await input({
-        message: 'macOS path (e.g. /usr/local/bin/my-tool):',
-        default: '',
-      });
-      const pathLinux = await input({
-        message: 'Linux path (e.g. /usr/bin/my-tool):',
-        default: '',
-      });
-      customTools.push({
-        name,
-        description,
-        already_installed: true,
-        path_windows: pathWindows,
-        path_macos: pathMacOS,
-        path_linux: pathLinux,
-      });
+      for (;;) {
+        const pathWindows = await input({
+          message: 'Windows path (e.g. C:\\tools\\my-tool.exe):',
+          default: '',
+        });
+        const pathMacOS = await input({
+          message: 'macOS path (e.g. /usr/local/bin/my-tool):',
+          default: '',
+        });
+        const pathLinux = await input({
+          message: 'Linux path (e.g. /usr/bin/my-tool):',
+          default: '',
+        });
+        const missing = missingCustomToolPaths({
+          path_windows: pathWindows,
+          path_macos: pathMacOS,
+          path_linux: pathLinux,
+        });
+        if (missing.length === 0) {
+          customTools.push({
+            name,
+            description,
+            already_installed: true,
+            path_windows: pathWindows,
+            path_macos: pathMacOS,
+            path_linux: pathLinux,
+          });
+          break;
+        }
+        console.log(theme.warn(`  Path(s) not found on this machine: ${missing.join(', ')}`));
+        const retry = await confirm({
+          message: 'Re-enter the paths, or keep them anyway? (they may exist on the target OS)',
+          default: true,
+        });
+        if (!retry) {
+          customTools.push({
+            name,
+            description,
+            already_installed: true,
+            path_windows: pathWindows,
+            path_macos: pathMacOS,
+            path_linux: pathLinux,
+          });
+          break;
+        }
+      }
     } else {
       const miseSource = await input({ message: 'mise source (e.g. github:owner/repo):' });
       const version = await input({ message: 'Version (default: latest):', default: 'latest' });

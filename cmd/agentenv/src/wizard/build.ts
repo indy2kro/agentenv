@@ -18,6 +18,9 @@ import type {
   CustomTool,
   IntegrationsConfig,
 } from '../config/schema.js';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { requiresFallback } from '../toolchain/fallbacks.js';
 
 export const AGENT_OPTIONS: Array<{ value: AgentKey; label: string }> = [
@@ -203,4 +206,30 @@ function formatValue(value: unknown): string {
   if (value === undefined) return 'unset';
   if (typeof value === 'boolean' || typeof value === 'string') return String(value);
   return JSON.stringify(value);
+}
+
+/**
+ * Live existence-check for custom-tool OS paths. Empty entries are skipped
+ * (a path can legitimately be OS-specific), but a non-empty path that does
+ * not exist on this machine is returned so the wizard can flag it before it
+ * ends up silently broken in the saved config. `~` is expanded to $HOME.
+ */
+export function missingCustomToolPaths(paths: {
+  path_windows: string;
+  path_macos: string;
+  path_linux: string;
+}): string[] {
+  const missing: string[] = [];
+  for (const value of Object.values(paths)) {
+    const raw = value.trim();
+    if (!raw) continue;
+    const expanded =
+      raw === '~'
+        ? os.homedir()
+        : raw.startsWith('~/') || raw.startsWith('~\\')
+          ? path.join(os.homedir(), raw.slice(2))
+          : raw;
+    if (!fs.existsSync(expanded)) missing.push(raw);
+  }
+  return missing;
 }

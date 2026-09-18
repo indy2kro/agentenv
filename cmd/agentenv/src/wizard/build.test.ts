@@ -1,11 +1,15 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import {
   AGENT_OPTIONS,
   buildConfigFromSelections,
   buildDefaultSimpleConfig,
   defaultToolSelection,
   formatDiffLines,
+  missingCustomToolPaths,
   parseAgentsInput,
   promptPageSize,
   shouldPreCheckAgent,
@@ -282,5 +286,42 @@ describe('promptPageSize', () => {
 
   it('assumes a 24-row terminal when rows are unknown', () => {
     assert.equal(promptPageSize(36, undefined), 20);
+  });
+});
+
+describe('missingCustomToolPaths', () => {
+  it('returns paths that do not exist on this machine', () => {
+    const missing = missingCustomToolPaths({
+      path_windows: 'C:\\does\\not\\exist\\tool.exe',
+      path_macos: '',
+      path_linux: '',
+    });
+    assert.equal(missing.length, 1);
+    assert.ok(missing[0].includes('tool.exe'));
+  });
+
+  it('skips empty entries and existing files', () => {
+    const existing = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-path-'));
+    assert.equal(
+      missingCustomToolPaths({
+        path_windows: existing,
+        path_macos: '',
+        path_linux: '',
+      }).length,
+      0,
+    );
+  });
+
+  it('expands a leading ~ to the home directory', () => {
+    const home = process.env.HOME || process.env.USERPROFILE;
+    if (!home) return;
+    assert.equal(
+      missingCustomToolPaths({
+        path_windows: '~/not-a-real-tool-here',
+        path_macos: '',
+        path_linux: '',
+      }).length,
+      1,
+    );
   });
 });
