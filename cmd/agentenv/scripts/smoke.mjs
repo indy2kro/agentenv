@@ -66,9 +66,10 @@ if (process.platform === 'win32') {
   INSTALL_EXCLUDED.direnv = 'Windows: mise 2026.9.9 aqua extracts without .exe extension';
 }
 
-const toolsBlock = FULL_TOOLS.filter((tool) => !INSTALL_EXCLUDED[tool.miseName])
-  .map((tool) => `${tool.key} = true`)
-  .join('\n');
+// The catalog actually installable on this OS — everything not exempted above.
+const INSTALLABLE_TOOLS = FULL_TOOLS.filter((tool) => !INSTALL_EXCLUDED[tool.miseName]);
+
+const toolsBlock = INSTALLABLE_TOOLS.map((tool) => `${tool.key} = true`).join('\n');
 
 const agentsBlock = REAL
   ? `claude_code = true
@@ -265,7 +266,7 @@ if (REAL) {
     console.error(err.message);
     process.exit(1);
   }
-  const installedTools = FULL_TOOLS.filter((tool) => !INSTALL_EXCLUDED[tool.miseName]);
+  const installedTools = INSTALLABLE_TOOLS;
   for (const tool of installedTools) {
     if (EXECUTE_EXCLUDED[tool.miseName]) continue;
     let resolved;
@@ -354,6 +355,12 @@ if (REAL) {
   // derives from $HOME/XDG_DATA_HOME — the fake-HOME helper would probe an
   // empty store and both steps would pass vacuously. The config lives in the
   // project dir, so which agentenv.toml it uses is unaffected.
+  //
+  // Warning: `agentenv uninstall` runs `mise uninstall --all`, which removes
+  // EVERY installed version of each catalog tool — including any that were
+  // already in the store before this smoke ran. Running `npm run smoke:real`
+  // on a dev machine wipes pre-existing versions of the catalog tools it
+  // installs for its own verification.
   try {
     execFileSync(process.execPath, [cli, 'uninstall', '--yes'], {
       cwd: project,
@@ -372,6 +379,8 @@ if (REAL) {
   // [{version, installed, ...}]): no catalog tool may have any entry with
   // installed === true. Not `mise which` (auto-reinstall under mise's
   // auto_install default) and not entry-absence (declared tools still appear).
+  // Fail closed on unparseable or unexpected output — "skipped" is a silent
+  // test, "failed" is not.
   let lsAfter;
   try {
     lsAfter = execFileSync('mise', ['ls', '--json'], {
@@ -384,8 +393,21 @@ if (REAL) {
     console.error(err.message);
     process.exit(1);
   }
+  let lsParsed;
+  try {
+    lsParsed = JSON.parse(lsAfter);
+  } catch {
+    console.error('smoke FAIL: mise ls --json after uninstall was not valid JSON');
+    console.error(lsAfter);
+    process.exit(1);
+  }
+  if (typeof lsParsed !== 'object' || lsParsed === null || Array.isArray(lsParsed)) {
+    console.error('smoke FAIL: mise ls --json after uninstall was not an object-shaped tool map');
+    console.error(lsAfter);
+    process.exit(1);
+  }
   const installedAfter = new Set();
-  for (const [name, entries] of Object.entries(JSON.parse(lsAfter))) {
+  for (const [name, entries] of Object.entries(lsParsed)) {
     for (const entry of Array.isArray(entries) ? entries : []) {
       if (entry.installed === true) installedAfter.add(name);
     }
@@ -403,7 +425,7 @@ if (!REAL) {
     /gemini_cli|Gemini CLI|--gemini/.test(applyOut),
     `stub apply should mention gemini, got:\n${applyOut}`,
   );
-  for (const { key } of FULL_TOOLS.filter((tool) => !INSTALL_EXCLUDED[tool.miseName])) {
+  for (const { key } of INSTALLABLE_TOOLS) {
     expect(statusOut.includes(key), `status should mention ${key}, got:\n${statusOut}`);
   }
 

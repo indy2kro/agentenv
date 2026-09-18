@@ -393,12 +393,12 @@ export async function runMiseUpgrade(
 }
 
 /**
- * Uninstall the given tools from the mise store (`mise uninstall --all
- * <name>...`). `--all` is required: a name-only arg removes every installed
- * version of a tool, and without it mise 2026.x resolves each name to all its
- * installed versions and bails with "multiple tools specified, use --all to
- * uninstall all versions" the moment any tool has more than one version
- * installed. Surfaces the captured subprocess result like runMiseUpgrade does.
+ * Uninstall the given tools from the mise store. Each tool name is passed
+ * version-less (no `@version`) together with `--all`, removing every installed
+ * version of that tool. `--all` is required: without it, mise 2026.x bails with
+ * "multiple tools specified, use --all to uninstall all versions" as soon as a
+ * named tool has more than one version installed. Surfaces the captured
+ * subprocess result like runMiseUpgrade does.
  */
 export function runMiseUninstall(
   tools: string[],
