@@ -26,6 +26,7 @@ program
   .name('agentenv')
   .description('Configure a consistent, capable shell environment for AI coding agents')
   .version(version)
+  .showSuggestionAfterError()
   .option('--no-color', 'disable colored output (also honors the NO_COLOR env var)')
   .option('-q, --quiet', 'suppress banner/footer chrome (data lines are kept)');
 
