@@ -366,7 +366,10 @@ describe('tool catalog: invariant coverage', () => {
     }
   });
 
-  it('TOOL_CATEGORIES has no stray keys (every category key is a real tool)', () => {
+  it('TOOL_CATEGORIES covers every tool key and has no stray keys', () => {
+    for (const key of TOOL_KEYS) {
+      assert.ok(TOOL_CATEGORIES[key], `missing TOOL_CATEGORIES entry: ${key}`);
+    }
     for (const key of Object.keys(TOOL_CATEGORIES)) {
       assert.ok(
         (TOOL_KEYS as readonly string[]).includes(key),

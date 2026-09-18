@@ -16,6 +16,8 @@ export const TOOL_CATEGORIES: Record<string, string> = {
   jq: 'Search & Text Processing',
   yq: 'Search & Text Processing',
   ast_grep: 'Search & Text Processing',
+  ripgrep_all: 'Search & Text Processing',
+  sd: 'Search & Text Processing',
 
   // Code Navigation
   git_delta: 'Code Navigation',
@@ -32,9 +34,27 @@ export const TOOL_CATEGORIES: Record<string, string> = {
   just: 'Utilities',
   watchexec: 'Utilities',
   direnv: 'Utilities',
+  zoxide: 'Utilities',
+  uv: 'Utilities',
+  xh: 'Utilities',
+  gum: 'Utilities',
+  glow: 'Utilities',
 
   // Token Optimization
   rtk: 'Token Optimization',
+
+  // Linting & Security
+  shellcheck: 'Linting & Security',
+  actionlint: 'Linting & Security',
+  gitleaks: 'Linting & Security',
+
+  // Data & Analysis
+  duckdb: 'Data & Analysis',
+  qsv: 'Data & Analysis',
+
+  // Docs & Reading
+  jless: 'Docs & Reading',
+  tealdeer: 'Docs & Reading',
 };
 
 export interface GeneratedFile {
