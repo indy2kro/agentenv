@@ -191,6 +191,13 @@ export async function runConfigWizard(): Promise<void> {
 
   let integrations: AgentenvConfig['integrations'] = existing.integrations;
   if (wantsSuperpowers) {
+    console.log('\n  Superpowers — enabling this installs a third-party Claude Code plugin:');
+    console.log(
+      `    - source: github:obra/superpowers, default ref ${DEFAULT_CONFIG.integrations?.superpowers?.ref ?? 'latest'}`,
+    );
+    console.log('    - it can register a SessionStart hook in the Claude Code setup');
+    console.log('    - the optional visual companion can make external requests');
+    console.log('  The next prompts pin the ref and the two permissions below.\n');
     const ref = await input({
       message: 'Superpowers ref to pin (tag/branch/commit):',
       default:
