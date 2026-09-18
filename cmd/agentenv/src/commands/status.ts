@@ -19,6 +19,7 @@ import type { ShellInfo } from '../shell/detector.js';
 import { SuperpowersAdapter, ghAuthLine } from '../integrations/index.js';
 import type { IntegrationResult, IntegrationState } from '../integrations/base.js';
 import { resolveGhAuthProbe } from '../toolchain/gh.js';
+import { getMiseVersion } from '../toolchain/mise.js';
 import { colorizeLine, theme } from '../ui/theme.js';
 import { banner, setQuietEnabled } from '../ui/output.js';
 
@@ -106,6 +107,8 @@ export interface StatusReport extends StatusJson {
   rtkEnabled: boolean;
   tier0: Tier0Report | null;
   ghAuth: string | null;
+  /** Resolved `mise --version` (or 'unknown') for human/bug-report context. */
+  miseVersion: string;
   /**
    * Per-integration lines the human renderer prints but `StatusJson` does not
    * carry (the spec-pinned status JSON has no hooks/external/warning fields).
@@ -147,6 +150,7 @@ export interface StatusDeps {
   loadConfig?: typeof loadConfig;
   resolveScopeDir?: typeof resolveScopeDir;
   validateConfig?: typeof validateConfig;
+  getMiseVersion?: typeof getMiseVersion;
   getEnabledAgents?: typeof getEnabledAgents;
   isAgentInstalled?: typeof isAgentInstalled;
   resolveBinary?: typeof resolveBinary;
@@ -244,6 +248,7 @@ function tier0Report(shell: ShellInfo, enabledAgents: AgentKey[], deps: StatusDe
 
 /** Gather the full status report (structured, no printing). */
 export async function gatherStatus(deps: StatusDeps = {}): Promise<StatusReport> {
+  const getMiseVersionFn = deps.getMiseVersion ?? getMiseVersion;
   const configPath = (deps.findConfigPath ?? findConfigPath)();
   if (!configPath) {
     const report: StatusReport = {
@@ -261,6 +266,7 @@ export async function gatherStatus(deps: StatusDeps = {}): Promise<StatusReport>
       rtkEnabled: false,
       tier0: null,
       ghAuth: null,
+      miseVersion: getMiseVersionFn(),
       integrationDetails: [],
     };
     return { ...report, exitCode: computeStatusExitCode(report) };
@@ -289,6 +295,7 @@ export async function gatherStatus(deps: StatusDeps = {}): Promise<StatusReport>
       rtkEnabled: false,
       tier0: null,
       ghAuth: null,
+      miseVersion: getMiseVersionFn(),
       integrationDetails: [],
     };
     return { ...report, exitCode: computeStatusExitCode(report) };
@@ -412,6 +419,7 @@ export async function gatherStatus(deps: StatusDeps = {}): Promise<StatusReport>
     rtkEnabled,
     tier0: tier0Report(shell, enabledAgents, deps),
     ghAuth,
+    miseVersion: getMiseVersionFn(),
     integrationDetails,
   };
 
@@ -453,6 +461,7 @@ export function renderStatus(report: StatusReport): string {
   chunks.push(`Config: ${report.config}`);
   chunks.push(`Scope: ${report.scope ?? 'project'}`);
   chunks.push(`Base directory: ${report.baseDir}`);
+  chunks.push(`Mise: ${report.miseVersion}`);
 
   const validationSummary = `Validation: ${
     report.validation.errors.length === 0 ? 'valid' : `${report.validation.errors.length} error(s)`
