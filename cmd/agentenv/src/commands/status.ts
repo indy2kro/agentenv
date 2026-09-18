@@ -505,6 +505,52 @@ function displayName(key: string): string {
   return key.charAt(0).toUpperCase() + key.slice(1);
 }
 
+/** Collapsed one-line-per-area view for `status --short`. */
+export function renderStatusShort(report: StatusReport): string {
+  const chunks: string[] = [];
+  chunks.push(`Config: ${report.config ?? '(none)'}`);
+  if (report.config !== null) {
+    chunks.push(`Scope: ${report.scope ?? 'project'}`);
+    chunks.push(`Base directory: ${report.baseDir}`);
+  }
+
+  const toolDrift = report.tools.filter((tool) => tool.drift).length;
+  chunks.push(
+    `Tools: ${report.tools.length} configured${toolDrift > 0 ? `, ${toolDrift} drifted` : ''}`,
+  );
+  const agentDrift = report.agents.filter((agent) => agent.drift).length;
+  chunks.push(
+    `Agents: ${report.agents.length} enabled${agentDrift > 0 ? `, ${agentDrift} drifted` : ''}`,
+  );
+  if (report.customTools.length > 0) {
+    const customDrift = report.customTools.filter((tool) => tool.drift).length;
+    chunks.push(
+      `Custom tools: ${report.customTools.length}${customDrift > 0 ? `, ${customDrift} drifted` : ''}`,
+    );
+  }
+  const generatedMissing = report.generated.filter(
+    (entry) => !entry.exists || !entry.managed,
+  ).length;
+  chunks.push(
+    `Generated files: ${report.generated.length}${generatedMissing > 0 ? `, ${generatedMissing} missing/unmanaged` : ''}`,
+  );
+  if (report.integrations.length > 0) {
+    const integrationDrift = report.integrations.filter((integration) => integration.drift).length;
+    chunks.push(
+      `Integrations: ${report.integrations.length}${integrationDrift > 0 ? `, ${integrationDrift} drifted` : ''}`,
+    );
+  }
+  if (report.validation.errors.length > 0) {
+    chunks.push(`Config errors: ${report.validation.errors.length}`);
+  }
+  if (report.validation.warnings.length > 0) {
+    chunks.push(`Warnings: ${report.validation.warnings.length}`);
+  }
+  for (const warning of report.validation.warnings)
+    chunks.push(theme.warn(`  warning: ${warning}`));
+  return `${chunks.join('\n')}\n`;
+}
+
 /** Render the human report body (banners are emitted by the command). */
 export function renderStatus(report: StatusReport): string {
   if (report.config === null) {
@@ -654,8 +700,10 @@ export const statusCommand = new Command()
   .name('status')
   .description('Show current configuration and environment status')
   .option('--json', 'emit a machine-readable JSON document on stdout')
-  .action(async (options: { json?: boolean }) => {
+  .option('--short', 'collapsed one-line-per-area report (no per-item detail)')
+  .action(async (options: { json?: boolean; short?: boolean }) => {
     const json = options.json === true;
+    const short = options.short === true;
     if (json) setQuietEnabled(true);
 
     renderLogo();
@@ -664,7 +712,7 @@ export const statusCommand = new Command()
     if (json) {
       console.log(JSON.stringify(statusToJson(report), null, 2));
     } else {
-      process.stdout.write(renderStatus(report));
+      process.stdout.write(short ? renderStatusShort(report) : renderStatus(report));
       const summary = statusSummary(report);
       console.log(resolveResultLine(summary));
     }

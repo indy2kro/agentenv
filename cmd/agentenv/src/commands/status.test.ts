@@ -1,7 +1,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { AGENT_CONFIG_FILES, computeStatusExitCode, gatherStatus, statusToJson } from './status.js';
-import type { StatusJson } from './status.js';
+import {
+  AGENT_CONFIG_FILES,
+  computeStatusExitCode,
+  gatherStatus,
+  renderStatusShort,
+  statusToJson,
+} from './status.js';
+import type { StatusJson, StatusReport } from './status.js';
 import { AGENT_KEYS } from '../config/schema.js';
 
 describe('status agent descriptors', () => {
@@ -264,5 +270,45 @@ describe('gatherStatus', () => {
     });
     assert.equal(report.integrations[0]?.drift, false);
     assert.equal(report.exitCode, 0);
+  });
+});
+
+describe('renderStatusShort', () => {
+  const clean = (): StatusReport => ({
+    ...base(),
+    rtkEnabled: true,
+    tier0: null,
+    ghAuth: null,
+    miseVersion: '2026.9.5',
+    integrationDetails: [],
+  });
+
+  it('collapses a clean report to one line per area', () => {
+    const out = renderStatusShort(clean());
+    assert.match(out, /Config: \/tmp\/agentenv\.toml/);
+    assert.match(out, /Tools: 0 configured/);
+    assert.match(out, /Agents: 0 enabled/);
+    assert.match(out, /Generated files: 0/);
+  });
+
+  it('counts drifted areas without per-item detail', () => {
+    const out = renderStatusShort({
+      ...clean(),
+      tools: [
+        {
+          key: 'gh',
+          binary: 'gh',
+          tier: 3,
+          found: false,
+          drift: true,
+          pinned: null,
+          installed: null,
+        },
+      ],
+      generated: [{ label: 'AGENTS.md', exists: false, managed: false }],
+    });
+    assert.match(out, /Tools: 1 configured, 1 drifted/);
+    assert.match(out, /Generated files: 1, 1 missing\/unmanaged/);
+    assert.doesNotMatch(out, /gh/);
   });
 });
