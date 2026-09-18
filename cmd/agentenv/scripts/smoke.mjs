@@ -26,26 +26,31 @@ const project = path.join(temp, 'project');
 fs.mkdirSync(home, { recursive: true });
 fs.mkdirSync(project, { recursive: true });
 
-// Tools actually installed and executed in --real mode. Each must support
-// `--version` non-interactively. Tier 3 / custom-fallback tools are out of
-// scope here (see docs/research/tier-tools-*.md for their own caveats).
-const REAL_TOOLS = [
-  ['rg', 'ripgrep'],
-  ['fd', 'fd'],
-  ['jq', 'jq'],
-  ['rtk', 'rtk'],
-  ['sg', 'ast_grep'],
-  ['delta', 'git_delta'],
-  ['gh', 'gh'],
-  ['difft', 'difftastic'],
-];
+// Full mise-installable catalog, derived from the compiled product constants
+// so a future catalog addition is covered automatically. tokei (fallback-only)
+// is excluded via requiresFallback; a tool that genuinely cannot run --version
+// or install on a given OS can be exempted via the override maps below.
+import { TOOL_KEYS, BINARY_MAP } from '../dist/config/schema.js';
+import { MISE_TOOL_NAMES, PINNED_TOOL_VERSIONS } from '../dist/toolchain/mise.js';
+import { requiresFallback } from '../dist/toolchain/fallbacks.js';
 
-const STUB_TIER3 =
-  'ripgrep_all = true\nzoxide = true\nshellcheck = true\nuv = true\nxh = true\nactionlint = true\ngitleaks = true\ngum = true\nglow = true\njless = true\nsd = true\ntealdeer = true\nduckdb = true\nqsv = true\n';
+const FULL_TOOLS = TOOL_KEYS.filter((key) => !requiresFallback(key)).map((key) => {
+  const miseName = MISE_TOOL_NAMES[key] ?? key;
+  return {
+    key,
+    miseName,
+    binary: BINARY_MAP[key],
+    version: PINNED_TOOL_VERSIONS[miseName] ?? 'latest',
+  };
+});
 
-const toolsBlock = REAL
-  ? REAL_TOOLS.map(([, key]) => `${key} = true`).join('\n')
-  : `ripgrep = true\nfd = true\njq = true\nrtk = true\n${STUB_TIER3}`;
+// Escape hatches for OS-specific tool quirks (each entry needs a comment
+// explaining its presence). Default empty: catalog *install* stays
+// unconditional and every tool's `--version` is verified.
+const INSTALL_EXCLUDED = {};
+const EXECUTE_EXCLUDED = {};
+
+const toolsBlock = FULL_TOOLS.map((tool) => `${tool.key} = true`).join('\n');
 
 const agentsBlock = REAL
   ? `claude_code = true
@@ -87,6 +92,17 @@ const env = { ...process.env, HOME: home, USERPROFILE: home };
 const applyArgs = ['apply', '--skip-mise-install'];
 if (!REAL) env.AGENTENV_RTK_BIN = stub;
 
+const scrub = path.join(temp, 'scrub');
+fs.mkdirSync(scrub, { recursive: true });
+const noMiseEnv = {
+  ...env,
+  PATH: scrub,
+  Path: scrub,
+  HOME: home,
+  USERPROFILE: home,
+  XDG_DATA_HOME: scrub,
+};
+
 // Real rtk must resolve on PATH for the delegated `rtk init`. Rather than
 // depend on `apply`'s internal mise gate (flaky right after a fresh install)
 // or on mise's version-dir layout, install the pinned rtk ourselves
@@ -113,10 +129,10 @@ if (REAL) {
   env.Path = joinedPath;
 }
 
-function run(args, cwd) {
+function run(args, cwd, runEnv = env) {
   return execFileSync(process.execPath, [cli, ...args], {
     cwd,
-    env,
+    env: runEnv,
     encoding: 'utf-8',
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -183,11 +199,11 @@ if (!REAL) {
   );
 }
 
-function runAllowingExit(args, cwd) {
+function runAllowingExit(args, cwd, runEnv) {
   try {
-    return { status: 0, stdout: run(args, cwd) };
+    return { status: 0, stdout: run(args, cwd, runEnv), stderr: '' };
   } catch (err) {
-    return { status: err.status ?? -1, stdout: err.stdout ?? '' };
+    return { status: err.status ?? -1, stdout: err.stdout ?? '', stderr: err.stderr ?? '' };
   }
 }
 
@@ -308,27 +324,49 @@ if (REAL) {
 }
 
 if (!REAL) {
-  expect(/gemini_cli|Gemini CLI|--gemini/.test(applyOut), `stub apply should mention gemini, got:\n${applyOut}`);
-  for (const tool of [
-    'ripgrep_all',
-    'zoxide',
-    'shellcheck',
-    'uv',
-    'xh',
-    'actionlint',
-    'gitleaks',
-    'gum',
-    'glow',
-    'jless',
-    'sd',
-    'tealdeer',
-    'duckdb',
-    'qsv',
-  ]) {
-    expect(statusOut.includes(tool), `status should mention ${tool}, got:\n${statusOut}`);
+  expect(
+    /gemini_cli|Gemini CLI|--gemini/.test(applyOut),
+    `stub apply should mention gemini, got:\n${applyOut}`,
+  );
+  for (const { key } of FULL_TOOLS) {
+    expect(statusOut.includes(key), `status should mention ${key}, got:\n${statusOut}`);
   }
+
+  // Deterministic mise-less uninstall coverage (PATH/XDG scrubbed so no host
+  // mise can leak in; node+CLI+rtk-stub are all reached by absolute path).
+  const dry = runAllowingExit(['uninstall', '--dry-run'], project, noMiseEnv);
+  expect(dry.status === 0, `uninstall --dry-run should exit 0, got ${dry.status}:\n${dry.stdout}`);
+  expect(
+    /state unknown \(mise not installed\)/.test(dry.stdout),
+    `dry-run should note missing mise, got:\n${dry.stdout}`,
+  );
+
+  const guarded = runAllowingExit(['uninstall', '--yes'], project, noMiseEnv);
+  expect(
+    guarded.status === 1,
+    `uninstall --yes should hit the mise gate (exit 1), got ${guarded.status}`,
+  );
+  expect(
+    /mise was not found/.test(guarded.stderr),
+    `gate should mention mise missing, got:\n${guarded.stderr}`,
+  );
+
+  const noop = path.join(temp, 'noop-project');
+  fs.mkdirSync(noop, { recursive: true });
+  fs.writeFileSync(
+    path.join(noop, 'agentenv.toml'),
+    'scope = "project"\n[agents]\nclaude_code = true\ncodex_cli = true\ncopilot = true\nopencode = true\n' +
+      '[tools]\n' +
+      'ripgrep = false\nfd = false\njq = false\nrtk = false\nast_grep = false\n' +
+      'git_delta = false\ngh = false\ndifftastic = false\nyq = false\nbat = false\n' +
+      'eza = false\nmiller = false\ntokei = false\nhyperfine = false\nfzf = false\n' +
+      'just = false\nwatchexec = false\ndirenv = false\n',
+  );
+  const none = runAllowingExit(['uninstall', '--yes'], noop, noMiseEnv);
+  expect(none.status === 0, `no-op uninstall should exit 0, got ${none.status}:\n${none.stdout}`);
+  expect(/Nothing to uninstall\./.test(none.stdout), `no-op output missing, got:\n${none.stdout}`);
 }
 
 console.log(
-  `smoke OK (${REAL ? 'real rtk + full Tier 1+2 install + setup --yes' : 'rtk stub + skip mise'}): apply + status full pipeline verified for all configured agents`,
+  `smoke OK (${REAL ? 'real rtk + full-catalog install + uninstall roundtrip + setup --yes' : 'rtk stub + skip mise + mise-less uninstall paths'}): apply + status + uninstall verified for all configured agents`,
 );
