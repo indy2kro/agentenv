@@ -151,7 +151,7 @@ export async function doUninstall(options: UninstallCommandOptions): Promise<voi
   }
   console.log(`Config: ${configPath}`);
 
-  let config;
+  let config: AgentenvConfig;
   try {
     config = loadConfig(configPath);
   } catch (error) {
@@ -185,7 +185,8 @@ export async function doUninstall(options: UninstallCommandOptions): Promise<voi
   }
 
   const scopeDir = resolveScopeDir(config.scope ?? 'project');
-  const miseTomlPath = path.join(scopeDir, 'mise.toml');
+  const miseToml = path.join(scopeDir, 'mise.toml');
+  const miseTomlPath = fs.existsSync(miseToml) ? miseToml : undefined;
 
   // 4. Dry run never mutates; single allowlisted probe when mise is present.
   if (options.dryRun) {
