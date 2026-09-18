@@ -16,9 +16,11 @@ export function exitCodeForCommanderError(error: CommanderError): 0 | 2 {
 }
 
 /**
- * Install the usage-error exit-code contract on a program and every already
- * registered subcommand. MUST be called *after* `addCommand` (commander does
- * not propagate an exit callback to `addCommand`-registered children), and the
+ * Install the usage-error exit-code contract on a program and every registered
+ * or future subcommand. MUST be called *after* `addCommand` for the program's
+ * own override, and it subscribes to commander's `command:add` so any command
+ * registered later (e.g. by an extension or a future release) inherits the
+ * same contract instead of silently falling back to `process.exit(1)`. The
  * callback MUST rethrow: commander's `error()` calls `process.exit(1)`
  * immediately after the override returns normally, which would clobber the
  * mapped code. Rethrowing lets `parseAsync()`'s rejection carry the error out
@@ -30,5 +32,6 @@ export function installExitOverride(program: Command): void {
     throw error;
   };
   program.exitOverride(override);
+  program.on('command:add', (command: Command) => command.exitOverride(override));
   for (const command of program.commands) command.exitOverride(override);
 }
