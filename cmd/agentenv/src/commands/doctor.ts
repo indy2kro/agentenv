@@ -67,6 +67,24 @@ export function doctorToJson(sections: DoctorSection[]): DoctorJson {
   };
 }
 
+/**
+ * Narrow the report to one section by 1-based index or title prefix.
+ * Returns undefined when nothing matches (the caller reports the error).
+ */
+export function filterDoctorSections(
+  sections: DoctorSection[],
+  ref: string,
+): DoctorSection[] | undefined {
+  const index = Number(ref);
+  if (Number.isInteger(index) && index >= 1 && index <= sections.length) {
+    return [sections[index - 1]];
+  }
+  const matched = sections.filter((section) =>
+    section.title.toLowerCase().startsWith(ref.toLowerCase()),
+  );
+  return matched.length > 0 ? matched : undefined;
+}
+
 export function renderDoctor(
   sections: DoctorSection[],
   options: { includeHeading?: boolean } = {},
@@ -278,11 +296,26 @@ export const doctorCommand = new Command()
   .name('doctor')
   .description('Diagnose the machine: mise, shims, config, tools and agents (read-only)')
   .option('--json', 'emit a machine-readable JSON document on stdout')
-  .action((options: { json?: boolean }) => {
+  .option(
+    '--section <index|name>',
+    'only run one report section (1-based section index or title prefix)',
+  )
+  .action((options: { json?: boolean; section?: string }) => {
     const json = options.json === true;
     if (json) setQuietEnabled(true);
 
-    const sections = gatherDoctor();
+    const gathered = gatherDoctor();
+    const sections =
+      options.section === undefined ? gathered : filterDoctorSections(gathered, options.section);
+    if (sections === undefined) {
+      console.error(
+        theme.fail(
+          `No doctor section matched "${options.section}". Sections: ${gathered.map((section, index) => `${index + 1}: ${section.title}`).join(', ')}`,
+        ),
+      );
+      process.exitCode = 1;
+      return;
+    }
     const payload = doctorToJson(sections);
 
     if (json) {

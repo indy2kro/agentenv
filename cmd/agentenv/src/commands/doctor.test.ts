@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { renderDoctor } from './doctor.js';
+import { renderDoctor, filterDoctorSections } from './doctor.js';
 import type { DoctorSection } from './doctor.js';
 import { LOGO } from '../ui/output.js';
 
@@ -68,5 +68,30 @@ describe('doctorToJson', () => {
   it('omits the heading when includeHeading is false', () => {
     assert.ok(!renderDoctor(sections, { includeHeading: false }).includes(LOGO));
     assert.ok(renderDoctor(sections).includes(LOGO));
+  });
+});
+
+describe('filterDoctorSections', () => {
+  const sections: DoctorSection[] = [
+    { title: 'System', items: [{ status: 'ok', label: 'OS', detail: 'win32' }] },
+    { title: 'Mise', items: [{ status: 'ok', label: 'mise', detail: 'x' }] },
+    { title: 'Tools', items: [{ status: 'fail', label: 'rg', detail: 'missing' }] },
+  ];
+
+  it('selects by 1-based index', () => {
+    const one = filterDoctorSections(sections, '1');
+    assert.equal(one?.length, 1);
+    assert.equal(one?.[0].title, 'System');
+    assert.equal(filterDoctorSections(sections, '3')?.[0].title, 'Tools');
+  });
+
+  it('selects by case-insensitive title prefix', () => {
+    assert.equal(filterDoctorSections(sections, 'tool')?.[0].title, 'Tools');
+    assert.equal(filterDoctorSections(sections, 'TOOLS')?.[0].title, 'Tools');
+  });
+
+  it('returns undefined for an out-of-range index or unmatched prefix', () => {
+    assert.equal(filterDoctorSections(sections, '9'), undefined);
+    assert.equal(filterDoctorSections(sections, 'agents'), undefined);
   });
 });
