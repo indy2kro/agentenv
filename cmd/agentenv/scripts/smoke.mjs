@@ -50,7 +50,25 @@ const FULL_TOOLS = TOOL_KEYS.filter((key) => !requiresFallback(key)).map((key) =
 const INSTALL_EXCLUDED = {};
 const EXECUTE_EXCLUDED = {};
 
-const toolsBlock = FULL_TOOLS.map((tool) => `${tool.key} = true`).join('\n');
+// Windows: jless and ripgrep-all publish NO Windows release assets, so mise's
+// aqua backend rejects them outright ("unsupported env: windows/amd64" —
+// both only ship linux/darwin builds, see docs/research/new-tools-windows.md
+// and tier-tools-windows.md). direnv IS available for Windows via aqua, but
+// mise 2026.9.9's aqua backend extracts the PE binary without a .exe
+// extension, so `mise which direnv` and any direct exec both fail on Windows
+// (a regression from 2026.9.5, which passed — see tier-tools-windows.md).
+// All three are genuinely unrunnable here and must be dropped from the
+// generated [tools] block, or the acceptance `mise install` / `mise which`
+// gate keeps failing on them.
+if (process.platform === 'win32') {
+  INSTALL_EXCLUDED.jless = 'Windows: no Windows release assets';
+  INSTALL_EXCLUDED['ripgrep-all'] = 'Windows: no Windows release assets';
+  INSTALL_EXCLUDED.direnv = 'Windows: mise 2026.9.9 aqua extracts without .exe extension';
+}
+
+const toolsBlock = FULL_TOOLS.filter((tool) => !INSTALL_EXCLUDED[tool.miseName])
+  .map((tool) => `${tool.key} = true`)
+  .join('\n');
 
 const agentsBlock = REAL
   ? `claude_code = true
@@ -237,16 +255,22 @@ if (REAL) {
   // HOME/USERPROFILE that isn't a real user profile, and none of this needs
   // that isolation anyway — it never touches per-user config files.
   try {
-    execFileSync('mise', ['install'], { cwd: project, env: process.env, stdio: 'inherit' });
+    execFileSync('mise', ['install'], {
+      cwd: project,
+      env: { ...process.env, MISE_YES: '1' },
+      stdio: 'inherit',
+    });
   } catch (err) {
-    console.error('smoke FAIL: mise install (full Tier 1+2 catalog) exited non-zero');
+    console.error('smoke FAIL: mise install (full catalog) exited non-zero');
     console.error(err.message);
     process.exit(1);
   }
-  for (const [binary] of REAL_TOOLS) {
+  const installedTools = FULL_TOOLS.filter((tool) => !INSTALL_EXCLUDED[tool.miseName]);
+  for (const tool of installedTools) {
+    if (EXECUTE_EXCLUDED[tool.miseName]) continue;
     let resolved;
     try {
-      resolved = execFileSync('mise', ['which', binary], {
+      resolved = execFileSync('mise', ['which', tool.binary], {
         cwd: project,
         env: process.env,
         encoding: 'utf-8',
@@ -254,7 +278,7 @@ if (REAL) {
         .trim()
         .split(/\r?\n/)[0];
     } catch (err) {
-      console.error(`smoke FAIL: mise could not resolve installed tool "${binary}"`);
+      console.error(`smoke FAIL: mise could not resolve installed tool "${tool.binary}"`);
       console.error(err.message);
       process.exit(1);
     }
@@ -278,7 +302,9 @@ if (REAL) {
       // which concrete version to run, not a fully static binary.
       execFileSync(resolved, ['--version'], { cwd: project, env: process.env, encoding: 'utf-8' });
     } catch (err) {
-      console.error(`smoke FAIL: "${binary}" (${resolved}) did not run --version successfully`);
+      console.error(
+        `smoke FAIL: "${tool.binary}" (${resolved}) did not run --version successfully`,
+      );
       console.error(`  status: ${err.status}, signal: ${err.signal}`);
       console.error(`  stdout: ${err.stdout ?? ''}`);
       console.error(`  stderr: ${err.stderr ?? ''}`);
@@ -321,6 +347,55 @@ if (REAL) {
   } catch (err) {
     console.log(err.stdout ?? '');
   }
+
+  // Roundtrip: what the catalog install just put in the store must come back
+  // out via `agentenv uninstall`. Runs under real process.env via execFileSync
+  // (NOT the fake-HOME run helper) because on macOS/Ubuntu mise's data dir
+  // derives from $HOME/XDG_DATA_HOME — the fake-HOME helper would probe an
+  // empty store and both steps would pass vacuously. The config lives in the
+  // project dir, so which agentenv.toml it uses is unaffected.
+  try {
+    execFileSync(process.execPath, [cli, 'uninstall', '--yes'], {
+      cwd: project,
+      env: process.env,
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (err) {
+    console.error('smoke FAIL: agentenv uninstall --yes exited non-zero');
+    console.error(err.stdout ?? '');
+    console.error(err.stderr ?? '');
+    process.exit(1);
+  }
+
+  // Verify genuine removal via `mise ls --json` (object keyed by tool name →
+  // [{version, installed, ...}]): no catalog tool may have any entry with
+  // installed === true. Not `mise which` (auto-reinstall under mise's
+  // auto_install default) and not entry-absence (declared tools still appear).
+  let lsAfter;
+  try {
+    lsAfter = execFileSync('mise', ['ls', '--json'], {
+      cwd: project,
+      env: process.env,
+      encoding: 'utf-8',
+    });
+  } catch (err) {
+    console.error('smoke FAIL: mise ls --json after uninstall failed');
+    console.error(err.message);
+    process.exit(1);
+  }
+  const installedAfter = new Set();
+  for (const [name, entries] of Object.entries(JSON.parse(lsAfter))) {
+    for (const entry of Array.isArray(entries) ? entries : []) {
+      if (entry.installed === true) installedAfter.add(name);
+    }
+  }
+  for (const tool of installedTools) {
+    expect(
+      !installedAfter.has(tool.miseName),
+      `tool "${tool.miseName}" is still installed after agentenv uninstall`,
+    );
+  }
 }
 
 if (!REAL) {
@@ -328,7 +403,7 @@ if (!REAL) {
     /gemini_cli|Gemini CLI|--gemini/.test(applyOut),
     `stub apply should mention gemini, got:\n${applyOut}`,
   );
-  for (const { key } of FULL_TOOLS) {
+  for (const { key } of FULL_TOOLS.filter((tool) => !INSTALL_EXCLUDED[tool.miseName])) {
     expect(statusOut.includes(key), `status should mention ${key}, got:\n${statusOut}`);
   }
 

@@ -393,9 +393,12 @@ export async function runMiseUpgrade(
 }
 
 /**
- * Uninstall the given tools from the mise store (`mise uninstall <name>...`,
- * name-only so every installed version of a tool is removed). Surfaces the
- * captured subprocess result like runMiseUpgrade does.
+ * Uninstall the given tools from the mise store (`mise uninstall --all
+ * <name>...`). `--all` is required: a name-only arg removes every installed
+ * version of a tool, and without it mise 2026.x resolves each name to all its
+ * installed versions and bails with "multiple tools specified, use --all to
+ * uninstall all versions" the moment any tool has more than one version
+ * installed. Surfaces the captured subprocess result like runMiseUpgrade does.
  */
 export function runMiseUninstall(
   tools: string[],
@@ -407,7 +410,7 @@ export function runMiseUninstall(
   stderr: string;
   exitCode: number | null;
 } {
-  const result = runMiseCaptured(['uninstall', ...tools], { cwd, miseTomlPath });
+  const result = runMiseCaptured(['uninstall', '--all', ...tools], { cwd, miseTomlPath });
   return {
     success: result.status === 0,
     stdout: result.stdout || '',
