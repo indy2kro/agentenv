@@ -89,6 +89,19 @@ export function resolveRtkInit(rtkInit?: RtkInitFn): RtkInitFn {
 }
 
 /**
+ * True when an `rtk init` failure is rtk's own `--agent` enum rejecting a
+ * value agentenv passes it (e.g. the pinned rtk build not yet knowing
+ * "vibe"), rather than an environment problem (missing binary, permissions,
+ * ...). Detected from rtk's clap-style usage error text so this keeps
+ * working as rtk's supported agent list changes upstream, without agentenv
+ * having to hardcode rtk's enum.
+ */
+export function isUnsupportedRtkAgentError(errors: string[], agentValue: string): boolean {
+  const pattern = new RegExp(`invalid value ['"]?${agentValue}['"]?`, 'i');
+  return errors.some((error) => pattern.test(error));
+}
+
+/**
  * Surfaces what rtk actually rewrote as part of the per-agent message, so its
  * work isn't silently invisible (Phase 4 transparency log).
  * Also notes the side effect of creating ~/.local/share/rtk/history.db

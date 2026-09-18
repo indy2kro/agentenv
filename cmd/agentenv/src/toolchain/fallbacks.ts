@@ -71,6 +71,27 @@ export function requiresFallback(toolName: string): boolean {
 }
 
 /**
+ * Tools whose only mise backend flatly refuses to resolve on certain
+ * platforms (mise: "unsupported env: <os>/<arch>"), with no fallback install
+ * path at all — unlike tokei above, there is nothing to shell out to.
+ * Verified against mise 2026.9.11 on Windows: both ripgrep-all
+ * (aqua:phiresky/ripgrep-all) and jless (aqua:PaulJuliusMartinez/jless)
+ * declare only linux/darwin as supported envs.
+ */
+export const PLATFORM_UNSUPPORTED_TOOLS: Record<string, NodeJS.Platform[]> = {
+  ripgrep_all: ['win32'],
+  jless: ['win32'],
+};
+
+/** Whether mise cannot install this tool at all on the given platform. */
+export function isPlatformUnsupported(
+  toolName: string,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  return PLATFORM_UNSUPPORTED_TOOLS[toolName]?.includes(platform) ?? false;
+}
+
+/**
  * Get the platform-specific installation command for a fallback tool
  */
 export function getInstallCommand(toolName: string): string[] | undefined {

@@ -10,7 +10,7 @@ import * as child_process from 'child_process';
 import { AgentenvConfig, BINARY_MAP, TOOL_KEYS, TOOL_TIERS } from '../config/schema.js';
 import { resolveBinary } from '../adapters/detect.js';
 import { writeFileWithVerify } from '../utils/fs-retry.js';
-import { FALLBACK_REQUIRED_TOOLS, requiresFallback } from './fallbacks.js';
+import { FALLBACK_REQUIRED_TOOLS, isPlatformUnsupported, requiresFallback } from './fallbacks.js';
 
 // Tool to mise name mappings
 export const MISE_TOOL_NAMES: Record<string, string> = {
@@ -51,7 +51,7 @@ export const MISE_TOOL_NAMES: Record<string, string> = {
 
 // Tools that cannot be installed via mise and require fallback
 // Based on Phase 0 findings: tokei is not in the mise registry (needs cargo backend)
-export { FALLBACK_REQUIRED_TOOLS, requiresFallback };
+export { FALLBACK_REQUIRED_TOOLS, isPlatformUnsupported, requiresFallback };
 
 export interface MiseTool {
   name: string;
@@ -110,7 +110,7 @@ export function generateMiseToml(
 
   for (const toolKey of allEnabledTools) {
     // Skip tools that require fallback installation (not in mise registry)
-    if (requiresFallback(toolKey)) {
+    if (requiresFallback(toolKey) || isPlatformUnsupported(toolKey)) {
       continue;
     }
     const miseName = MISE_TOOL_NAMES[toolKey] || toolKey;
@@ -304,7 +304,7 @@ export function getToolsToInstall(config: AgentenvConfig): Array<{
   for (const key of toolKeys) {
     if (tools[key]) {
       // Skip tools that require fallback installation (not in mise registry)
-      if (requiresFallback(key)) {
+      if (requiresFallback(key) || isPlatformUnsupported(key)) {
         continue;
       }
       const miseName = MISE_TOOL_NAMES[key] || key;
@@ -776,6 +776,19 @@ export function eulaPreflightHint(config: AgentenvConfig): string {
   return `${tool} requires accepting a EULA on first install — run \`mise install ${tool}\` in an interactive terminal and accept it, then re-run \`agentenv apply\`.`;
 }
 
+/**
+ * Printed instead of silently dropping enabled tools that mise cannot
+ * install at all on this platform (see PLATFORM_UNSUPPORTED_TOOLS) — without
+ * this, `generateMiseToml`/`getToolsToInstall` quietly excluding them would
+ * leave the user thinking those tools installed when they never even ran.
+ */
+export function platformUnsupportedHint(config: AgentenvConfig): string {
+  const tools = config.tools || {};
+  const skipped = TOOL_KEYS.filter((key) => tools[key] === true && isPlatformUnsupported(key));
+  if (skipped.length === 0) return '';
+  return `Skipped on ${process.platform} (no mise backend supports it here): ${skipped.join(', ')}`;
+}
+
 export interface EulaDetection {
   eulaTools: string[];
   eulaHint: string;
@@ -814,21 +827,73 @@ export interface MiseInstallResult {
 /**
  * Run mise install
  * Installs all tools listed in mise.toml
+ *
+ * Runs via async `spawn` (not `spawnSync`): `mise install` can take tens of
+ * seconds (downloading/extracting many tools), and a sync call would block
+ * the whole Node event loop for that entire duration — freezing any ora
+ * spinner (which redraws via a timer) and delaying every captured line of
+ * output until the process exits. `onOutput`, when given, is called with
+ * each chunk as it arrives so a caller can stream mise's own progress output
+ * live instead of only seeing it after install finishes.
  */
 export async function runMiseInstall(
   miseTomlPath: string,
   cwd: string = '.',
+  onOutput?: (chunk: string, stream: 'stdout' | 'stderr') => void,
 ): Promise<MiseInstallResult> {
-  const result = runMiseCaptured(['install'], { cwd, miseTomlPath });
-  const eula = detectEulaPrompt(result.stdout, result.stderr);
-  return {
-    success: result.status === 0,
-    stdout: result.stdout,
-    stderr: result.stderr,
-    exitCode: result.status ?? null,
-    eulaTools: eula.eulaTools,
-    eulaHint: eula.eulaHint,
-  };
+  const env = { ...process.env, MISE_CONFIG_FILE: miseTomlPath };
+  return new Promise<MiseInstallResult>((resolve) => {
+    let child: child_process.ChildProcess;
+    try {
+      child = child_process.spawn('mise', ['install'], {
+        cwd,
+        env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+    } catch (err) {
+      resolve({
+        success: false,
+        stdout: '',
+        stderr: err instanceof Error ? err.message : String(err),
+        exitCode: null,
+        eulaTools: [],
+        eulaHint: '',
+      });
+      return;
+    }
+
+    let stdout = '';
+    let stderr = '';
+    child.stdout?.setEncoding('utf-8').on('data', (chunk: string) => {
+      stdout += chunk;
+      onOutput?.(chunk, 'stdout');
+    });
+    child.stderr?.setEncoding('utf-8').on('data', (chunk: string) => {
+      stderr += chunk;
+      onOutput?.(chunk, 'stderr');
+    });
+    child.on('error', (err) => {
+      resolve({
+        success: false,
+        stdout,
+        stderr: stderr || err.message,
+        exitCode: null,
+        eulaTools: [],
+        eulaHint: '',
+      });
+    });
+    child.on('close', (code) => {
+      const eula = detectEulaPrompt(stdout, stderr);
+      resolve({
+        success: code === 0,
+        stdout,
+        stderr,
+        exitCode: code,
+        eulaTools: eula.eulaTools,
+        eulaHint: eula.eulaHint,
+      });
+    });
+  });
 }
 
 export interface InstalledToolState {

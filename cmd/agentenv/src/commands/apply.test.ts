@@ -285,6 +285,43 @@ describe('apply pipeline', () => {
     assert.equal(fs.existsSync(path.join(base, 'RTK.md')), false);
   });
 
+  it("warns (does not fail) when rtk's own --agent enum rejects a value, e.g. Vibe on rtk 0.49.0", async () => {
+    const home = tempDir('agentenv-home-');
+    const base = tempDir('agentenv-base-');
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+
+    // Mirrors the real rtk 0.49.0 clap error: --agent has no "vibe" value.
+    const rtkInit: RtkInitFn = (args) => {
+      const joined = args.join(' ');
+      return {
+        success: false,
+        message: `rtk init ${joined} failed (exit 2)`,
+        stdout: '',
+        stderr:
+          "error: invalid value 'vibe' for '--agent <AGENT>'\n\n  [possible values: claude, cursor, windsurf, cline, kilocode, antigravity, pi, hermes]",
+      };
+    };
+
+    const config: AgentenvConfig = {
+      ...CONFIG,
+      agents: { vibe: true },
+      rtk: { enabled: true, init: {} },
+    };
+
+    const result = await applyConfiguration(config, base, { skipMiseInstall: true, rtkInit });
+
+    assert.equal(result.success, true, result.errors.join('; '));
+    assert.ok(
+      result.messages.some((m) => m.includes('Mistral Vibe') && m.includes('skipped')),
+      `expected a skip message, got: ${result.messages.join('; ')}`,
+    );
+    assert.equal(
+      result.errors.some((e) => e.includes('Mistral Vibe')),
+      false,
+    );
+  });
+
   it('installs the Superpowers integration for Claude Code when enabled and allow_hooks', async () => {
     const home = tempDir('agentenv-home-');
     const base = tempDir('agentenv-base-');

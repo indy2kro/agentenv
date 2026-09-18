@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { RTK_INIT_FLAGS } from './rtk.js';
+import { RTK_INIT_FLAGS, isUnsupportedRtkAgentError } from './rtk.js';
 import { AGENT_KEYS } from '../config/schema.js';
 
 describe('RTK_INIT_FLAGS', () => {
@@ -22,5 +22,22 @@ describe('RTK_INIT_FLAGS', () => {
     assert.deepEqual(RTK_INIT_FLAGS.windsurf, ['-g', '--agent', 'windsurf']);
     assert.deepEqual(RTK_INIT_FLAGS.cline, ['--agent', 'cline']);
     assert.deepEqual(RTK_INIT_FLAGS.vibe, ['-g', '--agent', 'vibe']);
+  });
+});
+
+describe('isUnsupportedRtkAgentError', () => {
+  it('recognizes rtk clap-style "invalid value" rejection for the given agent', () => {
+    const errors = [
+      "rtk init -g --agent vibe failed (exit 2): error: invalid value 'vibe' for '--agent <AGENT>'\n\n  [possible values: claude, cursor, windsurf, cline, kilocode, antigravity, pi, hermes]",
+    ];
+    assert.equal(isUnsupportedRtkAgentError(errors, 'vibe'), true);
+  });
+
+  it('does not misfire on unrelated rtk failures', () => {
+    assert.equal(isUnsupportedRtkAgentError(['rtk binary not found on PATH'], 'vibe'), false);
+    assert.equal(
+      isUnsupportedRtkAgentError(["invalid value 'cline' for '--agent <AGENT>'"], 'vibe'),
+      false,
+    );
   });
 });

@@ -16,6 +16,7 @@ import {
 import { colorizeLine, theme } from '../ui/theme.js';
 import { renderLogo, resolveResultLine } from '../ui/output.js';
 import { withSpinner } from '../ui/spinner.js';
+import type { Spinner } from '../ui/spinner.js';
 
 function agentLabel(agent: AgentKey): string {
   return AGENT_OPTIONS.find((option) => option.value === agent)?.label ?? agent;
@@ -66,9 +67,19 @@ export async function saveAndApply(
   console.log(`Saved configuration: ${file}\n`);
 
   const apply = deps.applyConfiguration ?? applyConfiguration;
-  const result = await withSpinner('Applying configuration...', () =>
+  const result = await withSpinner('Applying configuration...', (spinner: Spinner) =>
     // setup already printed the prereq line above, so tell apply not to repeat it.
-    apply(config, resolveScopeDir(config.scope ?? 'project'), { skipPrereqMessage: true }),
+    apply(config, resolveScopeDir(config.scope ?? 'project'), {
+      skipPrereqMessage: true,
+      onMiseInstall: {
+        onStart: () => {
+          spinner.stop();
+          console.log(colorizeLine('Installing tools via mise...'));
+        },
+        onOutput: (chunk) => process.stdout.write(chunk),
+        onEnd: () => spinner.start(),
+      },
+    }),
   );
   for (const message of result.messages) console.log(colorizeLine(message));
   for (const error of result.errors) console.error(theme.fail(error));

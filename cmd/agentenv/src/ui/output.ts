@@ -64,6 +64,41 @@ function severityColor(text: string, severity: ResultSeverity): string {
 }
 
 /**
+ * Code point ranges rendered 2 columns wide by virtually every terminal
+ * (CJK + emoji blocks). Deliberately excludes Box Drawing (U+2500-257F) —
+ * the ┌─│└┘ border characters below are narrow, single-column glyphs.
+ */
+const WIDE_RANGES: Array<[number, number]> = [
+  [0x1100, 0x115f],
+  [0x2600, 0x27bf], // Misc Symbols & Dingbats — covers ✅ ⚠ ❌
+  [0x2e80, 0xa4cf],
+  [0xac00, 0xd7a3],
+  [0xf900, 0xfaff],
+  [0xff00, 0xff60],
+  [0xffe0, 0xffe6],
+  [0x1f000, 0x1ffff],
+  [0x20000, 0x3fffd],
+];
+
+/**
+ * Approximate terminal column width of a string. Plain `.length` (UTF-16
+ * code units) undercounts the ✅/⚠️/❌ glyphs in RESULT_GLYPHS below: every
+ * terminal renders them as 2 columns wide, but ✅/❌ are a single code unit
+ * and ⚠️ is two (warning sign + the invisible U+FE0F variation selector).
+ * Without this, `formatResultBox` sizes the border from `.length` and the
+ * box ends up one column narrower than the glyph line actually renders.
+ */
+export function displayWidth(text: string): number {
+  let width = 0;
+  for (const ch of text) {
+    const code = ch.codePointAt(0) ?? 0;
+    if (code === 0xfe0f || code === 0x200d) continue; // variation selector-16 / ZWJ: zero-width
+    width += WIDE_RANGES.some(([start, end]) => code >= start && code <= end) ? 2 : 1;
+  }
+  return width;
+}
+
+/**
  * Draw the result box: a full-width-consistent frame around the glyph-prefixed
  * headline and (optional) summary line, whole box colored by outcome. Glyphs
  * and words survive `--no-color`, so the outcome is never color-only.
@@ -71,8 +106,9 @@ function severityColor(text: string, severity: ResultSeverity): string {
 export function formatResultBox(result: ResultBoxContent): string {
   const bodyLines = [`${RESULT_GLYPHS[result.severity]} ${result.headline}`];
   if (result.summary !== undefined) bodyLines.push(result.summary);
-  const contentWidth = Math.max(...bodyLines.map((line) => line.length));
-  const mid = bodyLines.map((line) => `│ ${line}${' '.repeat(contentWidth - line.length)} │`);
+  const widths = bodyLines.map(displayWidth);
+  const contentWidth = Math.max(...widths);
+  const mid = bodyLines.map((line, i) => `│ ${line}${' '.repeat(contentWidth - widths[i])} │`);
   const edge = `┌${'─'.repeat(contentWidth + 2)}┐`;
   const bottom = `└${'─'.repeat(contentWidth + 2)}┘`;
   const plain = [edge, ...mid, bottom].join('\n');

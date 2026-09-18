@@ -22,6 +22,7 @@ import type { SuperpowersAdapterDeps } from '../integrations/index.js';
 import { generateInstructionFiles, updateWithMarkers } from '../generate/agentsmd.js';
 import { fixShellConfiguration } from '../shell/detector.js';
 import type { RtkInitFn } from '../toolchain/rtk.js';
+import { isUnsupportedRtkAgentError } from '../toolchain/rtk.js';
 import {
   ensureGlobalShimsDir,
   eulaPreflightHint,
@@ -30,6 +31,7 @@ import {
   miseActivationHint,
   miseInstallInstructions,
   miseInstallOutcome,
+  platformUnsupportedHint,
   prereqMessage,
   runMiseInstall,
   saveMiseToml,
@@ -43,6 +45,7 @@ import { normalizeOutput } from '../utils/output.js';
 import { colorizeLine, theme } from '../ui/theme.js';
 import { renderLogo, resolveResultLine } from '../ui/output.js';
 import { withSpinner } from '../ui/spinner.js';
+import type { Spinner } from '../ui/spinner.js';
 
 export interface ApplyResult {
   success: boolean;
@@ -66,6 +69,17 @@ export interface ApplyOptions {
   rtkInit?: RtkInitFn;
   /** Injectable Superpowers adapter dependencies (tests pass a claude stub). */
   superpowersDeps?: SuperpowersAdapterDeps;
+  /**
+   * Optional hooks around the (slow, tens-of-seconds) mise install step, so
+   * the CLI layer can show mise's own progress live instead of only seeing
+   * it once applyConfiguration resolves. Left unset by every test, so
+   * applyConfiguration stays presentation-free by default.
+   */
+  onMiseInstall?: {
+    onStart?: () => void;
+    onOutput?: (chunk: string, stream: 'stdout' | 'stderr') => void;
+    onEnd?: () => void;
+  };
 }
 
 function adaptersFor(
@@ -143,6 +157,8 @@ export async function applyConfiguration(
   try {
     saveMiseToml(generateMiseToml(config, config.custom_tools ?? []), misePath);
     messages.push(`Tools: wrote ${misePath} (${enabledToolCount} enabled)`);
+    const platformSkip = platformUnsupportedHint(config);
+    if (platformSkip) messages.push(platformSkip);
   } catch (error) {
     errors.push(
       `Unable to write ${misePath}: ${error instanceof Error ? error.message : String(error)}`,
@@ -160,7 +176,9 @@ export async function applyConfiguration(
     const eulaAhead = eulaPreflightHint(config);
     if (eulaAhead) messages.push(eulaAhead);
 
-    const install = await runMiseInstall(misePath, baseDir);
+    options.onMiseInstall?.onStart?.();
+    const install = await runMiseInstall(misePath, baseDir, options.onMiseInstall?.onOutput);
+    options.onMiseInstall?.onEnd?.();
     if (install.success) {
       messages.push(miseInstallOutcome(install.stdout));
       if (install.eulaHint) messages.push(install.eulaHint);
@@ -196,8 +214,21 @@ export async function applyConfiguration(
   // Step 5 - per-agent wiring.
   for (const adapter of adaptersFor(config, baseDir, options)) {
     const result = await adapter.initialize();
-    if (result.success) messages.push(`${adapter.getName()}: ${result.message}`);
-    else errors.push(`${adapter.getName()}: ${result.errors.join('; ') || result.message}`);
+    if (result.success) {
+      messages.push(`${adapter.getName()}: ${result.message}`);
+    } else if (
+      adapter instanceof VibeAdapter &&
+      isUnsupportedRtkAgentError(result.errors, 'vibe')
+    ) {
+      // Known upstream gap: the pinned rtk build's --agent enum doesn't
+      // include "vibe" yet. Warn instead of failing the whole apply — this
+      // one delegated agent just doesn't get rtk hooks configured.
+      messages.push(
+        `${adapter.getName()}: skipped — rtk does not yet support "vibe" as an --agent value; rtk delegation for Mistral Vibe is not configured until a newer rtk release adds it.`,
+      );
+    } else {
+      errors.push(`${adapter.getName()}: ${result.errors.join('; ') || result.message}`);
+    }
   }
 
   // Step 6 - optional upstream integrations (Superpowers).
@@ -260,9 +291,17 @@ export const applyCommand = new Command()
       return;
     }
 
-    const result = await withSpinner('Applying configuration...', () =>
+    const result = await withSpinner('Applying configuration...', (spinner: Spinner) =>
       applyConfiguration(config, baseDir, {
         skipMiseInstall: options.skipMiseInstall === true,
+        onMiseInstall: {
+          onStart: () => {
+            spinner.stop();
+            console.log(colorizeLine('Installing tools via mise...'));
+          },
+          onOutput: (chunk) => process.stdout.write(chunk),
+          onEnd: () => spinner.start(),
+        },
       }),
     );
     for (const message of result.messages) console.log(colorizeLine(message));

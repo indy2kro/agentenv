@@ -18,6 +18,7 @@ import {
   miseInstallInstructions,
   miseInstallOutcome,
   pathContainsDir,
+  platformUnsupportedHint,
   shimsDir,
   shimsDirOnPath,
   trustMiseToml,
@@ -83,6 +84,37 @@ describe('mise.toml generation', () => {
 
     assert.ok(jq);
     assert.equal(jq?.version, '1.4.0');
+  });
+
+  it('excludes tools mise cannot install at all on this platform (e.g. ripgrep_all/jless on win32)', () => {
+    const config = {
+      ...DEFAULT_CONFIG,
+      tools: { ...DEFAULT_CONFIG.tools, ripgrep_all: true, jless: true },
+    };
+    const output = generateMiseToml(config, []);
+    const tools = getToolsToInstall(config);
+    if (process.platform === 'win32') {
+      assert.doesNotMatch(output, /^ripgrep-all = /m);
+      assert.doesNotMatch(output, /^jless = /m);
+      assert.equal(
+        tools.some((tool) => tool.name === 'ripgrep_all'),
+        false,
+      );
+      assert.equal(
+        tools.some((tool) => tool.name === 'jless'),
+        false,
+      );
+      assert.match(platformUnsupportedHint(config), /ripgrep_all/);
+      assert.match(platformUnsupportedHint(config), /jless/);
+    } else {
+      assert.match(output, /^ripgrep-all = /m);
+      assert.match(output, /^jless = /m);
+      assert.equal(platformUnsupportedHint(config), '');
+    }
+  });
+
+  it('platformUnsupportedHint is empty when nothing enabled is platform-unsupported', () => {
+    assert.equal(platformUnsupportedHint(DEFAULT_CONFIG), '');
   });
 
   it('getUpgradeableTools excludes rtk and pinned tools, keeps unpinned ones', () => {

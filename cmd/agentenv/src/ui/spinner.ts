@@ -14,6 +14,8 @@ export interface Spinner {
   start(): Spinner;
   succeed(text?: string): Spinner;
   fail(text?: string): Spinner;
+  /** Pause rendering without a succeed/fail glyph, so a caller can print raw output (e.g. streamed mise install progress) without the spinner fighting it for the terminal line, then `start()` again to resume. */
+  stop(): Spinner;
 }
 
 export type SpinnerFactory = (text: string) => Spinner;
@@ -24,22 +26,25 @@ const quietSpinner: Spinner = {
   start: () => quietSpinner,
   succeed: () => quietSpinner,
   fail: () => quietSpinner,
+  stop: () => quietSpinner,
 };
 
 /**
  * Run fn() under a spinner labeled `label`, resolving succeed/fail from the
  * result's `success` field. `-q/--quiet` swaps in a no-op spinner so quiet
- * output is actually silent even on a TTY.
+ * output is actually silent even on a TTY. `fn` receives the spinner itself
+ * so a long inner step can `stop()` it before printing raw output and
+ * `start()` it again afterwards.
  */
 export async function withSpinner<T extends { success: boolean }>(
   label: string,
-  fn: () => Promise<T>,
+  fn: (spinner: Spinner) => Promise<T>,
   spinnerFactory: SpinnerFactory = defaultSpinnerFactory,
 ): Promise<T> {
   const factory = isQuiet() ? (): Spinner => quietSpinner : spinnerFactory;
   const spinner = factory(label).start();
   try {
-    const result = await fn();
+    const result = await fn(spinner);
     if (result.success) spinner.succeed(label);
     else spinner.fail(label);
     return result;

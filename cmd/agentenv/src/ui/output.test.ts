@@ -2,6 +2,7 @@ import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   banner,
+  displayWidth,
   formatResultBox,
   isQuiet,
   LOGO,
@@ -107,14 +108,30 @@ describe('result box', () => {
     assert.match(formatResultBox({ severity: 'fail', headline: 'Oops' }), /❌ Oops/);
   });
 
-  it('pads lines to a shared frame width', () => {
+  it('pads lines to a shared *visual* frame width', () => {
     const box = formatResultBox({
       severity: 'ok',
       headline: 'Environment is clean',
       summary: 'everything configured is present',
     });
-    const frame = box.split('\n').map((line) => line.length);
-    assert.ok(new Set(frame).size === 1, `all rows should share a width, got: ${frame}`);
+    const frame = box.split('\n').map((line) => displayWidth(line));
+    assert.ok(new Set(frame).size === 1, `all rows should share a visual width, got: ${frame}`);
+  });
+
+  it('displayWidth counts the double-width result glyphs as 2 columns', () => {
+    // ✅ / ❌ are one code unit each; ⚠️ is the warning sign plus an
+    // invisible U+FE0F variation selector. All three render 2 columns wide.
+    assert.equal(displayWidth('✅'), 2);
+    assert.equal(displayWidth('❌'), 2);
+    assert.equal(displayWidth('⚠️'), 2);
+    assert.equal(displayWidth('ok'), 2);
+  });
+
+  it('lines up the border even for a glyph-only headline (regression: box was 1 char narrow)', () => {
+    const box = formatResultBox({ severity: 'fail', headline: 'Setup failed' });
+    const [top, content, bottom] = box.split('\n');
+    assert.equal(displayWidth(top), displayWidth(content));
+    assert.equal(displayWidth(top), displayWidth(bottom));
   });
 
   it('resolveResultLine() boxes on a TTY and falls back to the plain headline', () => {

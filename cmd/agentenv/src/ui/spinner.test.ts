@@ -20,6 +20,10 @@ function fakeSpinnerFactory(): { factory: SpinnerFactory; calls: string[] } {
       calls.push(`fail:${text ?? ''}`);
       return spinner;
     },
+    stop: () => {
+      calls.push('stop');
+      return spinner;
+    },
   };
   return { factory: () => spinner, calls };
 }
