@@ -13,6 +13,8 @@ import {
   miseInstallInstructions,
   runMiseSelfUpdate,
   runMiseUpgrade,
+  shimsDir,
+  shimsDirOnPath,
   toolAvailabilityLine,
   trustMiseToml,
   verifyHintNeeded,
@@ -27,6 +29,8 @@ interface UpdateCommandOptions {
   tools?: boolean;
   scope?: string;
   watch?: boolean;
+  dryRun?: boolean;
+  check?: boolean;
 }
 
 async function doUpdate(options: UpdateCommandOptions): Promise<void> {
@@ -75,6 +79,9 @@ async function doUpdate(options: UpdateCommandOptions): Promise<void> {
     return;
   }
 
+  const dryRun = options.dryRun === true || options.check === true;
+  if (dryRun) console.log('\n[DRY RUN] Printing the update plan; nothing will be changed.\n');
+
   const doSelf =
     options.self === true || (options.tools === undefined && options.self === undefined);
   const doTools =
@@ -82,55 +89,77 @@ async function doUpdate(options: UpdateCommandOptions): Promise<void> {
 
   let failed = false;
 
-  const shims = ensureGlobalShimsDir();
-  if (shims.success) {
-    console.log(`Shims: ${shims.message}`);
+  if (dryRun) {
+    const dir = shimsDir();
+    const pathLine = shimsDirOnPath()
+      ? `${dir} is on PATH`
+      : `would add ${dir} to the global mise config PATH`;
+    console.log(`Shims: ${pathLine}`);
   } else {
-    console.error(`Shims: ${shims.message}`);
-    failed = true;
-  }
-
-  if (doSelf) {
-    console.log('\nUpdating mise itself...');
-    const result = await runMiseSelfUpdate();
-    if (result.success) {
-      console.log(`  mise self-update: ${result.output || 'already up to date'}`);
+    const shims = ensureGlobalShimsDir();
+    if (shims.success) {
+      console.log(`Shims: ${shims.message}`);
     } else {
-      console.error(
-        `  mise self-update failed: ${result.output || 'no output'} (some install methods, e.g. winget, do not support self-update)`,
-      );
+      console.error(`Shims: ${shims.message}`);
       failed = true;
     }
   }
 
+  if (doSelf) {
+    if (dryRun) {
+      console.log('\nWould run `mise self-update`.');
+    } else {
+      console.log('\nUpdating mise itself...');
+      const result = await runMiseSelfUpdate();
+      if (result.success) {
+        console.log(`  mise self-update: ${result.output || 'already up to date'}`);
+      } else {
+        console.error(
+          `  mise self-update failed: ${result.output || 'no output'} (some install methods, e.g. winget, do not support self-update)`,
+        );
+        failed = true;
+      }
+    }
+  }
+
   if (doTools) {
-    console.log('\nUpgrading mise-managed tools...');
+    if (dryRun) {
+      console.log('\nUpgrade plan for mise-managed tools:');
+    } else {
+      console.log('\nUpgrading mise-managed tools...');
+    }
     const scopeDir = resolveScopeDir(config.scope ?? 'project');
     const miseTomlPath = path.join(scopeDir, 'mise.toml');
     if (!fs.existsSync(miseTomlPath)) {
       console.error(`  ${miseTomlPath} not found — run \`agentenv apply\` first.`);
       failed = true;
     } else {
-      const trust = trustMiseToml(miseTomlPath, scopeDir);
-      if (trust.success) console.log(`  ${trust.message}`);
-      else console.error(`  ${trust.message}`);
-      if (!trust.success) failed = true;
+      if (dryRun) {
+        console.log(`  would trust ${miseTomlPath}`);
+      } else {
+        const trust = trustMiseToml(miseTomlPath, scopeDir);
+        if (trust.success) console.log(`  ${trust.message}`);
+        else console.error(`  ${trust.message}`);
+        if (!trust.success) failed = true;
+      }
 
       const targets = getUpgradeableTools(config);
       if (targets.length === 0) {
         console.log('  No upgradeable tools: everything enabled is pinned to a version.');
       } else {
-        console.log(`  mise up ${targets.join(' ')}`);
-        const upgrade = await runMiseUpgrade(targets, scopeDir);
-        if (upgrade.success) {
-          console.log(
-            `  ${(upgrade.stdout || upgrade.stderr || '').trim() || 'all tools up to date'}`,
-          );
-        } else {
-          console.error(
-            `  mise up failed (exit ${upgrade.exitCode ?? 'null'}): ${normalizeOutput(upgrade.stderr || upgrade.stdout).trim()}`,
-          );
-          failed = true;
+        console.log(`  mise up ${targets.join(' ')}${dryRun ? ' (would run)' : ''}`);
+        if (!dryRun) {
+          const upgrade = await runMiseUpgrade(targets, scopeDir);
+          if (upgrade.success) {
+            console.log(
+              `  ${(upgrade.stdout || upgrade.stderr || '').trim() || 'all tools up to date'}`,
+            );
+          } else {
+            console.error(
+              `  mise up failed (exit ${upgrade.exitCode ?? 'null'}): ${normalizeOutput(upgrade.stderr || upgrade.stdout).trim()}`,
+            );
+            failed = true;
+          }
         }
 
         const availability = verifyToolAvailability(config);
@@ -148,16 +177,22 @@ async function doUpdate(options: UpdateCommandOptions): Promise<void> {
 
   if (failed) {
     process.exitCode = 1;
+  } else if (dryRun) {
+    console.log('\nDry run complete — nothing was changed.');
   } else {
     console.log('\nUpdate complete!');
   }
 
   // Optional file watching mode
   if (options.watch && doTools) {
-    console.log('\nWatching mise.toml for changes (Ctrl+C to stop)...');
-    const scopeDir = resolveScopeDir(config.scope ?? 'project');
-    const miseTomlPath = path.join(scopeDir, 'mise.toml');
-    watchMiseToml(miseTomlPath, scopeDir, config);
+    if (dryRun) {
+      console.log('\nSkipping watch mode (dry run).');
+    } else {
+      console.log('\nWatching mise.toml for changes (Ctrl+C to stop)...');
+      const scopeDir = resolveScopeDir(config.scope ?? 'project');
+      const miseTomlPath = path.join(scopeDir, 'mise.toml');
+      watchMiseToml(miseTomlPath, scopeDir, config);
+    }
   }
 }
 
@@ -224,4 +259,6 @@ export const updateCommand = new Command()
   .option('--tools', 'only upgrade mise-managed tools (pinned tools are skipped)')
   .option('--scope <scope>', 'config scope to update: project|user (default: nearest config)')
   .option('--watch', 'watch mise.toml for changes and auto-run mise up (optional)')
+  .option('--dry-run', 'print the update plan without changing anything')
+  .option('--check', 'alias for --dry-run')
   .action(doUpdate);
