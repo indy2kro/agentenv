@@ -35,6 +35,10 @@ successful informational exits, not errors.
 
 - validation errors are present (validation warnings alone do **not** flip it);
 - an enabled catalog tool's binary is not resolvable on PATH;
+- an enabled catalog tool is explicitly pinned to a version (`tool_versions`
+  in `agentenv.toml`, or agentenv's internal pin) and mise has installed a
+  different version for it (a tool left at `latest` is never version drift —
+  there is no fixed expectation to drift from);
 - an enabled agent is installed but not configured (`installed && !configured`).
   An enabled-but-never-installed agent is **not** drift (it is reported with
   `installed: false` but doesn't flip the code, matching `doctor`, which

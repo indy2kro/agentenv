@@ -55,7 +55,19 @@ describe('computeStatusExitCode', () => {
   it('is 1 for a missing enabled tool', () => {
     assert.equal(
       computeStatusExitCode(
-        base({ tools: [{ key: 'gh', binary: 'gh', tier: 3, found: false, drift: true }] }),
+        base({
+          tools: [
+            {
+              key: 'gh',
+              binary: 'gh',
+              tier: 3,
+              found: false,
+              drift: true,
+              pinned: null,
+              installed: null,
+            },
+          ],
+        }),
       ),
       1,
     );
@@ -106,6 +118,27 @@ describe('computeStatusExitCode', () => {
     assert.equal(
       computeStatusExitCode(
         base({ generated: [{ label: 'AGENTS.md', exists: true, managed: false }] }),
+      ),
+      1,
+    );
+  });
+
+  it('is 1 for a found tool whose explicit version pin does not match the installed version', () => {
+    assert.equal(
+      computeStatusExitCode(
+        base({
+          tools: [
+            {
+              key: 'gh',
+              binary: 'gh',
+              tier: 3,
+              found: true,
+              drift: true,
+              pinned: '2.100.0',
+              installed: '2.101.0',
+            },
+          ],
+        }),
       ),
       1,
     );

@@ -19,7 +19,12 @@ import type { ShellInfo } from '../shell/detector.js';
 import { SuperpowersAdapter, ghAuthLine } from '../integrations/index.js';
 import type { IntegrationResult, IntegrationState } from '../integrations/base.js';
 import { resolveGhAuthProbe } from '../toolchain/gh.js';
-import { getMiseVersion } from '../toolchain/mise.js';
+import {
+  MISE_TOOL_NAMES,
+  PINNED_TOOL_VERSIONS,
+  getInstalledToolState,
+  getMiseVersion,
+} from '../toolchain/mise.js';
 import { colorizeLine, theme } from '../ui/theme.js';
 import { banner, setQuietEnabled } from '../ui/output.js';
 
@@ -61,6 +66,10 @@ export interface StatusTool {
   tier: number;
   found: boolean;
   drift: boolean;
+  /** Resolved explicit pin (`tool_versions` or agentenv's internal pin), or `null` for `latest`. */
+  pinned: string | null;
+  /** Best-match installed version from `mise ls --json`, or `null` when moot/unknown. */
+  installed: string | null;
 }
 export interface StatusCustomTool {
   name: string;
@@ -151,6 +160,7 @@ export interface StatusDeps {
   resolveScopeDir?: typeof resolveScopeDir;
   validateConfig?: typeof validateConfig;
   getMiseVersion?: typeof getMiseVersion;
+  getInstalledToolState?: typeof getInstalledToolState;
   getEnabledAgents?: typeof getEnabledAgents;
   isAgentInstalled?: typeof isAgentInstalled;
   resolveBinary?: typeof resolveBinary;
@@ -324,13 +334,36 @@ export async function gatherStatus(deps: StatusDeps = {}): Promise<StatusReport>
 
   const enabledTools = TOOL_KEYS.filter((key) => config.tools?.[key] === true);
   let ghAuth: string | null = null;
+  const installedState = (deps.getInstalledToolState ?? getInstalledToolState)();
+  const hasVersionData = Object.keys(installedState).length > 0;
   const tools: StatusTool[] = enabledTools.map((key) => {
     const binary = BINARY_MAP[key];
     const found = (deps.resolveBinary ?? resolveBinary)(binary) !== null;
     if (key === 'gh' && found) {
       ghAuth = ghAuthLine((deps.resolveGhAuthProbe ?? resolveGhAuthProbe)()().status);
     }
-    return { key, binary, tier: TOOL_TIERS[key] ?? 0, found, drift: !found };
+    const miseName = MISE_TOOL_NAMES[key] || key;
+    const state = installedState[miseName];
+    const pinned = config.tool_versions?.[key] ?? PINNED_TOOL_VERSIONS[miseName] ?? null;
+    const installedVersions = state?.versions ?? [];
+    const installed =
+      hasVersionData && installedVersions.length > 0
+        ? installedVersions[installedVersions.length - 1]
+        : null;
+    const versionDrift =
+      pinned !== null &&
+      installed !== null &&
+      installedVersions.length > 0 &&
+      !installedVersions.includes(pinned);
+    return {
+      key,
+      binary,
+      tier: TOOL_TIERS[key] ?? 0,
+      found,
+      drift: !found || versionDrift,
+      pinned,
+      installed,
+    };
   });
 
   const customTools: StatusCustomTool[] = (config.custom_tools ?? []).map((tool) => {
@@ -519,9 +552,18 @@ export function renderStatus(report: StatusReport): string {
   chunks.push(theme.heading('\nTools:'));
   for (const tool of report.tools) {
     const desc = TOOL_DESCRIPTIONS[tool.key] ?? '';
+    const versionTail = !tool.found
+      ? ''
+      : tool.pinned !== null
+        ? tool.installed !== null && tool.installed !== tool.pinned
+          ? `   <- drift: version ${tool.pinned} configured, ${tool.installed} installed`
+          : ` (${tool.pinned} installed)`
+        : tool.installed !== null
+          ? ` (${tool.installed})`
+          : '';
     chunks.push(
       colorizeLine(
-        `  ${tool.found ? '✓' : '✗'} ${tool.binary.padEnd(12)} ${tool.key} (Tier ${tool.tier})${tool.found ? '' : '   <- drift: enabled in config but not on PATH'} — ${desc}`,
+        `  ${tool.found ? '✓' : '✗'} ${tool.binary.padEnd(12)} ${tool.key} (Tier ${tool.tier})${tool.found ? `${versionTail}` : '   <- drift: enabled in config but not on PATH'} — ${desc}`,
       ),
     );
     if (tool.key === 'gh' && report.ghAuth) {
