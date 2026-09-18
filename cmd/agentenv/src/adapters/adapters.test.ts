@@ -313,3 +313,24 @@ for (const [label, AdapterCtor, rtkFlags, configDirName] of [
     });
   });
 }
+
+describe('Cursor adapter extraGlobalDirs', () => {
+  it('also creates ~/.claude, which real rtk needs on Windows for its shared RTK.md anchor', async () => {
+    await withHome(tempHome(), async () => {
+      const home = process.env.HOME as string;
+      const rtk = fakeRtkInit();
+      const adapter = new CursorAdapter({
+        enabled: true,
+        baseDir: home,
+        rtkEnabled: true,
+        rtkInit: rtk.fn,
+      });
+      const result = await adapter.initialize();
+
+      assert.equal(result.success, true);
+      assert.ok(fs.existsSync(path.join(home, '.cursor')));
+      assert.ok(fs.existsSync(path.join(home, '.claude')));
+      assert.ok(result.filesCreated.includes(path.join(home, '.claude')));
+    });
+  });
+});

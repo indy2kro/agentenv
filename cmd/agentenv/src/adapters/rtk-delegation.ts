@@ -20,6 +20,13 @@ export interface RtkDelegationOptions {
   configDir: string;
   /** Basename (within baseDir) whose appearance marks a successful `rtk init`. */
   expectedFile: string;
+  /**
+   * Directories a global `rtk init` delegation writes into besides `configDir`
+   * (e.g. Cursor's `-g` install writes the shared RTK.md anchor into Claude
+   * Code's `~/.claude`, and on Windows `rtk` errors instead of creating that
+   * directory itself if it isn't already there — see FEAT-06 follow-up).
+   */
+  extraGlobalDirs?: string[];
 }
 
 export class RtkDelegationAdapter extends BaseAdapter {
@@ -57,9 +64,11 @@ export class RtkDelegationAdapter extends BaseAdapter {
     }
 
     try {
-      if (!fs.existsSync(this.opts.configDir)) {
-        fs.mkdirSync(this.opts.configDir, { recursive: true });
-        result.filesCreated.push(this.opts.configDir);
+      for (const dir of [this.opts.configDir, ...(this.opts.extraGlobalDirs ?? [])]) {
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+          result.filesCreated.push(dir);
+        }
       }
     } catch (err) {
       result.success = false;

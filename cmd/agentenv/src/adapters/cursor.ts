@@ -16,6 +16,10 @@ export class CursorAdapter extends RtkDelegationAdapter {
       rtkFlags: RTK_INIT_FLAGS.cursor,
       configDir: path.join(home, '.cursor'),
       expectedFile: 'RTK.md',
+      // Cursor's global rtk delegation shares Claude Code's RTK.md anchor in
+      // ~/.claude; on Windows rtk fails outright (rather than creating the
+      // dir) if it isn't already there — see docs/research/rtk-init-behavior.md.
+      extraGlobalDirs: [path.join(home, '.claude')],
     });
   }
 }
