@@ -132,6 +132,7 @@ hand-written or previously-saved config.
 | `agentenv setup` (alias `configure`) | Interactive wizard: pick agents, the full Tier 1–3 tool picker (one page, Tier 1+2 pre-checked), add custom binaries, choose scope, toggle rtk, optionally opt into Superpowers, review a diff of what will change, then confirm before applying. Re-run any time — it pre-fills every prompt from your current `agentenv.toml`. |
 | `agentenv apply [--skip-mise-install]` | Non-interactive: read `agentenv.toml` and (re)generate everything — `mise.toml`, `AGENTS.md`/`CLAUDE.md`, per-agent hook files, the Tier 0 shell fix. Safe to run in CI or a script. `--skip-mise-install` generates files only, without running `mise install` (useful for a fast dry-run or when mise isn't available). |
 | `agentenv status` | Read-only report: what's configured, what's actually installed, and where the two disagree (drift) — per agent, per tool, per generated file. |
+| `agentenv uninstall` | Remove mise-managed tools in your config from the mise store (cleanup); `agentenv apply` reinstalls them. `--dry-run` previews the plan without changing anything, `--yes` skips the confirmation prompt. |
 | `agentenv --version` / `agentenv --help` | Standard `commander`-generated version/help output; every subcommand also takes `--help`. |
 
 `setup` (alias `configure`) writes `agentenv.toml` and then calls the same
@@ -373,6 +374,8 @@ npm run build   # tsc -> dist/
 npm test        # build + node:test suites
 npm run lint    # eslint --max-warnings 0
 npm run format:check
+npm run smoke           # stub mode — deterministic, no real mise/rtk
+npm run smoke:real      # real mise + rtk; installs the full tool catalog, verifies every binary, and exercises the install→uninstall roundtrip
 ```
 
 See [`docs/guides/adding-an-adapter.md`](../../docs/guides/adding-an-adapter.md)

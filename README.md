@@ -83,6 +83,7 @@ any hand-written or previously-saved config.
 | `agentenv status` | Read-only report: what's configured, what's actually installed, and where the two disagree (drift) — per agent, per tool, per generated file, plus optional integrations and `gh` auth. |
 | `agentenv doctor` | Standalone environment sanity check (mise, shims, config, tools, agents) — independent of any `agentenv.toml`. |
 | `agentenv update` | Unattended update of mise itself and the mise-managed tools in your config. |
+| `agentenv uninstall` | Remove mise-managed tools in your config from the mise store (cleanup); `agentenv apply` reinstalls them. `--dry-run` previews, `--yes` skips the prompt. |
 
 `setup` (alias `configure`) writes `agentenv.toml` and then calls the same
 `apply` logic internally, so a hand-run `apply` reaches the same end state. Output is

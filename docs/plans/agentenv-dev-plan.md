@@ -412,6 +412,41 @@ No new runtime dependencies.
   `npm run lint`, `npm run format:check`, and stub-mode `npm run smoke` are
   green.
 
+### Phase 8 — Uninstall command & full-catalog smoke
+
+The `agentenv uninstall` cleanup command and the real smoke's full-catalog
+install→uninstall roundtrip. Design:
+`docs/superpowers/specs/2026-09-18-uninstall-command-design.md`; implementation:
+`docs/superpowers/plans/2026-09-18-uninstall-command.md`. No new runtime dependencies.
+
+- `agentenv uninstall` derives its target set from the active `agentenv.toml`:
+  non-fallback `[tools]` plus `custom_tools` with `mise_source`, deduped by
+  mise name. Extra tool arguments resolve by config key, binary name, or mise
+  name. `--dry-run` previews the plan without changing anything (exit 0; mise
+  not installed → "state unknown" but still exit 0); `--yes` skips the
+  confirmation prompt (without it in a non-TTY context the command exits 1
+  before doing anything). Empty target set → "Nothing to uninstall." exit 0,
+  no mise required; an unknown tool argument exits 1 with the plan, no action.
+  No mise installed with real targets fails fast with install instructions
+  (exit 1), confirmed *after* the plan is computed so nothing inert is ever
+  confirmed. The confirmation prompt reuses `@inquirer/prompts`.
+- The uninstall path calls `mise uninstall --all <name>...` so a tool with
+  multiple installed versions is fully removed — mise 2026.x otherwise errors
+  with `multiple tools specified, use --all` when any named tool has more than
+  one version installed.
+- **Contract enforcement:** `src/cli/contract.test.ts` extended — exit `0`/`1`/`2`
+  for clean/dry-run/no-op/unknown-arg/missing-mise runs, non-TTY without
+  `--yes` exits `1`.
+- **Smoke:** `npm run smoke:real` now installs the *full* tool catalog
+  (varies by OS; on Windows `jless`/`ripgrep_all`/`direnv` are excluded from
+  the catalog smoke since they can't install via mise on win32), verifies
+  every tool's binary, and proves the install→uninstall roundtrip via
+  `mise ls --json` (every catalog tool gone after uninstall), followed by
+  `setup --yes`. Stub mode stays fully deterministic.
+- **Status: complete — 7 tasks landed.** `npm test` (265), lint,
+  format:check, stub smoke, and `npm run smoke:real` (full-catalog install +
+  install→uninstall roundtrip + `setup --yes`) all green.
+
 ## 9. Testing strategy
 
 - CI matrix across the three OSes × four agents is the primary safety net
