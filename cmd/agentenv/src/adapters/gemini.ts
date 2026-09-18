@@ -1,5 +1,5 @@
 /**
- * Gemini CLI Adapter — delegates to `rtk init --gemini`.
+ * Gemini CLI Adapter — delegates to `rtk init -g --gemini`.
  */
 
 import * as path from 'path';

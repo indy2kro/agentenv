@@ -1,5 +1,5 @@
 /**
- * Mistral Vibe Adapter — delegates to `rtk init --agent vibe`.
+ * Mistral Vibe Adapter — delegates to `rtk init -g --agent vibe`.
  */
 
 import * as path from 'path';

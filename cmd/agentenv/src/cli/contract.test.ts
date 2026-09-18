@@ -270,4 +270,25 @@ direnv = false
     assert.equal(none.status, 0);
     assert.match(none.stdout, /Nothing to uninstall\./);
   });
+
+  it('completion emits a script covering every command for each supported shell', () => {
+    const commands = ['setup', 'apply', 'status', 'update', 'doctor', 'uninstall', 'completion'];
+    for (const shell of ['bash', 'zsh', 'fish', 'powershell']) {
+      const out = run(['completion', shell], clean);
+      assert.equal(out.status, 0, `${shell} completion should exit 0: ${out.stderr}`);
+      for (const command of commands) {
+        assert.match(
+          out.stdout,
+          new RegExp(`\\b${command}\\b`),
+          `${shell} should complete ${command}`,
+        );
+      }
+      assert.match(out.stdout, /(--debug|-l debug)/, `${shell} should complete the global flags`);
+    }
+  });
+
+  it('rejects an unsupported completion shell as a usage error', () => {
+    assert.equal(run(['completion', 'cmd.exe'], clean).status, 2);
+    assert.equal(run(['completion'], clean).status, 2);
+  });
 });

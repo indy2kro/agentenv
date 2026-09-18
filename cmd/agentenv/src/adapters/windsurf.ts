@@ -1,5 +1,5 @@
 /**
- * Windsurf Adapter — delegates to `rtk init --agent windsurf`.
+ * Windsurf Adapter — delegates to `rtk init -g --agent windsurf`.
  */
 
 import * as path from 'path';

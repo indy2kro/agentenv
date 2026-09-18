@@ -20,17 +20,21 @@ export interface RtkInitResult {
  */
 export type RtkInitFn = (args: string[], cwd: string) => RtkInitResult;
 
-/** rtk init args per agent, verified against rtk 0.42.4 and 0.49.0. */
+/** rtk init args per agent, verified against real `rtk init` in smoke:real. */
 export const RTK_INIT_FLAGS: Record<string, string[]> = {
   claude_code: ['--claude'],
   codex_cli: ['--codex'],
   copilot: ['--copilot'],
   opencode: ['-g', '--opencode'],
-  gemini_cli: ['--gemini'],
-  cursor: ['--agent', 'cursor'],
-  windsurf: ['--agent', 'windsurf'],
+  // rtk 0.49.0 rejects project-scoped init for these with "Gemini/Cursor/
+  // Windsurf/Vibe support is global-only. Use: rtk init -g ...", so the `-g`
+  // is mandatory (like opencode above), not a preference. Cline is the one
+  // delegated agent rtk accepts project-scoped by default.
+  gemini_cli: ['-g', '--gemini'],
+  cursor: ['-g', '--agent', 'cursor'],
+  windsurf: ['-g', '--agent', 'windsurf'],
   cline: ['--agent', 'cline'],
-  vibe: ['--agent', 'vibe'],
+  vibe: ['-g', '--agent', 'vibe'],
 };
 
 const defaultRtkInit: RtkInitFn = (args, cwd) => {

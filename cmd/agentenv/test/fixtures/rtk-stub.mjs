@@ -43,15 +43,15 @@ switch (flags) {
     fs.writeFileSync(path.join(dir, 'rtk.ts'), '// rtk opencode plugin\nexport const plugin = {};\n');
     break;
   }
-  case '--gemini': {
+  case '-g --gemini': {
     fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK stub (Gemini CLI)\n');
     break;
   }
-  case '--agent cursor': {
+  case '-g --agent cursor': {
     fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK stub (Cursor)\n');
     break;
   }
-  case '--agent windsurf': {
+  case '-g --agent windsurf': {
     fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK stub (Windsurf)\n');
     break;
   }
@@ -59,7 +59,7 @@ switch (flags) {
     fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK stub (Cline CLI)\n');
     break;
   }
-  case '--agent vibe': {
+  case '-g --agent vibe': {
     fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK stub (Mistral Vibe)\n');
     break;
   }

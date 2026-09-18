@@ -1,5 +1,5 @@
 /**
- * Cursor Adapter — delegates to `rtk init --agent cursor`.
+ * Cursor Adapter — delegates to `rtk init -g --agent cursor`.
  */
 
 import * as path from 'path';

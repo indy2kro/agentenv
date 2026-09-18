@@ -58,15 +58,15 @@ function fakeRtkInit(): { fn: RtkInitFn; calls: RtkCall[] } {
         path.join(pluginsDir, 'rtk.ts'),
         '// rtk opencode plugin\nexport const plugin = {};\n',
       );
-    } else if (joined === '--gemini') {
+    } else if (joined === '-g --gemini') {
       fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK (Gemini CLI)\n');
-    } else if (joined === '--agent cursor') {
+    } else if (joined === '-g --agent cursor') {
       fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK (Cursor)\n');
-    } else if (joined === '--agent windsurf') {
+    } else if (joined === '-g --agent windsurf') {
       fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK (Windsurf)\n');
     } else if (joined === '--agent cline') {
       fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK (Cline CLI)\n');
-    } else if (joined === '--agent vibe') {
+    } else if (joined === '-g --agent vibe') {
       fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK (Mistral Vibe)\n');
     }
     return { success: true, message: `rtk init ${joined} succeeded`, stdout: '', stderr: '' };

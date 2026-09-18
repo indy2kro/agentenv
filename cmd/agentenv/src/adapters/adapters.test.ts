@@ -42,15 +42,15 @@ function fakeRtkInit(): { fn: RtkInitFn; calls: RtkCall[] } {
       const dir = path.join(home, '.config', 'opencode', 'plugins');
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(path.join(dir, 'rtk.ts'), 'export const rtkPlugin = true;\n');
-    } else if (joined === '--gemini') {
+    } else if (joined === '-g --gemini') {
       fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK (Gemini CLI)\n');
-    } else if (joined === '--agent cursor') {
+    } else if (joined === '-g --agent cursor') {
       fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK (Cursor)\n');
-    } else if (joined === '--agent windsurf') {
+    } else if (joined === '-g --agent windsurf') {
       fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK (Windsurf)\n');
     } else if (joined === '--agent cline') {
       fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK (Cline CLI)\n');
-    } else if (joined === '--agent vibe') {
+    } else if (joined === '-g --agent vibe') {
       fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK (Mistral Vibe)\n');
     } else {
       calls[calls.length - 1].args = ['UNEXPECTED', ...args];
@@ -262,11 +262,11 @@ describe('rtkMessage transparency log', () => {
 });
 
 for (const [label, AdapterCtor, rtkFlags, configDirName] of [
-  ['Gemini CLI', GeminiCliAdapter, ['--gemini'], '.gemini'],
-  ['Cursor', CursorAdapter, ['--agent', 'cursor'], '.cursor'],
-  ['Windsurf', WindsurfAdapter, ['--agent', 'windsurf'], '.windsurf'],
+  ['Gemini CLI', GeminiCliAdapter, ['-g', '--gemini'], '.gemini'],
+  ['Cursor', CursorAdapter, ['-g', '--agent', 'cursor'], '.cursor'],
+  ['Windsurf', WindsurfAdapter, ['-g', '--agent', 'windsurf'], '.windsurf'],
   ['Cline CLI', ClineAdapter, ['--agent', 'cline'], '.cline'],
-  ['Mistral Vibe', VibeAdapter, ['--agent', 'vibe'], '.vibe'],
+  ['Mistral Vibe', VibeAdapter, ['-g', '--agent', 'vibe'], '.vibe'],
 ] as const) {
   describe(`${label} adapter`, () => {
     it('delegates hooks to rtk init and creates configDir', async () => {

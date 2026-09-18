@@ -14,11 +14,13 @@ describe('RTK_INIT_FLAGS', () => {
     }
   });
 
-  it('maps the five new agents to their correct rtk init flags', () => {
-    assert.deepEqual(RTK_INIT_FLAGS.gemini_cli, ['--gemini']);
-    assert.deepEqual(RTK_INIT_FLAGS.cursor, ['--agent', 'cursor']);
-    assert.deepEqual(RTK_INIT_FLAGS.windsurf, ['--agent', 'windsurf']);
+  it('maps the five delegated agents to their correct rtk init flags', () => {
+    // -g is mandatory for the global-only agents: real rtk 0.49.0 rejects
+    // project-scoped init for them (surfaced by the smoke:real all-9 run).
+    assert.deepEqual(RTK_INIT_FLAGS.gemini_cli, ['-g', '--gemini']);
+    assert.deepEqual(RTK_INIT_FLAGS.cursor, ['-g', '--agent', 'cursor']);
+    assert.deepEqual(RTK_INIT_FLAGS.windsurf, ['-g', '--agent', 'windsurf']);
     assert.deepEqual(RTK_INIT_FLAGS.cline, ['--agent', 'cline']);
-    assert.deepEqual(RTK_INIT_FLAGS.vibe, ['--agent', 'vibe']);
+    assert.deepEqual(RTK_INIT_FLAGS.vibe, ['-g', '--agent', 'vibe']);
   });
 });
