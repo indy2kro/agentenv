@@ -43,7 +43,8 @@ import {
 } from '../toolchain/mise.js';
 import { normalizeOutput } from '../utils/output.js';
 import { colorizeLine, theme } from '../ui/theme.js';
-import { renderLogo, resolveResultLine } from '../ui/output.js';
+import { renderLogo } from '../ui/output.js';
+import { printConfigPath, printMessages, printResult, reportValidation } from '../ui/report.js';
 import { withSpinner } from '../ui/spinner.js';
 import type { Spinner } from '../ui/spinner.js';
 
@@ -51,6 +52,8 @@ export interface ApplyResult {
   success: boolean;
   messages: string[];
   errors: string[];
+  /** Wall-clock milliseconds the apply took, for the end-of-run timing line. */
+  elapsedMs?: number;
 }
 
 export interface ApplyOptions {
@@ -121,6 +124,7 @@ export async function applyConfiguration(
   baseDir: string,
   options: ApplyOptions = {},
 ): Promise<ApplyResult> {
+  const startedAt = Date.now();
   const messages: string[] = [];
   const errors: string[] = [];
 
@@ -132,7 +136,7 @@ export async function applyConfiguration(
       errors.push('Prerequisite check failed: mise is not installed.');
       errors.push("agentenv uses mise to install and manage this project's tools.");
       errors.push(...miseInstallInstructions());
-      return { success: false, messages, errors };
+      return { success: false, messages, errors, elapsedMs: Date.now() - startedAt };
     }
     if (!options.skipPrereqMessage) {
       messages.push(prereqMessage());
@@ -241,7 +245,7 @@ export async function applyConfiguration(
     for (const error of result.errors) errors.push(`Superpowers: ${error}`);
   }
 
-  return { success: errors.length === 0, messages, errors };
+  return { success: errors.length === 0, messages, errors, elapsedMs: Date.now() - startedAt };
 }
 
 export const applyCommand = new Command()
@@ -250,6 +254,7 @@ export const applyCommand = new Command()
   .option('--skip-mise-install', 'skip mise install (files only; for CI/dry-run)')
   .option('--dry-run', 'show what would be written without changing anything')
   .action(async (options: { skipMiseInstall?: boolean; dryRun?: boolean }) => {
+    const startedAt = Date.now();
     renderLogo();
     const dryRun = options.dryRun === true;
     let config: AgentenvConfig;
@@ -261,13 +266,10 @@ export const applyCommand = new Command()
       return;
     }
     const configPath = findConfigPath() ?? configFilePath(config.scope ?? 'project');
-    console.log(`Config: ${configPath}`);
+    printConfigPath(configPath);
 
     const report = validateConfig(config);
-    for (const warning of report.warnings) console.log(theme.warn(`warning: ${warning}`));
-    if (report.errors.length > 0) {
-      for (const error of report.errors) console.error(theme.fail(`error: ${error}`));
-      console.error(theme.fail('Configuration invalid — not applying.'));
+    if (!reportValidation(report, 'Configuration invalid — not applying.')) {
       process.exitCode = 1;
       return;
     }
@@ -288,9 +290,7 @@ export const applyCommand = new Command()
       console.log(
         `  Integrations:   ${integrations.length > 0 ? integrations.map((i) => i.getName()).join(', ') : '(none)'}`,
       );
-      console.log(
-        `\n${resolveResultLine({ severity: 'ok', headline: 'Dry run complete', summary: 'no changes were made' })}\n`,
-      );
+      printResult('ok', 'Dry run complete', 'no changes were made', Date.now() - startedAt);
       return;
     }
 
@@ -307,16 +307,16 @@ export const applyCommand = new Command()
         },
       }),
     );
-    for (const message of result.messages) console.log(colorizeLine(message));
-    for (const error of result.errors) console.error(theme.fail(error));
+    printMessages(result.messages, result.errors);
     if (!result.success) {
       process.exitCode = 1;
-      console.log(
-        `\n${resolveResultLine({ severity: 'fail', headline: 'Apply failed', summary: 'fix the errors above and re-run `agentenv apply`' })}\n`,
+      printResult(
+        'fail',
+        'Apply failed',
+        'fix the errors above and re-run `agentenv apply`',
+        result.elapsedMs,
       );
       return;
     }
-    console.log(
-      `\n${resolveResultLine({ severity: 'ok', headline: 'Apply complete!', summary: 'everything is configured and verified' })}\n`,
-    );
+    printResult('ok', 'Apply complete!', 'everything is configured and verified', result.elapsedMs);
   });

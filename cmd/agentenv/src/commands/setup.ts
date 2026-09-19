@@ -14,7 +14,8 @@ import {
   prereqLine,
 } from '../toolchain/mise.js';
 import { colorizeLine, theme } from '../ui/theme.js';
-import { renderLogo, resolveResultLine } from '../ui/output.js';
+import { renderLogo } from '../ui/output.js';
+import { printConfigPath, printMessages, printResult, reportValidation } from '../ui/report.js';
 import { withSpinner } from '../ui/spinner.js';
 import type { Spinner } from '../ui/spinner.js';
 
@@ -52,6 +53,8 @@ export interface SaveAndApplyDeps {
   applyConfiguration?: typeof applyConfiguration;
   /** Success line printed after applying (default: "Setup complete!"). */
   successMessage?: string;
+  /** Epoch ms the whole command started, for the end-of-run timing line. */
+  startedAt?: number;
 }
 
 /** Save the config and apply it, mirroring the shared setup tail. */
@@ -81,17 +84,15 @@ export async function saveAndApply(
       },
     }),
   );
-  for (const message of result.messages) console.log(colorizeLine(message));
-  for (const error of result.errors) console.error(theme.fail(error));
+  printMessages(result.messages, result.errors);
+  const elapsedMs = deps.startedAt === undefined ? result.elapsedMs : Date.now() - deps.startedAt;
   if (!result.success) {
     process.exitCode = 1;
-    console.log(`\n${resolveResultLine({ severity: 'fail', headline: 'Setup failed' })}\n`);
+    printResult('fail', 'Setup failed', undefined, elapsedMs);
     return;
   }
 
-  console.log(
-    `\n${resolveResultLine({ severity: 'ok', headline: deps.successMessage ?? 'Setup complete!' })}\n`,
-  );
+  printResult('ok', deps.successMessage ?? 'Setup complete!', undefined, elapsedMs);
 }
 
 interface SetupCommandOptions {
@@ -120,10 +121,11 @@ export async function unattendedSetup(
   options: SetupCommandOptions,
   deps: UnattendedSetupDeps = {},
 ): Promise<void> {
+  const startedAt = Date.now();
   renderLogo();
   if (!misePrereqCheck(deps.misePrereqCheckDeps)) {
     process.exitCode = 1;
-    console.log(`\n${resolveResultLine({ severity: 'fail', headline: 'Setup failed' })}\n`);
+    printResult('fail', 'Setup failed', undefined, Date.now() - startedAt);
     return;
   }
 
@@ -139,10 +141,8 @@ export async function unattendedSetup(
       return;
     }
     const report = validateConfig(config);
-    for (const warning of report.warnings) console.log(theme.warn(`warning: ${warning}`));
-    if (report.errors.length > 0) {
-      for (const error of report.errors) console.error(theme.fail(`error: ${error}`));
-      console.error(theme.fail(`Configuration at ${options.config} is invalid; not applying.`));
+    printConfigPath(options.config);
+    if (!reportValidation(report, 'Configuration invalid — not applying.')) {
       process.exitCode = 1;
       return;
     }
@@ -152,12 +152,10 @@ export async function unattendedSetup(
     file = configFilePath(scope);
 
     if (fs.existsSync(file)) {
-      console.log(`Using existing configuration: ${file}`);
+      printConfigPath(file);
       config = loadConfig(file);
       const report = validateConfig(config);
-      for (const warning of report.warnings) console.log(theme.warn(`warning: ${warning}`));
-      if (report.errors.length > 0) {
-        for (const error of report.errors) console.error(theme.fail(`error: ${error}`));
+      if (!reportValidation(report, 'Configuration invalid — not applying.')) {
         process.exitCode = 1;
         return;
       }
@@ -200,7 +198,7 @@ export async function unattendedSetup(
     }
   }
 
-  await saveAndApply(config, file, deps);
+  await saveAndApply(config, file, { ...deps, startedAt });
 }
 
 export const setupCommand = new Command()

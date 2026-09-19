@@ -14,7 +14,8 @@ import {
   type InstalledToolState,
 } from '../toolchain/mise.js';
 import { normalizeOutput } from '../utils/output.js';
-import { renderLogo, resolveResultLine } from '../ui/output.js';
+import { renderLogo } from '../ui/output.js';
+import { printConfigPath, printResult, reportValidation } from '../ui/report.js';
 
 export interface UninstallTarget {
   /** agentenv TOML key (the custom tool's name for custom tools). */
@@ -156,6 +157,7 @@ interface UninstallCommandOptions {
  * re-installs everything.
  */
 export async function doUninstall(options: UninstallCommandOptions): Promise<void> {
+  const startedAt = Date.now();
   renderLogo();
   // 1. Config resolution (mirrors update.ts).
   let configPath: string | null;
@@ -175,7 +177,7 @@ export async function doUninstall(options: UninstallCommandOptions): Promise<voi
       return;
     }
   }
-  console.log(`Config: ${configPath}`);
+  printConfigPath(configPath);
 
   let config: AgentenvConfig;
   try {
@@ -186,9 +188,7 @@ export async function doUninstall(options: UninstallCommandOptions): Promise<voi
     return;
   }
   const report = validateConfig(config);
-  for (const warning of report.warnings) console.log(`warning: ${warning}`);
-  if (report.errors.length > 0) {
-    for (const error of report.errors) console.error(`error: ${error}`);
+  if (!reportValidation(report, 'Configuration invalid — not applying.')) {
     process.exitCode = 1;
     return;
   }
@@ -206,9 +206,7 @@ export async function doUninstall(options: UninstallCommandOptions): Promise<voi
 
   // 3. No-op path needs no mise.
   if (requested.length === 0) {
-    console.log(
-      `\n${resolveResultLine({ severity: 'warn', headline: 'Nothing to uninstall.' })}\n`,
-    );
+    printResult('warn', 'Nothing to uninstall.');
     return;
   }
 
@@ -221,9 +219,7 @@ export async function doUninstall(options: UninstallCommandOptions): Promise<voi
     if (!isMiseInstalled()) {
       const plan = { toUninstall: [] as string[], alreadyGone: [] as string[] };
       console.log(renderUninstallSummary(requested, plan, 'preview', true).join('\n'));
-      console.log(
-        `\n${resolveResultLine({ severity: 'warn', headline: 'Dry run complete', summary: 'nothing was uninstalled (mise not installed)' })}\n`,
-      );
+      printResult('warn', 'Dry run complete', 'nothing was uninstalled (mise not installed)');
       return;
     }
     const state = readInstalledState();
@@ -236,9 +232,7 @@ export async function doUninstall(options: UninstallCommandOptions): Promise<voi
         '\n',
       ),
     );
-    console.log(
-      `\n${resolveResultLine({ severity: 'warn', headline: 'Dry run complete', summary: 'no changes were made' })}\n`,
-    );
+    printResult('warn', 'Dry run complete', 'no changes were made', Date.now() - startedAt);
     return;
   }
 
@@ -258,9 +252,7 @@ export async function doUninstall(options: UninstallCommandOptions): Promise<voi
   }
   const plan = uninstallPlan(requested, state);
   if (plan.toUninstall.length === 0) {
-    console.log(
-      `\n${resolveResultLine({ severity: 'warn', headline: 'Nothing to uninstall.' })}\n`,
-    );
+    printResult('warn', 'Nothing to uninstall.');
     return;
   }
 
@@ -272,9 +264,7 @@ export async function doUninstall(options: UninstallCommandOptions): Promise<voi
         default: false,
       });
       if (!proceed) {
-        console.log(
-          `\n${resolveResultLine({ severity: 'warn', headline: 'Aborted', summary: 'no changes were made' })}\n`,
-        );
+        printResult('warn', 'Aborted', 'no changes were made');
         return;
       }
     } else {
@@ -296,13 +286,11 @@ export async function doUninstall(options: UninstallCommandOptions): Promise<voi
     return;
   }
   console.log(renderUninstallSummary(requested, plan, 'result', false).join('\n'));
-  console.log(
-    `\n${resolveResultLine({
-      severity: 'ok',
-      headline: `Removed ${plan.toUninstall.length} tool(s)`,
-      summary:
-        'These are no longer installed in the mise store; `agentenv apply` will reinstall them.',
-    })}\n`,
+  printResult(
+    'ok',
+    `Removed ${plan.toUninstall.length} tool(s)`,
+    'These are no longer installed in the mise store; `agentenv apply` will reinstall them.',
+    Date.now() - startedAt,
   );
 }
 

@@ -21,7 +21,8 @@ import {
   verifySummaryLine,
   verifyToolAvailability,
 } from '../toolchain/mise.js';
-import { renderLogo, resolveResultLine } from '../ui/output.js';
+import { renderLogo } from '../ui/output.js';
+import { printConfigPath, printResult, reportValidation } from '../ui/report.js';
 import { normalizeOutput } from '../utils/output.js';
 
 interface UpdateCommandOptions {
@@ -34,6 +35,7 @@ interface UpdateCommandOptions {
 }
 
 async function doUpdate(options: UpdateCommandOptions): Promise<void> {
+  const startedAt = Date.now();
   if (!isMiseInstalled()) {
     console.error('agentenv update requires mise, but mise was not found.');
     for (const line of miseInstallInstructions()) console.error(`  ${line}`);
@@ -61,7 +63,7 @@ async function doUpdate(options: UpdateCommandOptions): Promise<void> {
       return;
     }
   }
-  console.log(`Config: ${configPath}\n`);
+  printConfigPath(configPath);
 
   let config: AgentenvConfig;
   try {
@@ -72,9 +74,7 @@ async function doUpdate(options: UpdateCommandOptions): Promise<void> {
     return;
   }
   const report = validateConfig(config);
-  for (const warning of report.warnings) console.log(`warning: ${warning}`);
-  if (report.errors.length > 0) {
-    for (const error of report.errors) console.error(`error: ${error}`);
+  if (!reportValidation(report, 'Configuration invalid — not applying.')) {
     process.exitCode = 1;
     return;
   }
@@ -180,17 +180,16 @@ async function doUpdate(options: UpdateCommandOptions): Promise<void> {
 
   if (failed) {
     process.exitCode = 1;
-    console.log(
-      `\n${resolveResultLine({ severity: 'fail', headline: 'Update failed', summary: 'one or more tools could not be upgraded — see the messages above' })}\n`,
+    printResult(
+      'fail',
+      'Update failed',
+      'one or more tools could not be upgraded — see the messages above',
+      Date.now() - startedAt,
     );
   } else if (dryRun) {
-    console.log(
-      `\n${resolveResultLine({ severity: 'ok', headline: 'Dry run complete', summary: 'no changes were made' })}\n`,
-    );
+    printResult('ok', 'Dry run complete', 'no changes were made', Date.now() - startedAt);
   } else {
-    console.log(
-      `\n${resolveResultLine({ severity: 'ok', headline: 'Update complete!', summary: 'tools are up to date' })}\n`,
-    );
+    printResult('ok', 'Update complete!', 'tools are up to date', Date.now() - startedAt);
   }
 
   // Optional file watching mode
