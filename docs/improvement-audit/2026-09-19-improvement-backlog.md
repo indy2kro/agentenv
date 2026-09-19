@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-09-19
 
-Target: 20 · Found: 23 deduplicated items · Completed: 14/23 · Skipped: 0
+Target: 20 · Found: 23 deduplicated items · Completed: 17/23 · Skipped: 0
 
 > **How to use this document.** As you finish each item, change `- [ ]` to `- [x]`,
 > append ` ✅ <commit-sha>`, and bump the "Completed" counter. This file is the source
@@ -71,11 +71,11 @@ bypass**. Both are correctness, not cosmetics.
 
 ## UX & output   (UX-NN)
 
-- [ ] **UX-01** `--scope` values are never validated — `--scope usre` silently operates on project scope · `src/commands/update.ts:50-52`, `src/commands/setup.ts:151`, `src/commands/uninstall.ts:164-166` · effort S · impact med
+- [x] **UX-01** `--scope` values are never validated — `--scope usre` silently operates on project scope · `src/commands/update.ts:50-52`, `src/commands/setup.ts:151`, `src/commands/uninstall.ts:164-166` · effort S · impact med ✅ f0c27b4
   Rationale: a typo silently retargets the project scope (e.g. `update --scope usre` upgrades the project `mise.toml`), while the equivalent bad `scope` in the config file is a hard error; the flag should be a usage error (exit 2).
-- [ ] **UX-02** `shell-fix --dry-run` without `--revert` is silently ignored in show mode · `src/commands/shell-fix.ts:97-108` · effort S · impact low
+- [x] **UX-02** `shell-fix --dry-run` without `--revert` is silently ignored in show mode · `src/commands/shell-fix.ts:97-108` · effort S · impact low ✅ 4aaf1bf
   Rationale: the help text scopes `--dry-run` to `--revert`, but passing it alone prints the manifest as if the flag were absent; a usage error (like the `--json`+`--revert` guard) is clearer.
-- [ ] **UX-03** Shell-argument completion for `agentenv completion <Tab>` is only implemented for bash · `src/commands/completion.ts:74-77` vs `:97-205` · effort S · impact low
+- [x] **UX-03** Shell-argument completion for `agentenv completion <Tab>` is only implemented for bash · `src/commands/completion.ts:74-77` vs `:97-205` · effort S · impact low ✅ a5897b8
   Rationale: zsh/fish/powershell users get flags instead of `bash zsh fish powershell` when completing the completion command's own argument.
 - [ ] **UX-04** `setup --yes` in a directory with only a user-scope config writes a new project config instead of re-applying the existing one · `src/commands/setup.ts:151-198` · effort S · impact med
   Rationale: it resolves `configFilePath(scope)` without falling back to `findConfigPath()` (the wizard does), contradicting the README's "re-applies your existing `agentenv.toml`" and producing two divergent configs.
