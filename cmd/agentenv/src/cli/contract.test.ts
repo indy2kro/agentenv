@@ -270,6 +270,10 @@ direnv = false
     assert.equal(run(['shell-fix', '--revert', '--json'], clean, shellEnv).status, 2);
   });
 
+  it('rejects shell-fix --dry-run without --revert as a usage error', () => {
+    assert.equal(run(['shell-fix', '--dry-run'], clean, shellEnv).status, 2);
+  });
+
   it('suggests a close command name on typos', () => {
     const typo = run(['statsu'], clean);
     assert.equal(typo.status, 2);

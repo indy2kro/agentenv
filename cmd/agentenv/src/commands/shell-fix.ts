@@ -103,6 +103,11 @@ export const shellFixCommand = new Command()
       return;
     }
 
+    if (options.dryRun === true && options.revert !== true) {
+      command.error('--dry-run only applies to --revert (show mode is already read-only).');
+      return;
+    }
+
     if (options.revert === true) {
       renderLogo();
       const dryRun = options.dryRun === true;
