@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { BaseAdapter, AdapterConfig, AdapterResult } from './base.js';
 import { isAgentInstalled } from './detect.js';
+import { writeFileWithRetry } from '../utils/fs-retry.js';
 
 export class ClaudeCodeAdapter extends BaseAdapter {
   private configDir: string;
@@ -170,16 +171,23 @@ export class ClaudeCodeAdapter extends BaseAdapter {
 
     try {
       if (fs.existsSync(settingsPath)) {
-        let settings: any = {};
+        let settings: any;
         const content = fs.readFileSync(settingsPath, 'utf-8');
         try {
           settings = JSON.parse(content);
         } catch {
+          result.success = false;
+          result.errors.push(
+            `Failed to cleanup Claude Code: settings.json is not valid JSON at ${settingsPath}`,
+          );
+          result.message = 'Claude Code adapter cleanup failed';
           return result;
         }
 
-        // Remove RTK hooks
+        // Remove RTK hooks, but only rewrite when the filter actually removed
+        // something (a second cleanup is a no-op and must not churn the file).
         if (Array.isArray(settings.hooks?.PreToolUse)) {
+          const before = settings.hooks.PreToolUse.length;
           settings.hooks.PreToolUse = settings.hooks.PreToolUse.filter(
             (entry: any) =>
               !(
@@ -187,9 +195,10 @@ export class ClaudeCodeAdapter extends BaseAdapter {
                 entry.hooks?.some((hook: any) => hook.command === 'rtk hook claude')
               ),
           );
-
-          fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
-          result.filesModified.push(settingsPath);
+          if (settings.hooks.PreToolUse.length !== before) {
+            writeFileWithRetry(settingsPath, JSON.stringify(settings, null, 2));
+            result.filesModified.push(settingsPath);
+          }
         }
       }
     } catch (err) {

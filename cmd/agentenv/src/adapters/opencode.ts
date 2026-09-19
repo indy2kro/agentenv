@@ -84,12 +84,9 @@ export class OpenCodeAdapter extends BaseAdapter {
 
     const run = resolveRtkInit(this.config.rtkInit)(flags, this.config.baseDir);
     if (run.success) {
-      if (run.stdout.includes('already up to date')) {
-        result.message = 'OpenCode rtk plugin already up to date';
-      } else {
-        if (!existed && fs.existsSync(pluginPath)) result.filesCreated.push(pluginPath);
-        result.message = rtkMessage(run);
-      }
+      if (!existed && fs.existsSync(pluginPath)) result.filesCreated.push(pluginPath);
+      else if (existed) result.filesModified.push(pluginPath);
+      result.message = rtkMessage(run);
     } else {
       result.success = false;
       result.errors.push(run.message + (run.stderr ? `: ${run.stderr.trim()}` : ''));

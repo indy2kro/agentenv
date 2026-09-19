@@ -67,7 +67,9 @@ const defaultRtkInit: RtkInitFn = (args, cwd) => {
       success: ok,
       message: ok
         ? `rtk init ${args.join(' ')} succeeded`
-        : `rtk init ${args.join(' ')} failed (exit ${result.status ?? 'null'})`,
+        : `rtk init ${args.join(' ')} failed (exit ${result.status ?? 'null'})${
+            !ok && result.status === null && result.error ? `: ${result.error.message}` : ''
+          }`,
       stdout: result.stdout || '',
       stderr: result.stderr || '',
     };
