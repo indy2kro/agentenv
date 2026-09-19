@@ -102,6 +102,9 @@ export function generateZsh(model: CompletionModel): string {
       ),
     )
     .join('\n');
+  const shellEntries = COMPLETION_SHELLS.map(
+    (shell) => `    '${zshEscape(`${shell}:${shell}`)}'`,
+  ).join('\n');
   const cases = model.commands
     .flatMap((command) =>
       [command.name, ...command.aliases].map(
@@ -118,6 +121,14 @@ ${commandEntries}
   )
   if (( CURRENT == 2 )); then
     _describe -t commands '${model.program} command' commands
+    return
+  fi
+  local -a shells
+  shells=(
+${shellEntries}
+  )
+  if [[ "\${words[2]}" = "completion" ]]; then
+    _describe -t shells '${model.program} completion shell' shells
     return
   fi
   local -a flags
@@ -156,6 +167,9 @@ export function generateFish(model: CompletionModel): string {
       );
     }
   }
+  lines.push(
+    `complete -c ${model.program} -n '__fish_seen_subcommand_from completion' -a '${COMPLETION_SHELLS.join(' ')}'`,
+  );
   for (const command of model.commands) {
     const seen = [command.name, ...command.aliases].join(' ');
     lines.push(
@@ -174,6 +188,7 @@ export function generatePowerShell(model: CompletionModel): string {
     .flatMap((command) => [command.name, ...command.aliases])
     .map((name) => `'${name}'`)
     .join(', ');
+  const shellNames = COMPLETION_SHELLS.map((shell) => `'${shell}'`).join(', ');
   const global = model.globalFlags.map((flag) => `'${flag}'`).join(', ');
   const cases = model.commands
     .flatMap((command) =>
@@ -182,16 +197,20 @@ export function generatePowerShell(model: CompletionModel): string {
       ),
     )
     .join('\n');
+
   return `# PowerShell completion for ${model.program}. Load with: ${model.program} completion powershell | Out-String | Invoke-Expression
 Register-ArgumentCompleter -Native -CommandName '${psEscape(model.program)}' -ScriptBlock {
   param($wordToComplete, $commandAst, $cursorPosition)
   $commands = @(${commandNames})
+  $shells = @(${shellNames})
   $globals = @(${global})
   $byCommand = @{
 ${cases}
   }
   $elements = @($commandAst.CommandElements | ForEach-Object { $_.ToString() })
-  $candidates = if ($elements.Count -gt 1 -and $byCommand.ContainsKey($elements[1])) {
+  $candidates = if ($elements.Count -gt 1 -and $elements[1] -eq 'completion') {
+    $shells + $globals
+  } elseif ($elements.Count -gt 1 -and $byCommand.ContainsKey($elements[1])) {
     $byCommand[$elements[1]] + $globals
   } else {
     $commands + $globals

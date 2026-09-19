@@ -84,4 +84,15 @@ describe('completion model', () => {
     const bash = generateBash(model);
     assert.match(bash, /completion[\s\S]*bash zsh fish powershell/);
   });
+
+  it('completes the completion argument for zsh, fish, and powershell too', () => {
+    const model = buildCompletionModel(fixtureProgram());
+    const zsh = generateZsh(model);
+    assert.match(zsh, /_describe -t shells/);
+    for (const shell of COMPLETION_SHELLS) {
+      assert.ok(zsh.includes(`'${shell}:${shell}'`), `zsh should complete ${shell}`);
+    }
+    assert.match(generateFish(model), /bash zsh fish powershell/);
+    assert.match(generatePowerShell(model), /'bash', 'zsh', 'fish', 'powershell'/);
+  });
 });
