@@ -368,9 +368,24 @@ export function updateWithMarkers(
 
     const existingContent = fs.readFileSync(filePath, 'utf-8');
 
+    const hasStart = existingContent.includes(markerStart);
+    const hasEnd = existingContent.includes(markerEnd);
+
+    // Only one marker present means a crashed/incomplete prior write; treat
+    // the file as broken rather than appending a second block, which the next
+    // pass would otherwise replace from the first start-marker to the later
+    // end-marker — clobbering any user text between them.
+    if (hasStart !== hasEnd) {
+      return {
+        success: false,
+        updated: false,
+        message: `File ${filePath} contains only one managed marker (a partial write); leaving it untouched`,
+      };
+    }
+
     // Existing files without markers belong to the user. Preserve them and
     // append only our newly managed block.
-    if (!existingContent.includes(markerStart) || !existingContent.includes(markerEnd)) {
+    if (!hasStart) {
       const newStartIndex = newContent.indexOf(markerStart);
       const newEndIndex = newContent.indexOf(markerEnd, newStartIndex);
       if (newStartIndex === -1 || newEndIndex === -1) {

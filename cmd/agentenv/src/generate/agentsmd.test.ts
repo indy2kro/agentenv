@@ -45,6 +45,19 @@ describe('managed instruction blocks', () => {
     assert.equal(result.updated, false);
     assert.equal(fs.readFileSync(filePath, 'utf8'), content);
   });
+
+  it('fails safely when a file has only one marker (partial write)', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-markers-'));
+    const filePath = path.join(directory, 'AGENTS.md');
+    fs.writeFileSync(filePath, `user text\n${start}\nome-players\n`);
+
+    const result = updateWithMarkers(filePath, `${start}\nmanaged\n${end}\n`, start, end);
+
+    assert.equal(result.success, false);
+    assert.equal(result.updated, false);
+    assert.match(result.message, /only one managed marker/);
+    assert.equal(fs.readFileSync(filePath, 'utf8'), `user text\n${start}\nome-players\n`);
+  });
 });
 
 describe('generated AGENTS.md tool listing', () => {
