@@ -15,7 +15,7 @@ import type { BaseAdapter } from '../adapters/index.js';
 import { getEnabledAgents, loadConfig, validateConfig } from '../config/schema.js';
 import type { AgentKey } from '../config/schema.js';
 import { resolveScopeDir } from '../config/scopes.js';
-import { configFilePath, findConfigPath } from '../config/scopes.js';
+import { findConfigPath } from '../config/scopes.js';
 import type { AgentenvConfig } from '../config/schema.js';
 import { SuperpowersAdapter, integrationResultLines } from '../integrations/index.js';
 import type { SuperpowersAdapterDeps } from '../integrations/index.js';
@@ -258,14 +258,19 @@ export const applyCommand = new Command()
     renderLogo();
     const dryRun = options.dryRun === true;
     let config: AgentenvConfig;
+    const configPath = findConfigPath();
+    if (!configPath) {
+      console.error('No agentenv.toml found. Run `agentenv setup` first.');
+      process.exitCode = 1;
+      return;
+    }
     try {
-      config = loadConfig();
+      config = loadConfig(configPath);
     } catch (error) {
       console.error(theme.fail(error instanceof Error ? error.message : String(error)));
       process.exitCode = 1;
       return;
     }
-    const configPath = findConfigPath() ?? configFilePath(config.scope ?? 'project');
     printConfigPath(configPath);
 
     const report = validateConfig(config);

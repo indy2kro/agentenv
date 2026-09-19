@@ -191,6 +191,12 @@ direnv = false
     assert.equal(run(['status'], empty).status, 1);
   });
 
+  it('exits 1 for apply with no config instead of silently applying defaults', () => {
+    const result = run(['apply'], empty, shellEnv);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /No agentenv\.toml found/);
+  });
+
   it('exits 0 for status on a drift-free applied config', () => {
     assert.equal(run(['status'], clean).status, 0);
   });
