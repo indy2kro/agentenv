@@ -6,7 +6,8 @@
  * `--real` (full acceptance): runs against a real `rtk init` on PATH, installs
  * the full Tier 1+2 tool catalog for real via mise, verifies each tool
  * actually runs (not just "detected"), enables all nine agents (real `rtk init`
- * for each), exercises the unattended `setup --yes` path, and drives every
+ * for each) in both project and user scope, exercises the unattended
+ * `setup --yes` path, and drives every
  * read-only/dry-run command against the installed catalog (`apply --dry-run`,
  * `status --json`, `doctor --section`/`--json`, `update --dry-run`,
  * `uninstall --dry-run`) so CI regression-covers the full command surface.
@@ -377,6 +378,45 @@ if (REAL) {
   );
   expect(fs.existsSync(path.join(setupProject, 'mise.toml')), 'setup --yes should write mise.toml');
 
+  // Global/user-scope variation: the same all-9 agent catalog applied from a
+  // `scope = "user"` config, resolved from ~/.config/agentenv with the cwd
+  // holding no agentenv.toml. Exercises the user base dir (generated files
+  // land under ~/.config/agentenv, not the cwd) and the adapters against a
+  // global base, alongside the project-scope run above — the two scopes take
+  // different resolveScopeDir/configFilePath branches, so a regression in one
+  // is invisible to the other. `--skip-mise-install` keeps it files-only.
+  const userProject = path.join(temp, 'user-project');
+  const userScopeDir = path.join(home, '.config', 'agentenv');
+  fs.mkdirSync(userProject, { recursive: true });
+  fs.mkdirSync(userScopeDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(userScopeDir, 'agentenv.toml'),
+    config.replace('scope = "project"', 'scope = "user"'),
+  );
+  let userApplyOut;
+  try {
+    userApplyOut = run(['apply', '--skip-mise-install'], userProject);
+  } catch (err) {
+    console.error('smoke FAIL: user-scope apply exited non-zero');
+    console.error(err.stdout ?? '');
+    console.error(err.stderr ?? '');
+    process.exit(1);
+  }
+  for (const label of ['Gemini CLI', 'Cursor', 'Windsurf', 'Cline CLI', 'Mistral Vibe']) {
+    expect(
+      userApplyOut.includes(label),
+      `user-scope apply should configure ${label}, got:\n${userApplyOut}`,
+    );
+  }
+  expect(
+    fs.existsSync(path.join(userScopeDir, 'AGENTS.md')),
+    'user-scope apply should write generated files under the user config dir',
+  );
+  expect(
+    fs.existsSync(path.join(userScopeDir, 'mise.toml')),
+    'user-scope apply should write mise.toml under the user config dir',
+  );
+
   // Visibility only, not a pass/fail gate: doctor's tool-availability check
   // depends on the shims_dir agentenv would configure actually being live on
   // this job's PATH, which apply (run with --skip-mise-install above) never
@@ -562,5 +602,5 @@ if (!REAL) {
 }
 
 console.log(
-  `smoke OK (${REAL ? 'real rtk + full-catalog install + all-9-agents setup + full command sweep + uninstall roundtrip' : 'rtk stub + skip mise + mise-less uninstall paths'}): apply + status + uninstall verified for all configured agents`,
+  `smoke OK (${REAL ? 'real rtk + full-catalog install + project & user scope for all-9-agents + full command sweep + uninstall roundtrip' : 'rtk stub + skip mise + mise-less uninstall paths'}): apply + status + uninstall verified for all configured agents`,
 );
