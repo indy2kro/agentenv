@@ -82,6 +82,7 @@ any hand-written or previously-saved config.
 | `agentenv apply [--skip-mise-install]` | Non-interactive: read `agentenv.toml` and (re)generate everything — `mise.toml`, `AGENTS.md`/`CLAUDE.md`, per-agent hook files, the Tier 0 shell fix. Safe to run in CI or a script. |
 | `agentenv status` | Read-only report: what's configured, what's actually installed, and where the two disagree (drift) — per agent, per tool, per generated file, plus optional integrations and `gh` auth. |
 | `agentenv doctor` | Standalone environment sanity check (mise, shims, config, tools, agents) — independent of any `agentenv.toml`. |
+| `agentenv shell-fix` | Inspect (or `--revert`) the per-user Tier 0 shell changes `apply` records on Windows. `--json` prints the manifest; `--revert [--dry-run]` restores the values agentenv overwrote (skipping files you changed since). |
 | `agentenv update` | Unattended update of mise itself and the mise-managed tools in your config. |
 | `agentenv uninstall` | Remove mise-managed tools in your config from the mise store (cleanup); `agentenv apply` reinstalls them. `--dry-run` previews, `--yes` skips the prompt. |
 

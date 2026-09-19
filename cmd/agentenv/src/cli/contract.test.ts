@@ -33,6 +33,7 @@ describe('CLI exit-code contract', () => {
   let wipe: string;
   let agentsonly: string;
   let noMiseEnv: NodeJS.ProcessEnv;
+  let shellEnv: NodeJS.ProcessEnv;
 
   before(() => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-contract-'));
@@ -164,6 +165,16 @@ direnv = false
       HOME: scrub,
       XDG_DATA_HOME: scrub,
     };
+
+    // `shell-fix` reads/writes a per-user manifest, so its runs must be
+    // sandboxed to a temp HOME/XDG or they would touch the developer's real
+    // ~/.config/agentenv/shell-fix-state.json.
+    shellEnv = {
+      ...process.env,
+      HOME: scrub,
+      USERPROFILE: scrub,
+      XDG_CONFIG_HOME: path.join(scrub, 'xdg'),
+    };
   });
 
   it('exits 0 for --help and --version', () => {
@@ -223,6 +234,24 @@ direnv = false
     assert.equal(run(['uninstall', '--json'], clean).status, 2);
   });
 
+  it('shell-fix reports an empty manifest and is a revert no-op (sandboxed)', () => {
+    const show = run(['shell-fix', '--json'], clean, shellEnv);
+    assert.equal(show.status, 0);
+    const json = JSON.parse(show.stdout);
+    assert.equal(json.command, 'shell-fix');
+    assert.deepEqual(json.recorded, []);
+    assert.equal(json.exitCode, 0);
+    assert.equal(show.stderr, '', `shell-fix --json should be silent on stderr: ${show.stderr}`);
+
+    const revert = run(['shell-fix', '--revert'], clean, shellEnv);
+    assert.equal(revert.status, 0);
+    assert.match(revert.stdout, /Nothing to revert/);
+  });
+
+  it('rejects shell-fix --revert --json as a usage error', () => {
+    assert.equal(run(['shell-fix', '--revert', '--json'], clean, shellEnv).status, 2);
+  });
+
   it('suggests a close command name on typos', () => {
     const typo = run(['statsu'], clean);
     assert.equal(typo.status, 2);
@@ -272,7 +301,16 @@ direnv = false
   });
 
   it('completion emits a script covering every command for each supported shell', () => {
-    const commands = ['setup', 'apply', 'status', 'update', 'doctor', 'uninstall', 'completion'];
+    const commands = [
+      'setup',
+      'apply',
+      'status',
+      'update',
+      'doctor',
+      'uninstall',
+      'completion',
+      'shell-fix',
+    ];
     for (const shell of ['bash', 'zsh', 'fish', 'powershell']) {
       const out = run(['completion', shell], clean);
       assert.equal(out.status, 0, `${shell} completion should exit 0: ${out.stderr}`);

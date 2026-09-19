@@ -1,9 +1,9 @@
 # Exit codes and machine-readable output
 
 `agentenv` is safe to drive from scripts: every command exits `0`, `1`, or
-`2` with a stable meaning, two commands (`status`, `doctor`) can emit a
-single JSON document on stdout, and a global `-q/--quiet` strips banner
-chrome while keeping the data lines.
+`2` with a stable meaning, three commands (`status`, `doctor`, `shell-fix`)
+can emit a single JSON document on stdout, and a global `-q/--quiet` strips
+banner chrome while keeping the data lines.
 
 ## The exit-code contract
 
@@ -28,6 +28,7 @@ successful informational exits, not errors.
 | `update` | tools/runtime updated to latest | an update step failed, including a failed shims precondition |
 | `uninstall` | targets removed from the mise store (or nothing to remove — "Nothing to uninstall."); `--dry-run` previews and exits `0` | no config found, unknown tool argument, mise missing with real targets, a failed `mise ls --json`/`mise uninstall`, or a non-TTY run without `--yes` |
 | `doctor` | no `fail` items | any `fail` item (`warn` items do not flip the code) |
+| `shell-fix` | the manifest was shown, or `--revert` restored every recorded file (a no-op manifest also exits `0`) | `--revert` left at least one file untouched because you changed the value after agentenv wrote it |
 
 ### `status` drift definition
 
@@ -51,14 +52,18 @@ successful informational exits, not errors.
 - a `custom_tools` entry marked `already_installed` has its OS-specific path
   missing on disk (status flags it as `MISSING on disk`).
 
-## `--json` (`status` and `doctor` only)
+## `--json` (`status`, `doctor`, and `shell-fix` only)
 
-`--json` is available on the two read-only reporting commands. When set, the
+`--json` is available on the read-only reporting commands. When set, the
 command emits a **single JSON document on stdout and nothing else** (diagnostics
 stay on stderr, which is silent on success), skips banner/color, and implies
 quiet mode. The process exit code still applies — it is set by the same logic
 as the human path and is mirrored inside the document as `exitCode` — so a
 consumer can branch on both the code and the structured body.
+
+`shell-fix --json` prints the recorded Tier 0 manifest (or an empty one) and is
+show-only: combining `--json` with the mutating `--revert` is a usage error and
+exits `2`.
 
 `status --json` always emits a complete document, including on missing or
 invalid config:

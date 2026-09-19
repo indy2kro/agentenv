@@ -10,6 +10,15 @@ import * as child_process from 'child_process';
 import { AGENT_KEYS } from '../config/schema.js';
 import type { AgentKey } from '../config/schema.js';
 import { pathContainsDir } from '../toolchain/mise.js';
+import {
+  clearShellFixState,
+  mergeShellFixEntries,
+  readShellFixState,
+  shellFixStatePath,
+  writeShellFixState,
+  type ShellFixField,
+  type ShellFixStateEntry,
+} from './shell-fix-state.js';
 
 // Well-known POSIX utilities that should be available
 export const POSIX_UTILITIES = [
@@ -415,6 +424,21 @@ export interface ShellFixResult {
   file: string;
   action: ShellFixAction;
   message: string;
+  /** Present for created/updated writes: the record used by `shell-fix --revert`. */
+  state?: ShellFixStateEntry;
+}
+
+export type ShellFixRevertAction = 'removed' | 'reverted' | 'skipped' | 'absent';
+
+export interface ShellFixRevertResult {
+  agent: AgentKey;
+  file: string;
+  action: ShellFixRevertAction;
+  message: string;
+}
+
+function priorField(key: string, previous: string | null): ShellFixField {
+  return { key, previous };
 }
 
 /**
@@ -490,6 +514,12 @@ function patchClaudeShellFix(bashExe: string, home: string): ShellFixResult {
       file,
       action: 'created',
       message: `Set CLAUDE_CODE_GIT_BASH_PATH in ${file}`,
+      state: {
+        agent: 'claude_code',
+        file,
+        createdFile: true,
+        fields: [priorField('env.CLAUDE_CODE_GIT_BASH_PATH', null)],
+      },
     };
   }
 
@@ -510,6 +540,7 @@ function patchClaudeShellFix(bashExe: string, home: string): ShellFixResult {
     return { agent: 'claude_code', file, action: 'unchanged', message: `Already set in ${file}` };
   }
 
+  const previous = typeof env[bashKey] === 'string' ? (env[bashKey] as string) : null;
   env[bashKey] = bashExe;
   settings.env = env;
   fs.writeFileSync(file, JSON.stringify(settings, null, 2));
@@ -518,6 +549,12 @@ function patchClaudeShellFix(bashExe: string, home: string): ShellFixResult {
     file,
     action: 'updated',
     message: `Set CLAUDE_CODE_GIT_BASH_PATH in ${file}`,
+    state: {
+      agent: 'claude_code',
+      file,
+      createdFile: false,
+      fields: [priorField('env.CLAUDE_CODE_GIT_BASH_PATH', previous)],
+    },
   };
 }
 
@@ -533,6 +570,12 @@ function patchCodexShellFix(bashExe: string, home: string): ShellFixResult {
       file,
       action: 'created',
       message: `Set [windows] shell_path in ${file}`,
+      state: {
+        agent: 'codex_cli',
+        file,
+        createdFile: true,
+        fields: [priorField('[windows].shell_path', null)],
+      },
     };
   }
 
@@ -548,6 +591,12 @@ function patchCodexShellFix(bashExe: string, home: string): ShellFixResult {
     file,
     action: 'updated',
     message: `Set [windows] shell_path in ${file}`,
+    state: {
+      agent: 'codex_cli',
+      file,
+      createdFile: false,
+      fields: [priorField('[windows].shell_path', readTomlWindowsShellPath(original) ?? null)],
+    },
   };
 }
 
@@ -562,6 +611,12 @@ function patchOpenCodeShellFix(bashExe: string, home: string): ShellFixResult {
       file,
       action: 'created',
       message: `Set shell/defaultShell in ${file}`,
+      state: {
+        agent: 'opencode',
+        file,
+        createdFile: true,
+        fields: [priorField('shell', null), priorField('defaultShell', null)],
+      },
     };
   }
 
@@ -581,6 +636,9 @@ function patchOpenCodeShellFix(bashExe: string, home: string): ShellFixResult {
     return { agent: 'opencode', file, action: 'unchanged', message: `Already set in ${file}` };
   }
 
+  const priorShell = typeof config.shell === 'string' ? (config.shell as string) : null;
+  const priorDefault =
+    typeof config.defaultShell === 'string' ? (config.defaultShell as string) : null;
   config.shell = bashExe;
   config.defaultShell = bashExe;
   fs.writeFileSync(file, JSON.stringify(config, null, 2));
@@ -589,6 +647,12 @@ function patchOpenCodeShellFix(bashExe: string, home: string): ShellFixResult {
     file,
     action: 'updated',
     message: `Set shell/defaultShell in ${file}`,
+    state: {
+      agent: 'opencode',
+      file,
+      createdFile: false,
+      fields: [priorField('shell', priorShell), priorField('defaultShell', priorDefault)],
+    },
   };
 }
 
@@ -622,6 +686,23 @@ function setTomlWindowsShellPath(content: string, valueLine: string): string {
 }
 
 /**
+ * Persist the revert records for the files an apply actually changed. Best
+ * effort: a failure to record must never fail the apply itself.
+ */
+function recordShellFixState(results: ShellFixResult[], bashExe: string, statePath: string): void {
+  const entries = results
+    .map((result) => result.state)
+    .filter((entry): entry is ShellFixStateEntry => entry !== undefined);
+  if (entries.length === 0) return;
+  try {
+    const existing = readShellFixState(statePath);
+    writeShellFixState(mergeShellFixEntries(existing, entries, bashExe), statePath);
+  } catch {
+    // Recording is advisory; the fix itself already succeeded.
+  }
+}
+
+/**
  * Fix shell configuration for Windows and macOS
  * This is a Tier 0 fix - ensures POSIX utilities are available
  */
@@ -629,6 +710,7 @@ export function fixShellConfiguration(
   _baseDir: string = '.',
   agents: AgentKey[] = [...AGENT_KEYS],
   complex: boolean = process.stdin.isTTY === true,
+  statePath: string = shellFixStatePath(),
 ): {
   success: boolean;
   message: string;
@@ -669,6 +751,7 @@ export function fixShellConfiguration(
     const written = results.filter(
       (result) => result.action === 'created' || result.action === 'updated',
     );
+    recordShellFixState(written, bashExe, statePath);
 
     const message =
       written.length > 0
@@ -882,4 +965,203 @@ function checkOpenCodeShell(home: string): {
   } catch {
     return { isConfigured: false, needsFix: true };
   }
+}
+
+/**
+ * Remove the `shell_path` line that setTomlWindowsShellPath writes and, if that
+ * leaves the `[windows]` section empty, the section header too. Returns the
+ * content unchanged when no `shell_path` line is present.
+ */
+export function removeTomlWindowsShellPath(content: string): string {
+  const lines = content.split(/\r?\n/);
+  const shellPathIndex = lines.findIndex((line) => /^shell_path\s*=/.test(line.trim()));
+  if (shellPathIndex === -1) return content;
+  lines.splice(shellPathIndex, 1);
+
+  const headerIndex = lines.findIndex((line) => line.trim() === '[windows]');
+  if (headerIndex !== -1) {
+    let empty = true;
+    for (let i = headerIndex + 1; i < lines.length; i++) {
+      const trimmed = lines[i].trim();
+      if (/^\[.*]$/.test(trimmed)) break;
+      if (trimmed !== '') {
+        empty = false;
+        break;
+      }
+    }
+    if (empty) lines.splice(headerIndex, 1);
+  }
+
+  while (lines.length > 0 && lines[lines.length - 1].trim() === '') lines.pop();
+  return lines.length > 0 ? `${lines.join('\n')}\n` : '';
+}
+
+function revertResult(
+  entry: ShellFixStateEntry,
+  action: ShellFixRevertAction,
+  message: string,
+): ShellFixRevertResult {
+  return { agent: entry.agent, file: entry.file, action, message };
+}
+
+function restoreClaudeShellFix(
+  entry: ShellFixStateEntry,
+  bashExe: string,
+  dryRun: boolean,
+): ShellFixRevertResult {
+  if (!fs.existsSync(entry.file)) {
+    return revertResult(entry, 'absent', `${entry.file} is already gone`);
+  }
+  let settings: Record<string, unknown>;
+  try {
+    settings = JSON.parse(fs.readFileSync(entry.file, 'utf-8')) as Record<string, unknown>;
+  } catch {
+    return revertResult(entry, 'skipped', `${entry.file} is not valid JSON; leaving it untouched`);
+  }
+  const env = (settings.env ?? {}) as Record<string, unknown>;
+  const key = 'CLAUDE_CODE_GIT_BASH_PATH';
+  if (env[key] === undefined) {
+    return revertResult(entry, 'absent', `No agentenv shell override in ${entry.file}`);
+  }
+  if (env[key] !== bashExe) {
+    return revertResult(
+      entry,
+      'skipped',
+      `${entry.file}: CLAUDE_CODE_GIT_BASH_PATH changed after agentenv set it; leaving it untouched`,
+    );
+  }
+  const previous =
+    entry.fields.find((field) => field.key === 'env.CLAUDE_CODE_GIT_BASH_PATH')?.previous ?? null;
+  if (previous === null) delete env[key];
+  else env[key] = previous;
+  if (Object.keys(env).length === 0) delete settings.env;
+
+  if (entry.createdFile && Object.keys(settings).length === 0) {
+    if (!dryRun) fs.rmSync(entry.file, { force: true });
+    return revertResult(entry, 'removed', `Removed ${entry.file} (created by agentenv)`);
+  }
+  if (!dryRun) fs.writeFileSync(entry.file, JSON.stringify(settings, null, 2));
+  return revertResult(entry, 'reverted', `Restored ${entry.file}`);
+}
+
+function restoreCodexShellFix(
+  entry: ShellFixStateEntry,
+  bashExe: string,
+  dryRun: boolean,
+): ShellFixRevertResult {
+  if (!fs.existsSync(entry.file)) {
+    return revertResult(entry, 'absent', `${entry.file} is already gone`);
+  }
+  const content = fs.readFileSync(entry.file, 'utf-8');
+  const current = readTomlWindowsShellPath(content);
+  if (current === undefined) {
+    return revertResult(entry, 'absent', `No agentenv shell override in ${entry.file}`);
+  }
+  if (current !== bashExe) {
+    return revertResult(
+      entry,
+      'skipped',
+      `${entry.file}: [windows] shell_path changed after agentenv set it; leaving it untouched`,
+    );
+  }
+  const next = removeTomlWindowsShellPath(content);
+  if (entry.createdFile && next.trim() === '') {
+    if (!dryRun) fs.rmSync(entry.file, { force: true });
+    return revertResult(entry, 'removed', `Removed ${entry.file} (created by agentenv)`);
+  }
+  if (next !== content && !dryRun) fs.writeFileSync(entry.file, next);
+  return revertResult(entry, 'reverted', `Restored ${entry.file}`);
+}
+
+function restoreOpenCodeShellFix(
+  entry: ShellFixStateEntry,
+  bashExe: string,
+  dryRun: boolean,
+): ShellFixRevertResult {
+  if (!fs.existsSync(entry.file)) {
+    return revertResult(entry, 'absent', `${entry.file} is already gone`);
+  }
+  let config: Record<string, unknown>;
+  try {
+    config = JSON.parse(fs.readFileSync(entry.file, 'utf-8')) as Record<string, unknown>;
+  } catch {
+    return revertResult(entry, 'skipped', `${entry.file} is not valid JSON; leaving it untouched`);
+  }
+
+  let changed = false;
+  let drifted = false;
+  for (const key of ['shell', 'defaultShell'] as const) {
+    if (config[key] === undefined) continue;
+    if (config[key] !== bashExe) {
+      drifted = true;
+      continue;
+    }
+    const previous = entry.fields.find((field) => field.key === key)?.previous ?? null;
+    if (previous === null) delete config[key];
+    else config[key] = previous;
+    changed = true;
+  }
+
+  if (!changed && !drifted) {
+    return revertResult(entry, 'absent', `No agentenv shell override in ${entry.file}`);
+  }
+  if (drifted && !changed) {
+    return revertResult(
+      entry,
+      'skipped',
+      `${entry.file}: shell/defaultShell changed after agentenv set it; leaving it untouched`,
+    );
+  }
+  if (entry.createdFile && Object.keys(config).length === 0) {
+    if (!dryRun) fs.rmSync(entry.file, { force: true });
+    return revertResult(entry, 'removed', `Removed ${entry.file} (created by agentenv)`);
+  }
+  if (changed && !dryRun) fs.writeFileSync(entry.file, JSON.stringify(config, null, 2));
+  return revertResult(entry, 'reverted', `Restored ${entry.file}`);
+}
+
+function revertShellFixEntry(
+  entry: ShellFixStateEntry,
+  bashExe: string,
+  dryRun: boolean,
+): ShellFixRevertResult {
+  switch (entry.agent) {
+    case 'claude_code':
+      return restoreClaudeShellFix(entry, bashExe, dryRun);
+    case 'codex_cli':
+      return restoreCodexShellFix(entry, bashExe, dryRun);
+    case 'opencode':
+      return restoreOpenCodeShellFix(entry, bashExe, dryRun);
+    default:
+      return revertResult(entry, 'skipped', `${entry.agent}: no revert handler`);
+  }
+}
+
+/**
+ * Undo the Tier 0 agent shell fixes recorded by previous applies. Each entry is
+ * reverted only when the file still holds the value agentenv set; a value the
+ * user changed afterwards is left untouched and reported as skipped, and the
+ * manifest retains that entry so a later run can retry. Clears the manifest
+ * once nothing is left to revert. With `dryRun`, reports what it would do
+ * without touching any file or the manifest.
+ */
+export function revertShellFixes(
+  statePath: string = shellFixStatePath(),
+  dryRun: boolean = false,
+): ShellFixRevertResult[] {
+  const state = readShellFixState(statePath);
+  if (!state) return [];
+
+  const results: ShellFixRevertResult[] = [];
+  const remaining: ShellFixStateEntry[] = [];
+  for (const entry of state.entries) {
+    const result = revertShellFixEntry(entry, state.bashExe, dryRun);
+    results.push(result);
+    if (result.action === 'skipped') remaining.push(entry);
+  }
+
+  if (dryRun) return results;
+  if (remaining.length === 0) clearShellFixState(statePath);
+  else writeShellFixState({ ...state, entries: remaining }, statePath);
+  return results;
 }

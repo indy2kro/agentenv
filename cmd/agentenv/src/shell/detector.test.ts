@@ -8,12 +8,33 @@ import {
   bashExecutable,
   checkAgentShellConfiguration,
   fixShellConfiguration,
+  removeTomlWindowsShellPath,
+  revertShellFixes,
+  type ShellFixResult,
 } from './detector.js';
+import {
+  mergeShellFixEntries,
+  readShellFixState,
+  writeShellFixState,
+  type ShellFixStateEntry,
+} from './shell-fix-state.js';
 
 const bashExe = 'C:\\Program Files\\Git\\usr\\bin\\bash.exe';
 
 function tempHome(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-tier0s-'));
+}
+
+function tempStatePath(): string {
+  return path.join(tempHome(), 'state', 'shell-fix-state.json');
+}
+
+/** Persist the revert records from apply results, as fixShellConfiguration does. */
+function persist(results: ShellFixResult[], bashExeValue: string, statePath: string): void {
+  const entries = results
+    .map((result) => result.state)
+    .filter((entry): entry is ShellFixStateEntry => entry !== undefined);
+  writeShellFixState(mergeShellFixEntries(null, entries, bashExeValue), statePath);
 }
 
 describe('Tier 0 shell fix', () => {
@@ -218,4 +239,174 @@ describe('Tier 0 shell fix', () => {
       }
     });
   });
+
+  describe('revert records and applies', () => {
+    it('records prior values for created and updated writes', () => {
+      const created = applyAgentShellFix('claude_code', bashExe, tempHome());
+      assert.equal(created.state?.createdFile, true);
+      assert.equal(created.state?.fields[0].previous, null);
+
+      const home = tempHome();
+      const file = path.join(home, '.claude', 'settings.json');
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, JSON.stringify({ env: { CLAUDE_CODE_GIT_BASH_PATH: 'old-bash' } }));
+      const updated = applyAgentShellFix('claude_code', bashExe, home);
+      assert.equal(updated.state?.createdFile, false);
+      assert.equal(updated.state?.fields[0].previous, 'old-bash');
+
+      const codexHome = tempHome();
+      const codexFile = path.join(codexHome, '.codex', 'config.toml');
+      fs.mkdirSync(path.dirname(codexFile), { recursive: true });
+      fs.writeFileSync(codexFile, '[windows]\nshell_path = "old-bash"\n');
+      const codex = applyAgentShellFix('codex_cli', bashExe, codexHome);
+      assert.equal(codex.state?.fields[0].previous, 'old-bash');
+    });
+
+    it('revert deletes files agentenv created and clears the manifest', () => {
+      const statePath = tempStatePath();
+      const home = tempHome();
+      const results = MANAGED.map((agent) => applyAgentShellFix(agent, bashExe, home));
+      persist(results, bashExe, statePath);
+
+      const reverted = revertShellFixes(statePath);
+      assert.equal(reverted.length, 3);
+      assert.ok(reverted.every((result) => result.action === 'removed'));
+      for (const result of results) assert.equal(fs.existsSync(result.file), false);
+      assert.equal(readShellFixState(statePath), null);
+    });
+
+    it('revert restores prior values and preserves unrelated user content', () => {
+      const statePath = tempStatePath();
+
+      const home = tempHome();
+      const claudeFile = path.join(home, '.claude', 'settings.json');
+      fs.mkdirSync(path.dirname(claudeFile), { recursive: true });
+      fs.writeFileSync(
+        claudeFile,
+        JSON.stringify({ env: { CLAUDE_CODE_GIT_BASH_PATH: 'old-bash', KEEP: 'x' } }),
+      );
+      const results = [applyAgentShellFix('claude_code', bashExe, home)];
+      persist(results, bashExe, statePath);
+
+      const reverted = revertShellFixes(statePath);
+      assert.equal(reverted[0].action, 'reverted');
+      const settings = JSON.parse(fs.readFileSync(claudeFile, 'utf8'));
+      assert.equal(settings.env.CLAUDE_CODE_GIT_BASH_PATH, 'old-bash');
+      assert.equal(settings.env.KEEP, 'x');
+    });
+
+    it('revert removes an added opencode key and keeps the rest of the file', () => {
+      const statePath = tempStatePath();
+      const home = tempHome();
+      const file = path.join(home, '.config', 'opencode', 'opencode.json');
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, JSON.stringify({ shell: '/bin/sh', theme: 'dark' }));
+      persist([applyAgentShellFix('opencode', bashExe, home)], bashExe, statePath);
+
+      assert.equal(revertShellFixes(statePath)[0].action, 'reverted');
+      const config = JSON.parse(fs.readFileSync(file, 'utf8'));
+      assert.equal(config.shell, '/bin/sh');
+      assert.equal(config.theme, 'dark');
+      assert.equal('defaultShell' in config, false);
+    });
+
+    it('revert removes the injected [windows] section from a codex config', () => {
+      const statePath = tempStatePath();
+      const home = tempHome();
+      const file = path.join(home, '.codex', 'config.toml');
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, '[model]\nwire_api = true\n');
+      persist([applyAgentShellFix('codex_cli', bashExe, home)], bashExe, statePath);
+
+      const reverted = revertShellFixes(statePath);
+      assert.equal(reverted[0].action, 'reverted');
+      const content = fs.readFileSync(file, 'utf8');
+      assert.match(content, /\[model\]/);
+      assert.doesNotMatch(content, /\[windows\]/);
+      assert.doesNotMatch(content, /shell_path/);
+    });
+
+    it('revert reports absent when the value was already removed', () => {
+      const statePath = tempStatePath();
+      const home = tempHome();
+      const file = path.join(home, '.config', 'opencode', 'opencode.json');
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, JSON.stringify({ theme: 'dark' }));
+      writeShellFixState(
+        mergeShellFixEntries(
+          null,
+          [
+            {
+              agent: 'opencode',
+              file,
+              createdFile: false,
+              fields: [
+                { key: 'shell', previous: null },
+                { key: 'defaultShell', previous: null },
+              ],
+            },
+          ],
+          bashExe,
+        ),
+        statePath,
+      );
+
+      assert.equal(revertShellFixes(statePath)[0].action, 'absent');
+    });
+
+    it('revert leaves a user-changed value untouched and keeps the manifest', () => {
+      const statePath = tempStatePath();
+      const home = tempHome();
+      const file = path.join(home, '.claude', 'settings.json');
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, JSON.stringify({ theme: 'dark' }), { flag: 'w' });
+      persist([applyAgentShellFix('claude_code', bashExe, home)], bashExe, statePath);
+
+      fs.writeFileSync(file, JSON.stringify({ env: { CLAUDE_CODE_GIT_BASH_PATH: 'user-chosen' } }));
+      const reverted = revertShellFixes(statePath);
+      assert.equal(reverted[0].action, 'skipped');
+      const settings = JSON.parse(fs.readFileSync(file, 'utf8'));
+      assert.equal(settings.env.CLAUDE_CODE_GIT_BASH_PATH, 'user-chosen');
+      assert.equal(readShellFixState(statePath)?.entries.length, 1);
+    });
+
+    it('revert dry-run reports the action without writing', () => {
+      const statePath = tempStatePath();
+      const home = tempHome();
+      persist([applyAgentShellFix('claude_code', bashExe, home)], bashExe, statePath);
+      const file = path.join(home, '.claude', 'settings.json');
+
+      const preview = revertShellFixes(statePath, true);
+      assert.equal(preview[0].action, 'removed');
+      assert.equal(fs.existsSync(file), true);
+      assert.equal(readShellFixState(statePath)?.entries.length, 1);
+    });
+  });
+
+  describe('removeTomlWindowsShellPath', () => {
+    it('removes the line and the now-empty [windows] section', () => {
+      const out = removeTomlWindowsShellPath('[model]\nx = 1\n\n[windows]\nshell_path = "b"\n');
+      assert.match(out, /\[model\]/);
+      assert.doesNotMatch(out, /\[windows\]/);
+      assert.doesNotMatch(out, /shell_path/);
+    });
+
+    it('keeps the [windows] section when other keys remain', () => {
+      const out = removeTomlWindowsShellPath('[windows]\nshell_path = "b"\nsomething_else = 1\n');
+      assert.match(out, /\[windows\]/);
+      assert.match(out, /something_else = 1/);
+      assert.doesNotMatch(out, /shell_path/);
+    });
+
+    it('returns the content unchanged when there is no shell_path', () => {
+      const content = '[model]\nx = 1\n';
+      assert.equal(removeTomlWindowsShellPath(content), content);
+    });
+  });
 });
+
+const MANAGED: Array<'claude_code' | 'codex_cli' | 'opencode'> = [
+  'claude_code',
+  'codex_cli',
+  'opencode',
+];

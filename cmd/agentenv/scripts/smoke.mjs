@@ -9,8 +9,9 @@
  * for each) in both project and user scope, exercises the unattended
  * `setup --yes` path, and drives every
  * read-only/dry-run command against the installed catalog (`apply --dry-run`,
- * `status --json`, `doctor --section`/`--json`, `update --dry-run`,
- * `uninstall --dry-run`) so CI regression-covers the full command surface.
+ * `status --json`, `doctor --section`/`--json`, `shell-fix --json`/`--revert
+ * --dry-run`, `update --dry-run`, `uninstall --dry-run`) so CI
+ * regression-covers the full command surface.
  * Slower and network-dependent; runs on `main` only (smoke.yml).
  */
 import { execFileSync } from 'node:child_process';
@@ -489,6 +490,27 @@ if (REAL) {
   }
   expect(doctorDoc.command === 'doctor', `doctor --json should identify itself, got:\n${doctorJson.stdout}`);
   expect(doctorDoc.exitCode === doctorJson.status, 'doctor --json exitCode should match the process exit status');
+
+  const shellFixJson = runAllowingExit(['shell-fix', '--json'], project);
+  expect(shellFixJson.status === 0, `shell-fix --json should exit 0, got ${shellFixJson.status}:\n${shellFixJson.stdout}`);
+  let shellFixDoc;
+  try {
+    shellFixDoc = JSON.parse(shellFixJson.stdout);
+  } catch {
+    console.error('smoke FAIL: shell-fix --json did not emit valid JSON');
+    process.exit(1);
+  }
+  expect(shellFixDoc.command === 'shell-fix', `shell-fix --json should identify itself, got:\n${shellFixJson.stdout}`);
+  expect(
+    Array.isArray(shellFixDoc.recorded) && Array.isArray(shellFixDoc.current),
+    `shell-fix --json should carry recorded/current arrays, got:\n${shellFixJson.stdout}`,
+  );
+
+  const shellFixRevert = runAllowingExit(['shell-fix', '--revert', '--dry-run'], project);
+  expect(
+    shellFixRevert.status === 0,
+    `shell-fix --revert --dry-run should exit 0, got ${shellFixRevert.status}:\n${shellFixRevert.stdout}`,
+  );
 
   const dryUpdate = runAllowingExit(['update', '--dry-run'], project);
   expect(dryUpdate.status === 0, `update --dry-run should exit 0, got ${dryUpdate.status}:\n${dryUpdate.stdout}`);

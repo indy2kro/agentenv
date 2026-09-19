@@ -121,7 +121,12 @@ of `setup`/`configure`/`apply` funnel into, in this fixed order:
 drift (configured vs. actually installed/on-PATH) without changing anything.
 `agentenv doctor` (`src/commands/doctor.ts`) is a standalone environment
 sanity check (mise, shims dir, shell, per-agent binary detection) independent
-of any `agentenv.toml`.
+of any `agentenv.toml`. `agentenv shell-fix` (`src/commands/shell-fix.ts`) is
+the read/revert side of step 2: `apply` records every per-user Tier 0 edit in a
+manifest (`src/shell/shell-fix-state.ts`, at
+`userConfigDir()/shell-fix-state.json`) and `--revert` restores the recorded
+prior values, refusing to touch a value the user changed after agentenv wrote
+it.
 
 Adding a new agent means adding one `BaseAdapter` implementation (for the
 common rtk-delegated case a one-file `RtkDelegationAdapter` subclass, see
