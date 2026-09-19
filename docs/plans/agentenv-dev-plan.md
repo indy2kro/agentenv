@@ -337,12 +337,13 @@ agentenv/
   default, plus a small `IntegrationAdapter` contract parallel to the
   per-agent adapters (§6 architecture table), for third-party
   skill/methodology integrations installed through their own documented
-  native mechanisms — never vendored, never a second plugin runtime. Full
-  design: `docs/superpowers/specs/2026-09-14-optional-integrations-design.md`
-  (local planning doc, not committed — see that file's own repo if you need
-  it regenerated). Implementation plan:
-  `docs/superpowers/plans/2026-09-14-superpowers-integration.md` (same
-  caveat).
+  native mechanisms — never vendored, never a second plugin runtime. The
+  integration lives in `cmd/agentenv/src/integrations/` (`IntegrationAdapter`
+  contract in `base.ts`, Superpowers in `superpowers.ts`); the per-agent
+  install-mechanism findings live in
+  `docs/research/superpowers-install-mechanisms.md`. (The original
+  optional-integrations design spec was a local planning doc under
+  `docs/superpowers/`, deliberately removed once implemented.)
 - First integration: Superpowers (`github:obra/superpowers`). Upstream now
   documents installers for many more coding-agent harnesses than agentenv's
   target agents, but among those, only Claude Code has a documented,
@@ -382,9 +383,8 @@ agentenv/
 
 A documented, test-enforced process-exit contract, a machine-readable `--json`
 surface for the read-only commands, a global quiet mode, and truthful
-prerequisite docs. Design: `docs/superpowers/specs/2026-09-16-cli-contract-docs-design.md`;
-implementation: `docs/superpowers/plans/2026-09-17-cli-contract-docs.md`.
-No new runtime dependencies.
+prerequisite docs. Design: `docs/guides/exit-codes.md` plus the `src/cli/`
+and `src/ui/` implementations. No new runtime dependencies.
 
 - **Exit contract:** usage errors (unknown command/option, missing required
   argument) exit `2` with `--help`/`--version` keeping `0`, enforced at the
@@ -415,9 +415,9 @@ No new runtime dependencies.
 ### Phase 8 — Uninstall command & full-catalog smoke
 
 The `agentenv uninstall` cleanup command and the real smoke's full-catalog
-install→uninstall roundtrip. Design:
-`docs/superpowers/specs/2026-09-18-uninstall-command-design.md`; implementation:
-`docs/superpowers/plans/2026-09-18-uninstall-command.md`. No new runtime dependencies.
+install→uninstall roundtrip. Design: `docs/guides/exit-codes.md` (uninstall
+entry) plus the `src/commands/uninstall.ts` and `scripts/smoke.mjs`
+implementations. No new runtime dependencies.
 
 - `agentenv uninstall` derives its target set from the active `agentenv.toml`:
   non-fallback `[tools]` plus `custom_tools` with `mise_source`, deduped by

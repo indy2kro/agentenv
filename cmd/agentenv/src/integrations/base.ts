@@ -3,7 +3,7 @@
  * Parallel to ../adapters (agent config adapters): integration adapters
  * invoke and observe third-party installation mechanisms instead of owning
  * agentenv-generated config. See
- * docs/superpowers/specs/2026-09-14-optional-integrations-design.md.
+ * docs/research/superpowers-install-mechanisms.md.
  */
 
 import type { AgentKey, IntegrationConfig } from '../config/schema.js';

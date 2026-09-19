@@ -1,6 +1,7 @@
 # Research: Superpowers Native Installation Mechanisms Per Agent
 
-**Status:** Resolved — feeds `docs/superpowers/plans/2026-09-14-superpowers-integration.md`.
+**Status:** Resolved — feeds `cmd/agentenv/src/integrations/superpowers.ts`
+(the Superpowers integration adapter).
 
 **Re-verified 2026-09-15** against the current `obra/superpowers` README.
 Upstream now documents installers for many more harnesses than agentenv's
@@ -12,11 +13,11 @@ The findings below for those four are unchanged.
 
 ## The Question
 
-`docs/superpowers/specs/2026-09-14-optional-integrations-design.md` requires
-the Superpowers integration adapter to "use the integration's documented
-native installation mechanism for each supported agent" and to report
-"manual action required" rather than "execute an unreviewed remote command"
-whenever a host's installer cannot accept a pinned ref non-interactively.
+The Superpowers integration adapter is required to "use the integration's
+documented native installation mechanism for each supported agent" and to
+report "manual action required" rather than "execute an unreviewed remote
+command" whenever a host's installer cannot accept a pinned ref
+non-interactively.
 This doc records what's actually documented per agent, so the plan doesn't
 invent CLI flags.
 

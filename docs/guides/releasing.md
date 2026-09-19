@@ -8,8 +8,8 @@ account so GitHub Actions can publish it (Trusted Publishing / OIDC — no token
 > (`.github/workflows/release.yml`), pick `patch`/`minor`/`major` (or type an
 > exact version), and it bumps the version, gates the tree, checks the
 > tarball, runs `npm publish --provenance` via Trusted Publishing (OIDC), tags
-> the release, and creates the GitHub release. Design/decisions:
-> [`docs/plans/2026-09-15-publish-workflow.md`](../plans/2026-09-15-publish-workflow.md).
+> the release, and creates the GitHub release. The workflow itself is
+> `.github/workflows/release.yml`.
 
 ## What "publishing" looks like
 
@@ -131,5 +131,5 @@ challenge), **Custom** expiration (write tokens cap at ~90 days), stored as the
   for the workflow and should be done deliberately.
 - **Dist-tags**: `latest` is what `npm install -g @indy2kro/agentenv` users get.
   Never tag a prerelease without a `-` in the version or it will shadow the
-  stable release. See also
-  [`docs/plans/2026-09-15-publish-workflow.md`](../plans/2026-09-15-publish-workflow.md).
+  stable release. The workflow that enforces this is
+  `.github/workflows/release.yml`.

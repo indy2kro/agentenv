@@ -1,7 +1,7 @@
 /**
  * GitHub CLI Authentication Status
  * Read-only probe of `gh auth status`; agentenv never manages GitHub
- * credentials (docs/superpowers/specs/2026-09-14-optional-integrations-design.md).
+ * credentials.
  */
 
 import * as child_process from 'child_process';
