@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-09-19
 
-Target: 20 · Found: 22 deduplicated items · Completed: 0/22 · Skipped: 0
+Target: 20 · Found: 23 deduplicated items · Completed: 14/23 · Skipped: 0
 
 > **How to use this document.** As you finish each item, change `- [ ]` to `- [x]`,
 > append ` ✅ <commit-sha>`, and bump the "Completed" counter. This file is the source
@@ -25,9 +25,9 @@ bypass**. Both are correctness, not cosmetics.
 
 | Lens | Count | | Category | Count |
 |------|-------|-|----------|-------|
-| bug | 13 | | config / generate | 6 |
+| bug | 14 | | config / generate | 6 |
 | ux | 5 | | toolchain / shell | 5 |
-| feature | 2 | | commands / cli | 6 |
+| feature | 2 | | commands / cli | 7 |
 | docs | 1 | | adapters / ui / utils | 4 |
 | sweep | 1 | | docs | 1 |
 
@@ -40,31 +40,33 @@ bypass**. Both are correctness, not cosmetics.
 
 ## Correctness bugs   (BUG-NN)
 
-- [ ] **BUG-01** `loadConfig()` resolves the user-scope path itself instead of via `userConfigDir()`, so it ignores `XDG_CONFIG_HOME` · `cmd/agentenv/src/config/schema.ts:400-411` · effort S · impact high
+- [x] **BUG-01** `loadConfig()` resolves the user-scope path itself instead of via `userConfigDir()`, so it ignores `XDG_CONFIG_HOME` · `cmd/agentenv/src/config/schema.ts:400-411` · effort S · impact high ✅ d74530c
   Rationale: `findConfigPath()`/`userConfigDir()` honor an absolute `XDG_CONFIG_HOME`, but `loadConfig()` hardcodes `$HOME/.config/agentenv/agentenv.toml`, so on XDG machines `apply` applies `DEFAULT_CONFIG` while printing the real path and the wizard pre-fills nothing — silently, with no error.
-- [ ] **BUG-02** `apply` with no `agentenv.toml` silently applies hidden defaults and prints a nonexistent `Config:` path, exiting 0 · `cmd/agentenv/src/commands/apply.ts:262-269` · effort S · impact high
+- [x] **BUG-02** `apply` with no `agentenv.toml` silently applies hidden defaults and prints a nonexistent `Config:` path, exiting 0 · `cmd/agentenv/src/commands/apply.ts:262-269` · effort S · impact high ✅ 2bbf2e9
   Rationale: `status`/`update`/`uninstall` all fail loudly (exit 1) with no config, but `apply` installs the default tool set and wires agents against a file that does not exist, producing state no later command can reproduce.
-- [ ] **BUG-03** `normalizeConfig` keys custom-tool versions by `process.platform` (`win32`/`darwin`), so documented `version.windows`/`version.macos` pins are silently dropped · `cmd/agentenv/src/config/schema.ts:754-757` · effort S · impact med
+- [x] **BUG-03** `normalizeConfig` keys custom-tool versions by `process.platform` (`win32`/`darwin`), so documented `version.windows`/`version.macos` pins are silently dropped · `cmd/agentenv/src/config/schema.ts:754-757` · effort S · impact med ✅ 66f7227
   Rationale: the dotted form is documented and handled for `path.windows`/`path.linux`; only `version.linux` ever resolves, dropping a user's pin on two of three platforms without warning.
-- [ ] **BUG-04** `validateConfig` never type-checks boolean fields, so `tools.ripgrep = "false"` passes validation and is truthy downstream · `cmd/agentenv/src/config/schema.ts:782-794` · effort M · impact med
+- [x] **BUG-04** `validateConfig` never type-checks boolean fields, so `tools.ripgrep = "false"` passes validation and is truthy downstream · `cmd/agentenv/src/config/schema.ts:782-794` · effort M · impact med ✅ d24800b
   Rationale: a quoted string makes generated `AGENTS.md` list the tool as enabled while `status` counts it as drift — a confusing, silent misconfiguration the schema currently accepts.
-- [ ] **BUG-05** `validateConfig` accepts orphaned custom tools and duplicate custom-tool names · `cmd/agentenv/src/config/schema.ts:806-816,1013-1030` · effort S · impact low
+- [x] **BUG-05** `validateConfig` accepts orphaned custom tools and duplicate custom-tool names · `cmd/agentenv/src/config/schema.ts:806-816,1013-1030` · effort S · impact low ✅ d24800b
   Rationale: an entry that is neither `already_installed`-located nor `mise_source`-backed is silently excluded from the enabled list, and duplicate names silently collapse in the review diff via a `Map` keyed by name.
-- [ ] **BUG-06** `checkGNUCoreutils` ignores probe exit codes, so macOS Tier 0 GNU enforcement is inert · `cmd/agentenv/src/shell/detector.ts:227-264,281-289` · effort S · impact med
+- [x] **BUG-06** `checkGNUCoreutils` ignores probe exit codes, so macOS Tier 0 GNU enforcement is inert · `cmd/agentenv/src/shell/detector.ts:227-264,281-289` · effort S · impact med ✅ 750bd60
   Rationale: the `grep -P`/`sed --version` probes and the `brew list` check never inspect `status`, so any BSD grep/sed is declared "GNU present" and the `brew install coreutils` path is dead code.
-- [ ] **BUG-07** Missing-utility detection is a no-op and is rendered on the wrong platform · `cmd/agentenv/src/shell/detector.ts:308-329` + `src/commands/status.ts:601-607` · effort S · impact med
+- [x] **BUG-07** Missing-utility detection is a no-op and is rendered on the wrong platform · `cmd/agentenv/src/shell/detector.ts:308-329` + `src/commands/status.ts:601-607` · effort S · impact med ✅ 750bd60
   Rationale: `cmd.exe /c where <util>` returns its failure via exit code (no throw), so `missingUtilities` is always empty; and the value is only computed on Windows while only rendered off Windows, so the line can never print.
-- [ ] **BUG-08** `updateWithMarkers` treats a partially-marked file (one marker) as user content and appends a second managed block · `cmd/agentenv/src/generate/agentsmd.ts:369-391` · effort S · impact med
+- [x] **BUG-08** `updateWithMarkers` treats a partially-marked file (one marker) as user content and appends a second managed block · `cmd/agentenv/src/generate/agentsmd.ts:369-391` · effort S · impact med ✅ 00e3ef6
   Rationale: a crashed prior write leaves one marker; the next pass then replaces from the first start-marker to the later end-marker, clobbering any user text between them.
-- [ ] **BUG-09** Claude adapter `cleanup()` reports success on an unparseable `settings.json` and claims modifications when it changed nothing · `cmd/agentenv/src/adapters/claude.ts:176-192` · effort S · impact low
+- [x] **BUG-09** Claude adapter `cleanup()` reports success on an unparseable `settings.json` and claims modifications when it changed nothing · `cmd/agentenv/src/adapters/claude.ts:176-192` · effort S · impact low ✅ 3529b92
   Rationale: a corrupt settings file is silently ignored (result says "cleaned up"), and a no-op run still rewrites the file and reports `filesModified`, churning the mtime of a file prone to Windows locks.
-- [ ] **BUG-10** `rtk init` spawn failure drops the OS error, reporting `failed (exit null)` with empty stderr · `cmd/agentenv/src/toolchain/rtk.ts:59-73` · effort S · impact low
+- [x] **BUG-10** `rtk init` spawn failure drops the OS error, reporting `failed (exit null)` with empty stderr · `cmd/agentenv/src/toolchain/rtk.ts:59-73` · effort S · impact low ✅ 3529b92
   Rationale: when `spawnSync` cannot launch rtk at all, `result.error.message` (EACCES, corrupt shim) is discarded, unlike `runMiseCaptured` which surfaces it.
-- [ ] **BUG-11** `gh auth status` non-zero is always read as "unauthenticated", including transient/network failures · `cmd/agentenv/src/toolchain/gh.ts:33-35` · effort S · impact low
+- [x] **BUG-11** `gh auth status` non-zero is always read as "unauthenticated", including transient/network failures · `cmd/agentenv/src/toolchain/gh.ts:33-35` · effort S · impact low ✅ 916fc5e
   Rationale: `status` then asserts a definitive "unauthenticated" when the truth may be "couldn't tell", misleading users into re-authenticating needlessly.
-- [ ] **BUG-12** OpenCode adapter keys its "already up to date" message off rtk's exact English stdout text · `cmd/agentenv/src/adapters/opencode.ts:87-91` · effort S · impact low
+- [x] **BUG-12** OpenCode adapter keys its "already up to date" message off rtk's exact English stdout text · `cmd/agentenv/src/adapters/opencode.ts:87-91` · effort S · impact low ✅ 3529b92
   Rationale: every other adapter uses the structured `success`/`stderr` fields; a rtk reword/version bump silently changes this adapter's user-facing message.
-- [ ] **BUG-13** Default-config generated `AGENTS.md` lists rtk twice under two `### Token Optimization` headings · `cmd/agentenv/src/generate/agentsmd.ts:113-138` · effort S · impact low
+- [x] **BUG-13** Default-config generated `AGENTS.md` lists rtk twice under two `### Token Optimization` headings · `cmd/agentenv/src/generate/agentsmd.ts:113-138` · effort S · impact low ✅ 9c85129
+- [x] **BUG-14** `status`/`doctor` flag tools `apply` deliberately skips as drift/fail · `cmd/agentenv/src/commands/status.ts:336-368`, `src/commands/doctor.ts:226-245` · effort M · impact high ✅ 1b5b802
+  Rationale: `apply`'s verify classifies `manual` tools (no mise fallback on the platform — e.g. `tokei`/`rga`/`jless` on Windows) and `needs-new-terminal` tools as non-failures, but `status` (drift, exit 1) and `doctor` (`fail`) re-checked the bare PATH and contradicted it; a config whose only "missing" is a tool apply never tries to install would never pass a CI gate. Both commands now share `toolAvailabilityClassification()` so only a genuinely missing tool (`missing`) drifts/fails, and `exit-codes.md` documents the parity.
   Rationale: `rtk` has both a `TOOL_CATEGORIES` entry and a dedicated RTK section, so the default output contains a duplicated heading and bullet.
 
 ## UX & output   (UX-NN)
