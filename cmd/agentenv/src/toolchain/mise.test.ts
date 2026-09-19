@@ -469,10 +469,15 @@ describe('toolAvailabilityClassification', () => {
     );
   });
 
-  it('reports needs-new-terminal when a shim exists but PATH is stale', () => {
+  it('reports a shim-only tool needs-new-terminal on Windows only', () => {
+    // A stale-PATH shim means "open a new terminal" on Windows (where agentenv
+    // relies on the shims dir to expose mise tools); on Linux/macOS a shim with
+    // nothing mise-installed is genuinely missing. The deterministic
+    // platform matrix is covered by the classifyToolResolvability tests above.
+    const expected = process.platform === 'win32' ? 'needs-new-terminal' : 'missing';
     assert.equal(
       toolAvailabilityClassification('gh', 'gh', empty, resolvable(null), () => true),
-      'needs-new-terminal',
+      expected,
     );
   });
 
