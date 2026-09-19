@@ -284,6 +284,10 @@ describe('shimsDir resolution', () => {
     withOverride('   ', () => assert.equal(shimsDir(), defaultDir()));
   });
 
+  it('ignores a relative MISE_SHIMS_DIR (mise requires an absolute shims_dir)', () => {
+    withOverride(path.join('relative', 'shims'), () => assert.equal(shimsDir(), defaultDir()));
+  });
+
   it('shimsDirOnPath reflects the overridden dir', () => {
     const custom = path.join(os.tmpdir(), 'agentenv-shims-onpath');
     withOverride(custom, () => {
