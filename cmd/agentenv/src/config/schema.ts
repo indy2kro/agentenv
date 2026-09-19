@@ -802,6 +802,31 @@ export function validateConfig(config: AgentenvConfig): {
     }
   }
 
+  for (const [key, value] of Object.entries(agents)) {
+    if (typeof value !== 'boolean') {
+      errors.push(`agents.${key} must be a boolean, got ${JSON.stringify(value)}`);
+    }
+  }
+  for (const [key, value] of Object.entries(tools)) {
+    if (typeof value !== 'boolean') {
+      errors.push(`tools.${key} must be a boolean, got ${JSON.stringify(value)}`);
+    }
+  }
+
+  if (config.rtk) {
+    if (config.rtk.enabled !== undefined && typeof config.rtk.enabled !== 'boolean') {
+      errors.push(`rtk.enabled must be a boolean, got ${JSON.stringify(config.rtk.enabled)}`);
+    }
+    const init = config.rtk.init ?? {};
+    for (const [key, value] of Object.entries(init)) {
+      if (!(AGENT_KEYS as readonly string[]).includes(key)) {
+        errors.push(`rtk.init references unknown agent "${key}"`);
+      } else if (typeof value !== 'boolean') {
+        errors.push(`rtk.init.${key} must be a boolean, got ${JSON.stringify(value)}`);
+      }
+    }
+  }
+
   const toolVersions = config.tool_versions ?? {};
   for (const [key, version] of Object.entries(toolVersions)) {
     if (!(TOOL_KEYS as readonly string[]).includes(key)) {
@@ -813,12 +838,24 @@ export function validateConfig(config: AgentenvConfig): {
   }
 
   if (Array.isArray(config.custom_tools)) {
+    const seenNames = new Set<string>();
     for (const ct of config.custom_tools) {
       if (!ct.name) {
         errors.push('A custom tool entry is missing its "name"');
-      } else if (ct.already_installed && !ct.path_windows && !ct.path_macos && !ct.path_linux) {
+        continue;
+      }
+      if (seenNames.has(ct.name)) {
+        errors.push(`custom tool "${ct.name}" is defined more than once`);
+      }
+      seenNames.add(ct.name);
+      if (ct.already_installed && !ct.path_windows && !ct.path_macos && !ct.path_linux) {
         warnings.push(
           `custom tool "${ct.name}" is marked already_installed but has no OS path set`,
+        );
+      }
+      if (!ct.already_installed && !ct.mise_source) {
+        errors.push(
+          `custom tool "${ct.name}" must be either already_installed with an OS path or have a mise_source`,
         );
       }
     }
@@ -857,6 +894,14 @@ export function validateConfig(config: AgentenvConfig): {
         if (!(AGENT_KEYS as readonly string[]).includes(agent)) {
           errors.push(`integrations.superpowers.agents contains unknown agent "${agent}"`);
         }
+      }
+    }
+    for (const field of ['enabled', 'allow_hooks', 'allow_external_requests'] as const) {
+      const value = superpowers[field];
+      if (value !== undefined && typeof value !== 'boolean') {
+        errors.push(
+          `integrations.superpowers.${field} must be a boolean, got ${JSON.stringify(value)}`,
+        );
       }
     }
     if (superpowers.source !== undefined && superpowers.source.trim() === '') {

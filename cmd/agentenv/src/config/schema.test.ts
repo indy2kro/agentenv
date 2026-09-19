@@ -162,6 +162,45 @@ describe('configuration validation', () => {
       ),
     );
   });
+
+  it('rejects non-boolean tool/agent/rtk/integration values instead of treating strings as truthy', () => {
+    const report = validateConfig({
+      tools: { ripgrep: 'false' as unknown as boolean, rtk: true },
+      agents: { claude_code: 'yes' as unknown as boolean },
+      rtk: { enabled: true, init: { opencode: 'no' as unknown as boolean } },
+      integrations: { superpowers: { enabled: 'true' as unknown as boolean } },
+    });
+    assert.ok(report.errors.some((error) => error.includes('tools.ripgrep must be a boolean')));
+    assert.ok(
+      report.errors.some((error) => error.includes('agents.claude_code must be a boolean')),
+    );
+    assert.ok(report.errors.some((error) => error.includes('rtk.init.opencode must be a boolean')));
+    assert.ok(
+      report.errors.some((error) =>
+        error.includes('integrations.superpowers.enabled must be a boolean'),
+      ),
+    );
+  });
+
+  it('rejects orphaned and duplicate custom tools', () => {
+    const report = validateConfig({
+      custom_tools: [
+        { name: 'ghost', description: 'no install source at all' },
+        { name: 'dup', description: 'a', mise_source: 'github:x/a' },
+        { name: 'dup', description: 'b', mise_source: 'github:x/b' },
+      ],
+    });
+    assert.ok(
+      report.errors.some((error) =>
+        error.includes(
+          'custom tool "ghost" must be either already_installed with an OS path or have a mise_source',
+        ),
+      ),
+    );
+    assert.ok(
+      report.errors.some((error) => error.includes('custom tool "dup" is defined more than once')),
+    );
+  });
 });
 
 describe('configuration diff', () => {
