@@ -598,13 +598,13 @@ export function renderStatus(report: StatusReport): string {
       if (tier0.needsFix) {
         chunks.push(theme.warn('  Fix: run `agentenv apply` (Tier 0 shell fix)'));
       }
+      if (tier0.missingUtilities.length > 0) {
+        chunks.push(theme.warn(`  Missing utilities: ${tier0.missingUtilities.join(', ')}`));
+      }
     } else {
       chunks.push(
         `  ${tier0.posixCompatible ? 'POSIX-compatible' : 'non-POSIX'} (not Windows; Tier 0 N/A)`,
       );
-      if (tier0.missingUtilities.length > 0) {
-        chunks.push(`  Missing utilities: ${tier0.missingUtilities.join(', ')}`);
-      }
     }
   }
 

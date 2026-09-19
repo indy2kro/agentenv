@@ -7,6 +7,8 @@ import {
   applyAgentShellFix,
   bashExecutable,
   checkAgentShellConfiguration,
+  checkGNUCoreutils,
+  checkMissingUtilities,
   fixShellConfiguration,
   removeTomlWindowsShellPath,
   revertShellFixes,
@@ -380,6 +382,16 @@ describe('Tier 0 shell fix', () => {
       assert.equal(preview[0].action, 'removed');
       assert.equal(fs.existsSync(file), true);
       assert.equal(readShellFixState(statePath)?.entries.length, 1);
+    });
+  });
+
+  describe('checkGNUCoreutils and checkMissingUtilities', () => {
+    it('skips the probe when the shell is already POSIX-compatible', () => {
+      assert.deepEqual(checkMissingUtilities(true), []);
+    });
+
+    it('returns a boolean for the current platform', () => {
+      assert.equal(typeof checkGNUCoreutils(), 'boolean');
     });
   });
 

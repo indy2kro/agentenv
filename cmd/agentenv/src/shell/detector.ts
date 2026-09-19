@@ -219,7 +219,7 @@ function checkGitBash(): boolean {
  * Uses `command -v` to get the resolved path, then checks version output.
  * This handles shell function shadowing (e.g., Claude Code's ugrep/bfs).
  */
-function checkGNUCoreutils(): boolean {
+export function checkGNUCoreutils(): boolean {
   if (process.platform === 'win32') {
     return false;
   }
@@ -227,34 +227,28 @@ function checkGNUCoreutils(): boolean {
   try {
     // Check if we have GNU versions of tools
     // Use `command -v` to get the actual resolved path (works through shell functions)
-    // BSD vs GNU grep: GNU grep has -P flag for PCRE
-    try {
-      // First, get the resolved path - this will follow shell function aliases.
-      // Then invoke the binary directly rather than building a shell string so
-      // paths containing spaces keep working reliably.
-      const grepResult = child_process.spawnSync('sh', ['-c', 'command -v grep'], {
-        encoding: 'utf-8',
-        stdio: ['ignore', 'pipe', 'pipe'],
+    // BSD vs GNU grep: GNU grep has -P flag for PCRE.
+    const grepResult = child_process.spawnSync('sh', ['-c', 'command -v grep'], {
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    const grepPath = grepResult.stdout.trim();
+    if (grepPath) {
+      const grepCheck = child_process.spawnSync(grepPath, ['-P', '--version'], {
+        stdio: 'ignore',
       });
-      const grepPath = grepResult.stdout.trim();
-      child_process.spawnSync(grepPath, ['-P', '--version'], { stdio: 'ignore' });
-      return true;
-    } catch {
-      // Try other indicators
+      if (grepCheck.status === 0) return true;
     }
 
-    // Check for GNU sed via resolved path
-    try {
-      const sedResult = child_process.spawnSync('sh', ['-c', 'command -v sed'], {
-        encoding: 'utf-8',
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
-      const sedPath = sedResult.stdout.trim();
-      // GNU sed supports --version; BSD sed does not
-      child_process.spawnSync(sedPath, ['--version'], { stdio: 'ignore' });
-      return true;
-    } catch {
-      // Ignore
+    // Check for GNU sed via resolved path (GNU sed supports --version; BSD sed does not).
+    const sedResult = child_process.spawnSync('sh', ['-c', 'command -v sed'], {
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    const sedPath = sedResult.stdout.trim();
+    if (sedPath) {
+      const sedCheck = child_process.spawnSync(sedPath, ['--version'], { stdio: 'ignore' });
+      if (sedCheck.status === 0) return true;
     }
 
     return false;
@@ -274,16 +268,19 @@ function installGNUCoreutilsMacOS(): string | undefined {
 
   try {
     // Check if Homebrew is installed
-    child_process.spawnSync('sh', ['-c', 'command -v brew'], { stdio: 'ignore' });
+    const brewOk = child_process.spawnSync('sh', ['-c', 'command -v brew'], { stdio: 'ignore' });
+    if (brewOk.status !== 0) {
+      return undefined;
+    }
 
     // Install coreutils, gnu-sed, grep, findutils, gawk if not already installed
     const packages = ['coreutils', 'gnu-sed', 'grep', 'findutils', 'gawk'];
     for (const pkg of packages) {
-      try {
-        // Check if already installed
-        child_process.spawnSync('brew', ['list', '--formula', pkg], { stdio: 'ignore' });
-      } catch {
-        // Not installed, install it
+      // Only install when the formula is not already installed
+      const listed = child_process.spawnSync('brew', ['list', '--formula', pkg], {
+        stdio: 'ignore',
+      });
+      if (listed.status !== 0) {
         child_process.spawnSync('brew', ['install', '--quiet', pkg], { stdio: 'ignore' });
       }
     }
@@ -293,6 +290,9 @@ function installGNUCoreutilsMacOS(): string | undefined {
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'pipe'],
     });
+    if (result.status !== 0) {
+      return undefined;
+    }
     const prefix = result.stdout.trim();
     const gnubinPath = path.join(prefix, 'libexec', 'gnubin');
 
@@ -305,7 +305,7 @@ function installGNUCoreutilsMacOS(): string | undefined {
 /**
  * Check which POSIX utilities are missing on Windows
  */
-function checkMissingUtilities(isPosixCompatible: boolean): string[] {
+export function checkMissingUtilities(isPosixCompatible: boolean): string[] {
   if (process.platform !== 'win32' || isPosixCompatible) {
     return [];
   }
@@ -313,16 +313,17 @@ function checkMissingUtilities(isPosixCompatible: boolean): string[] {
   const missing: string[] = [];
 
   for (const util of POSIX_UTILITIES) {
-    try {
-      // Try to find the utility
-      child_process.spawnSync('cmd.exe', ['/c', 'where', util], { stdio: 'ignore' });
-    } catch {
-      try {
-        child_process.spawnSync('sh', ['-c', `which ${util}`], { stdio: 'ignore' });
-      } catch {
-        missing.push(util);
-      }
+    // `where` reports "not found" via a non-zero exit code (the INFO text goes
+    // to stderr), so checking the exit status is what distinguishes "found".
+    const where = child_process.spawnSync('cmd.exe', ['/c', 'where', util], { stdio: 'ignore' });
+    if (where.status === 0) {
+      continue;
     }
+    const which = child_process.spawnSync('sh', ['-c', `command -v ${util}`], { stdio: 'ignore' });
+    if (which.status === 0) {
+      continue;
+    }
+    missing.push(util);
   }
 
   return missing;
