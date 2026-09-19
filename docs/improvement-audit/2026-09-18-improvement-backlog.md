@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-09-18
 
-Target: 20 · Found: 23 deduplicated items · Completed: 22/23
+Target: 20 · Found: 25 deduplicated items · Completed: 24/25
 
 > **How to use this document.** As you finish each item, change `- [ ]` to `- [x]`,
 > append ` ✅ <commit-sha>`, and bump the "Completed" counter. This file is the source
@@ -33,7 +33,7 @@ recorded as a pass.
 
 ## Cross-cutting sweeps (SWEEP-NN)
 
-- [ ] **SWEEP-01** Unify mutating-command output: one shared renderer for config-path line + validation failures + messages/errors/summary, used by setup/apply/update/uninstall — effort M · impact med
+- [x] **SWEEP-01** Unify mutating-command output: one shared renderer for config-path line + validation failures + messages/errors/summary, used by setup/apply/update/uninstall — effort M · impact med  ✅ 8fa9e03
   Rationale: each mutating command hand-rolls the same "which config / warnings / errors / result summary" sequence with small inconsistencies (apply omits the config path, setup has a "not applying" line that apply lacks).
 
 ## UX & output   (UX-NN)
@@ -57,6 +57,8 @@ recorded as a pass.
   Rationale: quiet output is not actually quiet.
 - [x] **UX-09** Unknown-command/typo errors don't offer did-you-mean suggestions (commander `showSuggestionAfterError`) — `cmd/agentenv/src/index.ts` · effort S · impact low  ✅ 7a2afd5
   Rationale: `agentenv statsu` errors with no hint the name was close to an existing command.
+- [x] **UX-10** End-of-run timing line on mutating commands ("finished in 3.4s" / "failed in 2.1s") — `cmd/agentenv/src/ui/report.ts` · effort S · impact low  ✅ 8fa9e03
+  Rationale: setup/apply/update/uninstall report success or failure but never how long the (often tens-of-seconds) mise install took.
 
 ## New functionality   (FEAT-NN)
 
