@@ -160,6 +160,7 @@ npm run smoke:real               # real rtk + real mise install
 npm run lint && npm run format:check
 ```
 
-CI runs lint/format/test/build and the stub smoke on all three OS; the
-`smoke.yml` workflow re-runs `npm run smoke:real` on `main` pushes with a
-real mise install.
+CI (`build-test` job in `.github/workflows/ci.yml`) runs
+lint/format/test/build and the stub smoke on all three OS; the `acceptance`
+job in the same workflow re-runs `npm run smoke:real` (real mise install) on
+PRs and `main` pushes.

@@ -3,13 +3,18 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build:
-    name: 'Build & Test'
+  build-test:
+    name: 'Build & Test (${{ matrix.os }})'
     strategy:
       matrix:
         os: [windows-latest, macos-latest, ubuntu-latest]
@@ -39,3 +44,65 @@ jobs:
         run: npm test
       - name: Smoke (full CLI pipeline, stub rtk)
         run: npm run smoke
+      - name: Verify CLI surface (version/help/completion)
+        shell: bash
+        run: |
+          version=$(node dist/index.js --version)
+          pkg_version=$(node -p "require('./package.json').version")
+          if [ "$version" != "$pkg_version" ]; then
+            echo "CLI version '$version' does not match package.json '$pkg_version'"
+            exit 1
+          fi
+          node dist/index.js --help >/dev/null
+          for cmd in setup apply status update doctor uninstall completion shell-fix; do
+            if ! node dist/index.js "$cmd" --help >/dev/null 2>&1; then
+              echo "--help failed for '$cmd'"
+              exit 1
+            fi
+          done
+          for shell in bash zsh fish powershell; do
+            if ! node dist/index.js completion "$shell" >/dev/null 2>&1; then
+              echo "completion '$shell' failed"
+              exit 1
+            fi
+          done
+          for cmd in setup apply status update doctor uninstall completion shell-fix; do
+            if ! node dist/index.js completion bash | grep -Eq "^[[:space:]]*${cmd}\)"; then
+              echo "bash completion is missing '$cmd'"
+              exit 1
+            fi
+          done
+
+  acceptance:
+    name: 'Acceptance: full setup (${{ matrix.os }})'
+    needs: build-test
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: cmd/agentenv/package-lock.json
+      - name: Setup mise
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+      - name: Install node deps + build CLI
+        working-directory: cmd/agentenv
+        run: npm ci && npm run build
+      - name: Assert toolchain (mise + node + git callable)
+        shell: bash
+        run: |
+          mise --version
+          node --version
+          git --version
+          bash --version | head -n 1
+      - name: 'Acceptance sweep — real apply/status/setup for all 9 agents, full catalog install + execution verify + command sweep'
+        working-directory: cmd/agentenv
+        run: npm run smoke:real

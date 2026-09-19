@@ -69,9 +69,13 @@ npm run smoke:real     # build + node scripts/smoke.mjs --real (real mise + rtk 
 - `npm run prepare` wires Husky; the pre-commit hook runs
   `cd cmd/agentenv && npx lint-staged` (eslint --fix + prettier on staged
   `*.ts`).
-- CI (`.github/workflows/ci.yml`) runs build, lint, format:check, test, and
-  smoke on a windows/macos/ubuntu matrix — treat all four as required before
-  considering work done.
+- CI (`.github/workflows/ci.yml`) has two jobs on a windows/macos/ubuntu matrix:
+  `build-test` (build, lint, format:check, test, stub smoke, and a CLI-surface
+  check that version/help/completion work and cover every command) on every
+  push/PR, and `acceptance` (real mise + `npm run smoke:real`, gated on
+  `build-test`) on PRs, `main` pushes, and manual dispatch. Treat all four
+  local gates (build, lint, format:check, test) as required before considering
+  work done.
 - Releases are one-button via the `Release` GitHub Actions workflow, never a
   manual `npm publish` — see `docs/guides/releasing.md`.
 
