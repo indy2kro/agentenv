@@ -68,6 +68,34 @@ describe('configuration persistence', () => {
     assert.equal(ctags?.path_macos, '/usr/local/bin/ctags');
   });
 
+  it('resolves the dotted version.* custom-tool form for the current platform', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-config-'));
+    const configPath = path.join(directory, 'agentenv.toml');
+    fs.writeFileSync(
+      configPath,
+      [
+        '[[custom_tools]]',
+        'name = "universal-ctags"',
+        'description = "symbols"',
+        'already_installed = true',
+        '[custom_tools.version]',
+        'windows = "9.9.9-win"',
+        'macos = "9.9.9-mac"',
+        'linux = "9.9.9-linux"',
+      ].join('\n'),
+    );
+
+    const expected =
+      process.platform === 'win32'
+        ? '9.9.9-win'
+        : process.platform === 'darwin'
+          ? '9.9.9-mac'
+          : '9.9.9-linux';
+    const config = loadConfig(configPath);
+    const ctags = config.custom_tools?.find((tool: CustomTool) => tool.name === 'universal-ctags');
+    assert.equal(ctags?.version, expected);
+  });
+
   it('serializes tool_versions pins and round-trips them through loadConfig', () => {
     const content = configToToml({ tool_versions: { jq: '1.7.1', fd: '1.0' } });
     assert.match(content, /\[tool_versions\]/);

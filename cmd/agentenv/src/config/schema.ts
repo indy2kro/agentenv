@@ -752,8 +752,17 @@ function normalizeConfig(config: AgentenvConfig): AgentenvConfig {
       }
 
       const versions = (ct as unknown as { version?: string | Record<string, string> }).version;
-      if (versions && typeof versions === 'object' && !Array.isArray(versions)) {
-        result.version = versions[process.platform as string] as string;
+      if (typeof versions === 'string') {
+        result.version = versions;
+      } else if (versions && typeof versions === 'object' && !Array.isArray(versions)) {
+        const platformKey =
+          process.platform === 'win32'
+            ? 'windows'
+            : process.platform === 'darwin'
+              ? 'macos'
+              : 'linux';
+        const picked = versions[platformKey] ?? versions[process.platform];
+        if (picked !== undefined) result.version = picked;
       }
 
       return result;
