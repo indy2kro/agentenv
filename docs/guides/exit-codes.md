@@ -35,7 +35,15 @@ successful informational exits, not errors.
 `status` exits `1` when any of these is true:
 
 - validation errors are present (validation warnings alone do **not** flip it);
-- an enabled catalog tool's binary is not resolvable on PATH;
+- an enabled catalog tool is genuinely **missing**: not on PATH, not in mise's
+  store, and no shim for it exists on disk. A tool that `apply` itself skips is
+  never drift — it is reported (`~` / `-`) without flipping the exit code:
+  - `needs-new-terminal` — mise reports it installed but the current shell's
+    PATH is stale (`~` in `status`);
+  - `manual` — it has no mise fallback on this platform, so agentenv never
+    writes it into `mise.toml` and it effectively means "install manually", not
+    "drift" (`-` in `status`). This mirrors `apply`'s verify classification, so
+    a tool `apply` deliberately skips is never flagged elsewhere;
 - an enabled catalog tool is explicitly pinned to a version (`tool_versions`
   in `agentenv.toml`, or agentenv's internal pin) and mise has installed a
   different version for it (a tool left at `latest` is never version drift —

@@ -700,8 +700,9 @@ export function shimExists(binary: string): boolean {
  * current PATH; `needs-new-terminal` means it is installed (mise's own store
  * reports it, or a mise shim exists on disk) but the current shell's PATH is
  * stale; `missing` means neither — the only case that is a genuine failure.
- * (`manual` is assigned by `verifyToolAvailability`, not here: it marks tools
- * agentenv never hands to mise, so they can never be "missing".)
+ * (`manual` is assigned by `toolAvailabilityClassification` /
+ * `verifyToolAvailability`, not here: it marks tools agentenv never hands to
+ * mise, so they can never be "missing".)
  */
 export function classifyToolResolvability(
   onPath: boolean,
@@ -721,6 +722,33 @@ export function classifyToolResolvability(
 
 export function toolResolvability(binary: string): ToolResolvability {
   return classifyToolResolvability(resolveBinary(binary) !== null, shimExists(binary));
+}
+
+/**
+ * The single per-tool verdict both the write pipelines (`verifyToolAvailability`)
+ * and the read-only commands (`status`, `doctor`) use, so they can never drift
+ * apart: tools with no mise fallback on this platform are `manual` (agentenv
+ * never hands them to mise, so they are never "missing"), and a tool mise
+ * reports as installed is `needs-new-terminal`, not drift. `resolveFn` and
+ * `shimCheck` honor the injectable dependencies the status command passes in
+ * tests so a result cannot depend on the machine the test runs on.
+ */
+export function toolAvailabilityClassification(
+  key: string,
+  binary: string,
+  installedState: Record<string, InstalledToolState>,
+  resolveFn: (binary: string) => string | null = resolveBinary,
+  shimCheck: (binary: string) => boolean = shimExists,
+): ToolResolvability {
+  if (requiresFallback(key) || isPlatformUnsupported(key)) return 'manual';
+  const miseName = MISE_TOOL_NAMES[key] ?? key;
+  const onPath = resolveFn(binary) !== null;
+  return classifyToolResolvability(
+    onPath,
+    shimCheck(binary),
+    undefined,
+    installedState[miseName]?.installed === true,
+  );
 }
 
 export interface VerifyToolOptions {
@@ -751,26 +779,11 @@ export function verifyToolAvailability(
   for (const key of TOOL_KEYS) {
     if (tools[key] !== true) continue;
     const binary = BINARY_MAP[key];
-    if (requiresFallback(key) || isPlatformUnsupported(key)) {
-      // agentenv never writes these into mise.toml, so `mise install` cannot
-      // produce them by design — a genuine "missing" verdict here would fail
-      // every apply and mask real problems.
-      result.push({
-        key,
-        binary,
-        onPath: resolveBinary(binary) !== null,
-        status: 'manual',
-      });
-      continue;
-    }
-    const miseName = MISE_TOOL_NAMES[key] ?? key;
-    const miseInstalled = installedState[miseName]?.installed === true;
-    const onPath = resolveBinary(binary) !== null;
     result.push({
       key,
       binary,
-      onPath,
-      status: classifyToolResolvability(onPath, shimExists(binary), undefined, miseInstalled),
+      onPath: resolveBinary(binary) !== null,
+      status: toolAvailabilityClassification(key, binary, installedState),
     });
   }
   return result;

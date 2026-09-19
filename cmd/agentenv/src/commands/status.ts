@@ -24,7 +24,10 @@ import {
   PINNED_TOOL_VERSIONS,
   getInstalledToolState,
   getMiseVersion,
+  shimExists,
+  toolAvailabilityClassification,
 } from '../toolchain/mise.js';
+import type { ToolResolvability } from '../toolchain/mise.js';
 import { colorizeLine, theme } from '../ui/theme.js';
 import { renderLogo, resolveResultLine, setQuietEnabled } from '../ui/output.js';
 import type { ResultBoxContent } from '../ui/output.js';
@@ -66,6 +69,8 @@ export interface StatusTool {
   binary: string;
   tier: number;
   found: boolean;
+  /** `resolvable` | `needs-new-terminal` | `manual` | `missing` — the same verdict apply's verify step uses, so a tool apply deliberately skips is never drift here. */
+  status: ToolResolvability;
   drift: boolean;
   /** Resolved explicit pin (`tool_versions` or agentenv's internal pin), or `null` for `latest`. */
   pinned: string | null;
@@ -165,6 +170,7 @@ export interface StatusDeps {
   getEnabledAgents?: typeof getEnabledAgents;
   isAgentInstalled?: typeof isAgentInstalled;
   resolveBinary?: typeof resolveBinary;
+  shimExists?: typeof shimExists;
   detectShell?: typeof detectShell;
   checkAgentShellConfiguration?: typeof checkAgentShellConfiguration;
   fileExists?: (file: string) => boolean;
@@ -339,7 +345,14 @@ export async function gatherStatus(deps: StatusDeps = {}): Promise<StatusReport>
   const hasVersionData = Object.keys(installedState).length > 0;
   const tools: StatusTool[] = enabledTools.map((key) => {
     const binary = BINARY_MAP[key];
-    const found = (deps.resolveBinary ?? resolveBinary)(binary) !== null;
+    const resolution = toolAvailabilityClassification(
+      key,
+      binary,
+      installedState,
+      deps.resolveBinary,
+      deps.shimExists,
+    );
+    const found = resolution === 'resolvable';
     if (key === 'gh' && found) {
       ghAuth = ghAuthLine((deps.resolveGhAuthProbe ?? resolveGhAuthProbe)()().status);
     }
@@ -361,7 +374,8 @@ export async function gatherStatus(deps: StatusDeps = {}): Promise<StatusReport>
       binary,
       tier: TOOL_TIERS[key] ?? 0,
       found,
-      drift: !found || versionDrift,
+      status: resolution,
+      drift: resolution === 'missing' || versionDrift,
       pinned,
       installed,
     };
@@ -633,9 +647,29 @@ export function renderStatus(report: StatusReport): string {
         : tool.installed !== null
           ? ` (${tool.installed})`
           : '';
+    let marker: string;
+    let tail: string;
+    switch (tool.status) {
+      case 'needs-new-terminal':
+        marker = '~';
+        tail = '   <- installed; open a new terminal';
+        break;
+      case 'manual':
+        marker = '-';
+        tail = '   <- not managed by mise; install manually';
+        break;
+      case 'missing':
+        marker = '✗';
+        tail = '   <- drift: enabled in config but not on PATH';
+        break;
+      default:
+        marker = '✓';
+        tail = versionTail;
+        break;
+    }
     chunks.push(
       colorizeLine(
-        `  ${tool.found ? '✓' : '✗'} ${tool.binary.padEnd(12)} ${tool.key} (Tier ${tool.tier})${tool.found ? `${versionTail}` : '   <- drift: enabled in config but not on PATH'} — ${desc}`,
+        `  ${marker} ${tool.binary.padEnd(12)} ${tool.key} (Tier ${tool.tier})${tail} — ${desc}`,
       ),
     );
     if (tool.key === 'gh' && report.ghAuth) {

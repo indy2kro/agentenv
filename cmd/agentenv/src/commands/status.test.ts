@@ -68,6 +68,7 @@ describe('computeStatusExitCode', () => {
               binary: 'gh',
               tier: 3,
               found: false,
+              status: 'missing',
               drift: true,
               pinned: null,
               installed: null,
@@ -139,6 +140,7 @@ describe('computeStatusExitCode', () => {
               binary: 'gh',
               tier: 3,
               found: true,
+              status: 'resolvable',
               drift: true,
               pinned: '2.100.0',
               installed: '2.101.0',
@@ -238,6 +240,81 @@ describe('gatherStatus', () => {
     assert.equal(report.exitCode, 0);
   });
 
+  it('does not report a manual tool (no mise fallback) as drift', async () => {
+    const report = await gatherStatus({
+      findConfigPath: () => '/tmp/agentenv.toml',
+      loadConfig: () => ({ ...noopConfig, tools: { tokei: true } }) as never,
+      resolveScopeDir: () => '/tmp',
+      validateConfig: () => ({ errors: [], warnings: [] }),
+      getEnabledAgents: () => [],
+      detectShell: () =>
+        ({
+          isWindows: true,
+          isPosixCompatible: true,
+          currentShell: 'bash',
+          missingUtilities: [],
+        }) as never,
+      getInstalledToolState: () => ({}),
+      resolveBinary: () => null,
+      shimExists: () => false,
+      fileExists: () => true,
+      hasManagedMarker: () => true,
+    });
+    assert.equal(report.tools[0]?.status, 'manual');
+    assert.equal(report.tools[0]?.drift, false);
+    assert.equal(report.exitCode, 0);
+  });
+
+  it('does not report an installed-but-stale-PATH tool as drift', async () => {
+    const report = await gatherStatus({
+      findConfigPath: () => '/tmp/agentenv.toml',
+      loadConfig: () => ({ ...noopConfig, tools: { gh: true } }) as never,
+      resolveScopeDir: () => '/tmp',
+      validateConfig: () => ({ errors: [], warnings: [] }),
+      getEnabledAgents: () => [],
+      detectShell: () =>
+        ({
+          isWindows: true,
+          isPosixCompatible: true,
+          currentShell: 'bash',
+          missingUtilities: [],
+        }) as never,
+      getInstalledToolState: () => ({ gh: { installed: true, versions: ['3.0.0'] } }),
+      resolveBinary: () => null,
+      shimExists: () => false,
+      fileExists: () => true,
+      hasManagedMarker: () => true,
+    });
+    assert.equal(report.tools[0]?.status, 'needs-new-terminal');
+    assert.equal(report.tools[0]?.drift, false);
+    assert.equal(report.exitCode, 0);
+  });
+
+  it('reports a genuinely missing tool as drift', async () => {
+    const report = await gatherStatus({
+      findConfigPath: () => '/tmp/agentenv.toml',
+      loadConfig: () => ({ ...noopConfig, tools: { gh: true } }) as never,
+      resolveScopeDir: () => '/tmp',
+      validateConfig: () => ({ errors: [], warnings: [] }),
+      getEnabledAgents: () => [],
+      detectShell: () =>
+        ({
+          isWindows: true,
+          isPosixCompatible: true,
+          currentShell: 'bash',
+          missingUtilities: [],
+        }) as never,
+      getInstalledToolState: () => ({}),
+      resolveBinary: () => null,
+      shimExists: () => false,
+      fileExists: () => true,
+      hasManagedMarker: () => true,
+    });
+    assert.equal(report.tools[0]?.status, 'missing');
+    assert.equal(report.tools[0]?.drift, true);
+    assert.equal(report.exitCode, 1);
+  });
+
   it('does not treat an unsupported integration state as drift', async () => {
     const report = await gatherStatus({
       findConfigPath: () => '/tmp/agentenv.toml',
@@ -300,6 +377,7 @@ describe('renderStatusShort', () => {
           binary: 'gh',
           tier: 3,
           found: false,
+          status: 'missing',
           drift: true,
           pinned: null,
           installed: null,

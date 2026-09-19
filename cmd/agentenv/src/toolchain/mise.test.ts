@@ -29,6 +29,7 @@ import {
   verifyCounts,
   verifyHintNeeded,
   verifyToolAvailability,
+  toolAvailabilityClassification,
 } from './mise.js';
 import { DEFAULT_CONFIG, TOOL_KEYS } from '../config/schema.js';
 
@@ -438,6 +439,54 @@ describe('Windows 3-state verify and activation hint', () => {
     const ahead = eulaPreflightHint({ tools: { gitleaks: true } });
     assert.match(ahead, /mise install gitleaks/);
     assert.equal(ahead.includes('echo y'), false);
+  });
+});
+
+describe('toolAvailabilityClassification', () => {
+  const empty: Record<string, never> = {};
+  const resolvable = (value: string | null) => () => value;
+  const noShim = () => false;
+
+  it('marks a fallback tool manual regardless of PATH', () => {
+    assert.equal(
+      toolAvailabilityClassification('tokei', 'tokei', empty, resolvable(null), noShim),
+      'manual',
+    );
+    assert.equal(
+      toolAvailabilityClassification('tokei', 'tokei', empty, resolvable('/usr/bin/tokei'), noShim),
+      'manual',
+    );
+  });
+
+  it('reports resolvable when on PATH and missing when neither', () => {
+    assert.equal(
+      toolAvailabilityClassification('gh', 'gh', empty, resolvable('/usr/bin/gh'), noShim),
+      'resolvable',
+    );
+    assert.equal(
+      toolAvailabilityClassification('gh', 'gh', empty, resolvable(null), noShim),
+      'missing',
+    );
+  });
+
+  it('reports needs-new-terminal when a shim exists but PATH is stale', () => {
+    assert.equal(
+      toolAvailabilityClassification('gh', 'gh', empty, resolvable(null), () => true),
+      'needs-new-terminal',
+    );
+  });
+
+  it('reports needs-new-terminal when mise-installed but off PATH', () => {
+    assert.equal(
+      toolAvailabilityClassification(
+        'gh',
+        'gh',
+        { gh: { installed: true, versions: ['3.0.0'] } },
+        resolvable(null),
+        noShim,
+      ),
+      'needs-new-terminal',
+    );
   });
 });
 

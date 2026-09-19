@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import * as fs from 'fs';
 import * as path from 'path';
-import { AGENT_COMMANDS, isAgentInstalled, resolveBinary } from '../adapters/detect.js';
+import { AGENT_COMMANDS, isAgentInstalled } from '../adapters/detect.js';
 import {
   isQuiet,
   LOGO,
@@ -22,6 +22,7 @@ import type { AgentKey } from '../config/schema.js';
 import { findConfigPath, userConfigDir } from '../config/scopes.js';
 import { bashExecutable, detectShell } from '../shell/detector.js';
 import {
+  getInstalledToolState,
   getMiseVersion,
   getShimsDirValue,
   isMiseInstalled,
@@ -29,6 +30,7 @@ import {
   miseInstallInstructions,
   shimsDir,
   shimsDirOnPath,
+  toolAvailabilityClassification,
 } from '../toolchain/mise.js';
 
 export type DoctorStatus = 'ok' | 'warn' | 'fail';
@@ -226,15 +228,26 @@ function gatherDoctor(): DoctorSection[] {
   // Tools
   const tools = config.tools ?? {};
   const enabledTools = TOOL_KEYS.filter((key) => tools[key] === true);
+  // Same verdict as apply's verify step: a tool apply itself skips (no mise
+  // fallback on this platform) or installs-but-needs-a-fresh-shell is never a
+  // doctor failure here, only a genuinely-missing one is.
+  const installedState = getInstalledToolState();
   const toolItems: DoctorItem[] = [];
   for (const key of enabledTools) {
     const binary = BINARY_MAP[key];
-    const found = resolveBinary(binary) !== null;
-    toolItems.push({
-      status: found ? 'ok' : 'fail',
-      label: `${binary} (${key})`,
-      detail: found ? '' : 'not on PATH — run `mise install` in this project',
-    });
+    const status = toolAvailabilityClassification(key, binary, installedState);
+    const item: DoctorItem = { status: 'ok', label: `${binary} (${key})`, detail: '' };
+    if (status === 'needs-new-terminal') {
+      item.status = 'warn';
+      item.detail = 'installed via mise; open a new terminal';
+    } else if (status === 'manual') {
+      item.status = 'warn';
+      item.detail = 'not managed by mise; install manually';
+    } else if (status === 'missing') {
+      item.status = 'fail';
+      item.detail = 'not on PATH — run `mise install` in this project';
+    }
+    toolItems.push(item);
   }
   sections.push({
     title: `Tools (${enabledTools.length} configured)`,
