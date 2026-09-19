@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
-import { resolveGhAuthProbe } from './gh.js';
+import { classifyGhAuthStatus, resolveGhAuthProbe } from './gh.js';
 import type { GhAuthProbeFn } from './gh.js';
 
 describe('gh auth status probe', () => {
@@ -38,5 +38,17 @@ describe('gh auth status probe', () => {
       'source must never build `gh auth setup-git`',
     );
     assert.match(source, /'auth', 'status', '--hostname', 'github\.com'/);
+  });
+
+  it('classifies exit 1 as unauthenticated unless stderr smells like a network failure', () => {
+    assert.equal(classifyGhAuthStatus(0, ''), 'authenticated');
+    assert.equal(classifyGhAuthStatus(1, 'not logged in. run: gh auth login'), 'unauthenticated');
+    assert.equal(
+      classifyGhAuthStatus(1, 'failed to connect to github.com: connection refused'),
+      'unknown',
+    );
+    assert.equal(classifyGhAuthStatus(1, 'SSL error / tls handshake timeout'), 'unknown');
+    assert.equal(classifyGhAuthStatus(2, 'some other failure'), 'unknown');
+    assert.equal(classifyGhAuthStatus(null, ''), 'unknown');
   });
 });
