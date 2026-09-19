@@ -138,11 +138,19 @@ export function generateMiseToml(
 }
 
 /**
- * Directory where agentenv asks mise to place shims (~/.local/bin). Shim files
- * are what make the installed tools resolve by name ("difft", "rg", ...) from
- * any shell — PowerShell, cmd, bash or the agents themselves.
+ * Directory where agentenv asks mise to place shims. Shim files are what make
+ * the installed tools resolve by name ("difft", "rg", ...) from any shell —
+ * PowerShell, cmd, bash or the agents themselves.
+ *
+ * Precedence mirrors mise: a non-empty `MISE_SHIMS_DIR` env var wins (mise
+ * binds it to the `shims_dir` setting), else the default agentenv writes into
+ * the global config (`~/.local/bin`). Honoring the override keeps agentenv's
+ * shim-existence checks pointed at the directory mise actually populates
+ * instead of the configured default.
  */
 export function shimsDir(): string {
+  const override = process.env.MISE_SHIMS_DIR;
+  if (override && override.trim() !== '') return expandLeadingTilde(override);
   return path.join(os.homedir(), '.local', 'bin');
 }
 

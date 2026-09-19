@@ -253,6 +253,52 @@ describe('mise global config directory resolution', () => {
   });
 });
 
+describe('shimsDir resolution', () => {
+  const saved = process.env.MISE_SHIMS_DIR;
+  const restore = () => {
+    if (saved === undefined) delete process.env.MISE_SHIMS_DIR;
+    else process.env.MISE_SHIMS_DIR = saved;
+  };
+  const withOverride = (value: string | undefined, fn: () => void) => {
+    if (value === undefined) delete process.env.MISE_SHIMS_DIR;
+    else process.env.MISE_SHIMS_DIR = value;
+    try {
+      fn();
+    } finally {
+      restore();
+    }
+  };
+  const defaultDir = () => path.join(os.homedir(), '.local', 'bin');
+
+  it('defaults to ~/.local/bin when MISE_SHIMS_DIR is unset', () => {
+    withOverride(undefined, () => assert.equal(shimsDir(), defaultDir()));
+  });
+
+  it('honors a non-empty MISE_SHIMS_DIR (mirroring mise) and expands a leading ~', () => {
+    const custom = path.join(os.tmpdir(), 'agentenv-shims');
+    withOverride(custom, () => assert.equal(shimsDir(), custom));
+    withOverride('~/bin-mise', () => assert.equal(shimsDir(), path.join(os.homedir(), 'bin-mise')));
+  });
+
+  it('ignores a blank MISE_SHIMS_DIR', () => {
+    withOverride('   ', () => assert.equal(shimsDir(), defaultDir()));
+  });
+
+  it('shimsDirOnPath reflects the overridden dir', () => {
+    const custom = path.join(os.tmpdir(), 'agentenv-shims-onpath');
+    withOverride(custom, () => {
+      const prev = process.env.PATH;
+      process.env.PATH = `${custom}${path.delimiter}${prev ?? ''}`;
+      try {
+        assert.equal(shimsDirOnPath(), true);
+      } finally {
+        if (prev === undefined) delete process.env.PATH;
+        else process.env.PATH = prev;
+      }
+    });
+  });
+});
+
 describe('PATH membership helpers', () => {
   it('pathContainsDir matches entries that resolve to the dir', () => {
     const base = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-'));
