@@ -108,7 +108,9 @@ export function generateAgentsMd(config: AgentenvConfig): string {
   lines.push('');
 
   const enabledTools = getEnabledToolsForOutput(config);
-  const categorizedTools = categorizeTools(enabledTools);
+  const categorizedTools = categorizeTools(
+    config.rtk?.enabled ? enabledTools.filter((tool) => tool !== 'rtk') : enabledTools,
+  );
 
   for (const [category, tools] of Object.entries(categorizedTools)) {
     if (tools.length > 0) {

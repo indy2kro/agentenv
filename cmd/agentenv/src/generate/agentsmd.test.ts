@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { updateWithMarkers } from './agentsmd.js';
+import { generateAgentsMd, updateWithMarkers } from './agentsmd.js';
+import type { AgentenvConfig } from '../config/schema.js';
 
 const start = '<!-- agentenv-managed-start -->';
 const end = '<!-- agentenv-managed-end -->';
@@ -43,5 +44,30 @@ describe('managed instruction blocks', () => {
     assert.equal(result.success, true);
     assert.equal(result.updated, false);
     assert.equal(fs.readFileSync(filePath, 'utf8'), content);
+  });
+});
+
+describe('generated AGENTS.md tool listing', () => {
+  it('renders rtk only once (in the RTK section, not the categorized tools)', () => {
+    const config: AgentenvConfig = {
+      scope: 'project',
+      tools: { ripgrep: true, rtk: true },
+      rtk: { enabled: true },
+    };
+    const output = generateAgentsMd(config);
+    assert.equal((output.match(/### Token Optimization/g) ?? []).length, 1);
+    assert.equal((output.match(/\*\*rtk\*\*/g) ?? []).length, 1);
+    assert.equal((output.match(/- \*\*ripgrep\*\*/g) ?? []).length, 1);
+  });
+
+  it('still lists rtk under the categorized tools when rtk rewriting is disabled', () => {
+    const config: AgentenvConfig = {
+      scope: 'project',
+      tools: { rtk: true },
+      rtk: { enabled: false },
+    };
+    const output = generateAgentsMd(config);
+    assert.equal((output.match(/### Token Optimization/g) ?? []).length, 1);
+    assert.equal((output.match(/--- RTK Configuration/m) ?? []).length, 0);
   });
 });
