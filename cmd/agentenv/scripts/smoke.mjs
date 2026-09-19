@@ -122,7 +122,19 @@ files = ["AGENTS.md", "CLAUDE.md"]
 `;
 fs.writeFileSync(path.join(project, 'agentenv.toml'), config);
 
-const env = { ...process.env, HOME: home, USERPROFILE: home };
+// Sandbox every home-derived location, not just HOME/USERPROFILE: the GitHub
+// Linux runner sets XDG_CONFIG_HOME=$HOME/.config globally (actions/runner-images
+// `configure-environment.sh` writes it into /etc/environment), and agentenv's
+// user scope honors an absolute XDG_CONFIG_HOME (src/config/scopes.ts
+// userConfigDir). Left unset, the user-scope apply below would read/write under
+// the runner's real ~/.config instead of the sandbox home — so the "generated
+// files under the user config dir" assertion failed on Linux only.
+const env = {
+  ...process.env,
+  HOME: home,
+  USERPROFILE: home,
+  XDG_CONFIG_HOME: path.join(home, '.config'),
+};
 const applyArgs = ['apply', '--skip-mise-install'];
 if (!REAL) env.AGENTENV_RTK_BIN = stub;
 
