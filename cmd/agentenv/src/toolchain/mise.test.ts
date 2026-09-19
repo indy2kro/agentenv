@@ -23,6 +23,8 @@ import {
   shimsDirOnPath,
   trustMiseToml,
   upsertShimsDir,
+  verifyCounts,
+  verifyHintNeeded,
   verifyToolAvailability,
 } from './mise.js';
 import { DEFAULT_CONFIG, TOOL_KEYS } from '../config/schema.js';
@@ -268,6 +270,38 @@ describe('Windows 3-state verify and activation hint', () => {
     assert.equal(classifyToolResolvability(false, true, true), 'needs-new-terminal');
     assert.equal(classifyToolResolvability(false, false, true), 'missing');
     assert.equal(classifyToolResolvability(false, true, false), 'missing');
+  });
+
+  it('treats a mise-installed tool off-PATH as needs-new-terminal on every OS', () => {
+    // The Windows false-failure: `mise install` puts tools in mise's store but
+    // does not always leave a shim in the shims dir, so PATH + shim alone
+    // misread a successful install as "missing" and fail the whole apply.
+    assert.equal(classifyToolResolvability(false, false, true, true), 'needs-new-terminal');
+    assert.equal(classifyToolResolvability(false, false, false, true), 'needs-new-terminal');
+    assert.equal(classifyToolResolvability(false, false, true, false), 'missing');
+  });
+
+  it('consults mise installed state before declaring a tool missing', () => {
+    const availability = verifyToolAvailability(
+      { ...DEFAULT_CONFIG, tools: { git_delta: true } },
+      { installedState: { delta: { installed: true, versions: ['0.19.2'] } } },
+    );
+    assert.equal(availability.length, 1);
+    assert.equal(availability[0].key, 'git_delta');
+    assert.notEqual(availability[0].status, 'missing');
+  });
+
+  it('marks tools agentenv never installs via mise as manual, never missing', () => {
+    // tokei is a fallback tool (manual install) and is deliberately absent
+    // from the generated mise.toml, so `mise install` can never produce it.
+    const availability = verifyToolAvailability(
+      { ...DEFAULT_CONFIG, tools: { tokei: true } },
+      { installedState: {} },
+    );
+    assert.equal(availability.length, 1);
+    assert.equal(availability[0].status, 'manual');
+    assert.equal(verifyCounts(availability).missing, 0);
+    assert.equal(verifyHintNeeded(availability), false);
   });
 
   it('keeps the activation hint to three lines or fewer', () => {

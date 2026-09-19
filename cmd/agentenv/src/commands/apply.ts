@@ -190,7 +190,10 @@ export async function applyConfiguration(
     }
 
     if (errors.length === 0) {
-      const availability = verifyToolAvailability(config);
+      const availability = verifyToolAvailability(config, {
+        cwd: baseDir,
+        miseTomlPath: misePath,
+      });
       const missing = availability.filter((tool) => tool.status === 'missing');
       messages.push(verifySummaryLine(availability));
       for (const tool of availability) messages.push(`  ${toolAvailabilityLine(tool)}`);

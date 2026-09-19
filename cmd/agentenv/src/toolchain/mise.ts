@@ -603,7 +603,7 @@ export function miseInstallOutcome(stdout: string): string {
   return 'mise install completed';
 }
 
-export type ToolResolvability = 'resolvable' | 'needs-new-terminal' | 'missing';
+export type ToolResolvability = 'resolvable' | 'needs-new-terminal' | 'manual' | 'missing';
 
 export interface ToolAvailability {
   key: string;
@@ -641,16 +641,24 @@ export function shimExists(binary: string): boolean {
 
 /**
  * The three-state verdict for one binary. `resolvable` means it is on the
- * current PATH; `needs-new-terminal` means it is installed (a mise shim exists
- * on disk under the shims dir) but the current shell's PATH is stale; `missing`
- * means neither — the only case that is a genuine failure.
+ * current PATH; `needs-new-terminal` means it is installed (mise's own store
+ * reports it, or a mise shim exists on disk) but the current shell's PATH is
+ * stale; `missing` means neither — the only case that is a genuine failure.
+ * (`manual` is assigned by `verifyToolAvailability`, not here: it marks tools
+ * agentenv never hands to mise, so they can never be "missing".)
  */
 export function classifyToolResolvability(
   onPath: boolean,
   shimPresent: boolean,
   isWindows: boolean = process.platform === 'win32',
+  miseInstalled = false,
 ): ToolResolvability {
   if (onPath) return 'resolvable';
+  // mise's store is authoritative: a tool it reports installed is not
+  // "missing" just because this shell cannot resolve it yet. Windows in
+  // particular installs project tools without always leaving a shim in the
+  // shims dir, which previously made a successful install fail verification.
+  if (miseInstalled) return 'needs-new-terminal';
   if (isWindows && shimPresent) return 'needs-new-terminal';
   return 'missing';
 }
@@ -659,24 +667,54 @@ export function toolResolvability(binary: string): ToolResolvability {
   return classifyToolResolvability(resolveBinary(binary) !== null, shimExists(binary));
 }
 
+export interface VerifyToolOptions {
+  /** Pre-fetched `mise ls --json` state; fetched lazily from mise when omitted. */
+  installedState?: Record<string, InstalledToolState>;
+  /** cwd / mise.toml for the lazy `mise ls --json` probe (scope-aware). */
+  cwd?: string;
+  miseTomlPath?: string;
+}
+
 /**
  * After `mise install`, check which enabled tools actually resolve on PATH so
- * setup/apply can report honestly whether shims are active in this shell. On
- * Windows an installed tool that is only reachable from a *new* terminal is
- * classified `needs-new-terminal`, not `missing`.
+ * setup/apply can report honestly whether shims are active in this shell. A tool
+ * mise reports as installed but that is not on this shell's PATH is classified
+ * `needs-new-terminal`, not `missing` — on Windows (and any shell without mise
+ * activation) that is the difference between a truthful hint and a false apply
+ * failure.
  */
-export function verifyToolAvailability(config: AgentenvConfig): ToolAvailability[] {
+export function verifyToolAvailability(
+  config: AgentenvConfig,
+  options: VerifyToolOptions = {},
+): ToolAvailability[] {
+  const installedState =
+    options.installedState ??
+    getInstalledToolState(undefined, { cwd: options.cwd, miseTomlPath: options.miseTomlPath });
   const tools = config.tools || {};
   const result: ToolAvailability[] = [];
   for (const key of TOOL_KEYS) {
     if (tools[key] !== true) continue;
     const binary = BINARY_MAP[key];
+    if (requiresFallback(key) || isPlatformUnsupported(key)) {
+      // agentenv never writes these into mise.toml, so `mise install` cannot
+      // produce them by design — a genuine "missing" verdict here would fail
+      // every apply and mask real problems.
+      result.push({
+        key,
+        binary,
+        onPath: resolveBinary(binary) !== null,
+        status: 'manual',
+      });
+      continue;
+    }
+    const miseName = MISE_TOOL_NAMES[key] ?? key;
+    const miseInstalled = installedState[miseName]?.installed === true;
     const onPath = resolveBinary(binary) !== null;
     result.push({
       key,
       binary,
       onPath,
-      status: classifyToolResolvability(onPath, shimExists(binary)),
+      status: classifyToolResolvability(onPath, shimExists(binary), undefined, miseInstalled),
     });
   }
   return result;
@@ -685,14 +723,16 @@ export function verifyToolAvailability(config: AgentenvConfig): ToolAvailability
 export interface VerifyCounts {
   resolvable: number;
   needsNewTerminal: number;
+  manual: number;
   missing: number;
 }
 
 export function verifyCounts(availability: ToolAvailability[]): VerifyCounts {
-  const counts: VerifyCounts = { resolvable: 0, needsNewTerminal: 0, missing: 0 };
+  const counts: VerifyCounts = { resolvable: 0, needsNewTerminal: 0, manual: 0, missing: 0 };
   for (const tool of availability) {
     if (tool.status === 'resolvable') counts.resolvable++;
     else if (tool.status === 'needs-new-terminal') counts.needsNewTerminal++;
+    else if (tool.status === 'manual') counts.manual++;
     else counts.missing++;
   }
   return counts;
@@ -705,7 +745,8 @@ export function verifyCounts(availability: ToolAvailability[]): VerifyCounts {
  */
 export function verifySummaryLine(availability: ToolAvailability[]): string {
   const counts = verifyCounts(availability);
-  const base = `Verify: ${counts.resolvable} resolvable / ${counts.needsNewTerminal} need a new terminal / ${counts.missing} missing`;
+  const manual = counts.manual > 0 ? ` / ${counts.manual} manual` : '';
+  const base = `Verify: ${counts.resolvable} resolvable / ${counts.needsNewTerminal} need a new terminal${manual} / ${counts.missing} missing`;
   if (counts.needsNewTerminal + counts.missing > 0) {
     return `${base} — ${counts.resolvable}/${availability.length} configured tools resolve on PATH now`;
   }
@@ -717,6 +758,9 @@ export function toolAvailabilityLine(tool: ToolAvailability): string {
   if (tool.status === 'resolvable') return `✓ ${tool.binary} (${tool.key})`;
   if (tool.status === 'needs-new-terminal') {
     return `~ ${tool.binary} (${tool.key}) — installed; open a new terminal`;
+  }
+  if (tool.status === 'manual') {
+    return `- ${tool.binary} (${tool.key}) — not managed by mise; install manually`;
   }
   return `✗ ${tool.binary} (${tool.key}) — not installed (mise install did not produce it)`;
 }
@@ -952,8 +996,11 @@ export function parseInstalledToolState(raw: string): Record<string, InstalledTo
  * `parseInstalledToolState`, unparseable or unrecognized `mise ls --json`
  * output (or an absent mise) yields an empty map rather than `null`.
  */
-export function getInstalledToolState(raw?: string): Record<string, InstalledToolState> {
-  return parseInstalledToolState(raw ?? runMiseCaptured(['ls', '--json']).stdout) ?? {};
+export function getInstalledToolState(
+  raw?: string,
+  opts: RunMiseCapturedOptions = {},
+): Record<string, InstalledToolState> {
+  return parseInstalledToolState(raw ?? runMiseCaptured(['ls', '--json'], opts).stdout) ?? {};
 }
 
 /**

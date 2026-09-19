@@ -162,7 +162,10 @@ async function doUpdate(options: UpdateCommandOptions): Promise<void> {
           }
         }
 
-        const availability = verifyToolAvailability(config);
+        const availability = verifyToolAvailability(config, {
+          cwd: scopeDir,
+          miseTomlPath: path.join(scopeDir, 'mise.toml'),
+        });
         console.log(`  ${verifySummaryLine(availability)}`);
         for (const tool of availability) console.log(`    ${toolAvailabilityLine(tool)}`);
         if (verifyHintNeeded(availability)) {
