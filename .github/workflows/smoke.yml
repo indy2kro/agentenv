@@ -30,6 +30,6 @@ jobs:
       - name: Install node deps + build CLI
         working-directory: cmd/agentenv
         run: npm ci && npm run build
-      - name: Real apply/status/setup for all 9 agents, full Tier 1+2 tool install + execution verify + command sweep
+      - name: Real apply/status/setup for all 9 agents, full catalog install + execution verify + command sweep
         working-directory: cmd/agentenv
         run: npm run smoke:real
