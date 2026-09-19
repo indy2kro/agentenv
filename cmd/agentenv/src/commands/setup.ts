@@ -3,7 +3,8 @@ import * as fs from 'fs';
 import { detectInstalledAgents } from '../adapters/detect.js';
 import { loadConfig, saveConfig, validateConfig } from '../config/schema.js';
 import type { AgentKey, AgentenvConfig } from '../config/schema.js';
-import { configFilePath, resolveScopeDir } from '../config/scopes.js';
+import { configFilePath, parseScopeFlag, resolveScopeDir } from '../config/scopes.js';
+import type { ScopeValue } from '../config/scopes.js';
 import { applyConfiguration } from './apply.js';
 import { runConfigWizard } from './wizard.js';
 import { AGENT_OPTIONS, buildDefaultSimpleConfig, parseAgentsInput } from '../wizard/build.js';
@@ -98,7 +99,7 @@ export async function saveAndApply(
 interface SetupCommandOptions {
   yes?: boolean;
   agents?: string;
-  scope?: string;
+  scope?: ScopeValue;
   tier2?: boolean;
   rtk?: boolean;
   config?: string;
@@ -148,7 +149,7 @@ export async function unattendedSetup(
     }
     file = configFilePath(config.scope ?? 'project');
   } else {
-    const scope: 'project' | 'user' = options.scope === 'user' ? 'user' : 'project';
+    const scope: ScopeValue = options.scope ?? 'project';
     file = configFilePath(scope);
 
     if (fs.existsSync(file)) {
@@ -217,9 +218,14 @@ export const setupCommand = new Command()
     'enable the Superpowers integration (unattended); optional github tag/branch/commit ref',
   )
   .option('--config <path>', 'path to an existing agentenv.toml to apply (unattended)')
-  .action(async (options: SetupCommandOptions) => {
+  .action(async (options: SetupCommandOptions, command: Command) => {
+    const scope = parseScopeFlag(options.scope);
+    if (scope.error) {
+      command.error(scope.error);
+      return;
+    }
     if (options.yes) {
-      await unattendedSetup(options);
+      await unattendedSetup({ ...options, scope: scope.scope });
       return;
     }
     await runConfigWizard();

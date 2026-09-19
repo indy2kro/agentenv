@@ -3,7 +3,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { loadConfig, validateConfig } from '../config/schema.js';
 import type { AgentenvConfig } from '../config/schema.js';
-import { configFilePath, findConfigPath, resolveScopeDir } from '../config/scopes.js';
+import {
+  configFilePath,
+  findConfigPath,
+  parseScopeFlag,
+  resolveScopeDir,
+} from '../config/scopes.js';
+import type { ScopeValue } from '../config/scopes.js';
 import {
   ensureGlobalShimsDir,
   getMiseVersion,
@@ -28,7 +34,7 @@ import { normalizeOutput } from '../utils/output.js';
 interface UpdateCommandOptions {
   self?: boolean;
   tools?: boolean;
-  scope?: string;
+  scope?: ScopeValue;
   watch?: boolean;
   dryRun?: boolean;
   check?: boolean;
@@ -48,10 +54,9 @@ async function doUpdate(options: UpdateCommandOptions): Promise<void> {
 
   let configPath: string | null;
   if (options.scope) {
-    const scope: 'project' | 'user' = options.scope === 'user' ? 'user' : 'project';
-    configPath = configFilePath(scope);
+    configPath = configFilePath(options.scope);
     if (!fs.existsSync(configPath)) {
-      console.error(`No agentenv.toml found at ${configPath} (scope ${scope}).`);
+      console.error(`No agentenv.toml found at ${configPath} (scope ${options.scope}).`);
       process.exitCode = 1;
       return;
     }
@@ -270,4 +275,11 @@ export const updateCommand = new Command()
   .option('--watch', 'watch mise.toml for changes and auto-run mise up (optional)')
   .option('--dry-run', 'print the update plan without changing anything')
   .option('--check', 'alias for --dry-run')
-  .action(doUpdate);
+  .action((options: UpdateCommandOptions, command: Command) => {
+    const scope = parseScopeFlag(options.scope);
+    if (scope.error) {
+      command.error(scope.error);
+      return;
+    }
+    return doUpdate({ ...options, scope: scope.scope });
+  });

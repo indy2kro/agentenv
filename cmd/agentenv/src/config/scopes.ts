@@ -8,6 +8,22 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
+export const SCOPE_VALUES = ['project', 'user'] as const;
+export type ScopeValue = (typeof SCOPE_VALUES)[number];
+
+/**
+ * Validate a `--scope <value>` flag. Returns a normalized `scope` when the
+ * flag was passed a valid value, an `error` when passed an invalid value, and
+ * neither when the flag is absent (callers then fall back to nearest-config
+ * resolution). Invalid values are a usage error — a typo must never silently
+ * retarget the other scope.
+ */
+export function parseScopeFlag(value: string | undefined): { scope?: ScopeValue; error?: string } {
+  if (value === undefined) return {};
+  if (value === 'project' || value === 'user') return { scope: value };
+  return { error: `invalid --scope "${value}" (expected "project" or "user")` };
+}
+
 export function userConfigDir(): string {
   const xdg = process.env.XDG_CONFIG_HOME;
   if (xdg && path.isAbsolute(xdg)) {

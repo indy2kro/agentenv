@@ -3,7 +3,13 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { configFilePath, findConfigPath, resolveScopeDir, userConfigDir } from './scopes.js';
+import {
+  configFilePath,
+  findConfigPath,
+  parseScopeFlag,
+  resolveScopeDir,
+  userConfigDir,
+} from './scopes.js';
 
 describe('scope resolution', () => {
   const originalHome = process.env.HOME;
@@ -61,6 +67,19 @@ describe('scope resolution', () => {
 
     assert.equal(configFilePath('user'), path.join(home, '.config', 'agentenv', 'agentenv.toml'));
     assert.equal(configFilePath('project'), path.join(process.cwd(), 'agentenv.toml'));
+  });
+
+  it('parseScopeFlag normalizes valid --scope values and flags absent ones', () => {
+    assert.deepEqual(parseScopeFlag(undefined), {});
+    assert.deepEqual(parseScopeFlag('project'), { scope: 'project' });
+    assert.deepEqual(parseScopeFlag('user'), { scope: 'user' });
+  });
+
+  it('parseScopeFlag rejects invalid --scope values with an error', () => {
+    const result = parseScopeFlag('usre');
+    assert.equal(result.scope, undefined);
+    assert.match(result.error ?? '', /invalid --scope "usre"/);
+    assert.match(result.error ?? '', /expected "project" or "user"/);
   });
 
   it('findConfigPath prefers the project config, then the user config', () => {

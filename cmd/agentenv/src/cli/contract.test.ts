@@ -240,6 +240,18 @@ direnv = false
     assert.equal(run(['uninstall', '--json'], clean).status, 2);
   });
 
+  it('rejects an invalid --scope value as a usage error on every scope-taking command', () => {
+    for (const args of [
+      ['update', '--scope', 'usre'],
+      ['uninstall', '--scope', 'usre'],
+      ['setup', '--yes', '--scope', 'usre'],
+    ]) {
+      const result = run(args, clean);
+      assert.equal(result.status, 2, `${args.join(' ')} should be a usage error`);
+      assert.match(result.stderr, /invalid --scope "usre"/);
+    }
+  });
+
   it('shell-fix reports an empty manifest and is a revert no-op (sandboxed)', () => {
     const show = run(['shell-fix', '--json'], clean, shellEnv);
     assert.equal(show.status, 0);

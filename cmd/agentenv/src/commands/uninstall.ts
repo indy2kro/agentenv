@@ -3,7 +3,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { confirm } from '@inquirer/prompts';
 import { BINARY_MAP, loadConfig, validateConfig, type AgentenvConfig } from '../config/schema.js';
-import { configFilePath, findConfigPath, resolveScopeDir } from '../config/scopes.js';
+import {
+  configFilePath,
+  findConfigPath,
+  parseScopeFlag,
+  resolveScopeDir,
+} from '../config/scopes.js';
+import type { ScopeValue } from '../config/scopes.js';
 import {
   getToolsToInstall,
   isMiseInstalled,
@@ -148,7 +154,7 @@ interface UninstallCommandOptions {
   tools?: string[];
   yes?: boolean;
   dryRun?: boolean;
-  scope?: string;
+  scope?: ScopeValue;
 }
 
 /**
@@ -162,10 +168,9 @@ export async function doUninstall(options: UninstallCommandOptions): Promise<voi
   // 1. Config resolution (mirrors update.ts).
   let configPath: string | null;
   if (options.scope) {
-    const scope: 'project' | 'user' = options.scope === 'user' ? 'user' : 'project';
-    configPath = configFilePath(scope);
+    configPath = configFilePath(options.scope);
     if (!fs.existsSync(configPath)) {
-      console.error(`No agentenv.toml found at ${configPath} (scope ${scope}).`);
+      console.error(`No agentenv.toml found at ${configPath} (scope ${options.scope}).`);
       process.exitCode = 1;
       return;
     }
@@ -306,6 +311,11 @@ export const uninstallCommand = new Command()
   .option('--yes', 'skip the confirmation prompt (required when non-interactive)')
   .option('--dry-run', 'print what would be uninstalled without changing anything')
   .option('--scope <scope>', 'config scope to use: project|user (default: nearest config)')
-  .action((tools: string[], options: UninstallCommandOptions) =>
-    doUninstall({ ...options, tools }),
-  );
+  .action((tools: string[], options: UninstallCommandOptions, command: Command) => {
+    const scope = parseScopeFlag(options.scope);
+    if (scope.error) {
+      command.error(scope.error);
+      return;
+    }
+    return doUninstall({ ...options, scope: scope.scope, tools });
+  });
