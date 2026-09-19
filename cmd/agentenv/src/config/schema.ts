@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import toml from 'toml';
 import { writeFileWithVerify } from '../utils/fs-retry.js';
+import { userConfigDir } from './scopes.js';
 
 export interface CustomTool {
   name: string;
@@ -399,8 +400,7 @@ export function loadConfig(configPath?: string): AgentenvConfig {
 
     // Try user config directory
     if (!pathToLoad) {
-      const home = process.env.HOME || process.env.USERPROFILE || '';
-      const userConfigPath = path.join(home, '.config', 'agentenv', 'agentenv.toml');
+      const userConfigPath = path.join(userConfigDir(), 'agentenv.toml');
       try {
         if (fs.existsSync(userConfigPath)) {
           pathToLoad = userConfigPath;

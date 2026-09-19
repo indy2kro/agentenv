@@ -562,3 +562,29 @@ describe('default agent set', () => {
     }
   });
 });
+
+describe('loadConfig user-scope resolution', () => {
+  it('honors an absolute XDG_CONFIG_HOME like findConfigPath does', () => {
+    const originalXdg = process.env.XDG_CONFIG_HOME;
+    const originalCwd = process.cwd();
+    const xdg = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-xdg-'));
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-cwd-'));
+    try {
+      fs.mkdirSync(path.join(xdg, 'agentenv'), { recursive: true });
+      fs.writeFileSync(
+        path.join(xdg, 'agentenv', 'agentenv.toml'),
+        'scope = "user"\n[tools]\nripgrep = false\nfd = true\n',
+      );
+      process.env.XDG_CONFIG_HOME = xdg;
+      process.chdir(cwd);
+
+      const config = loadConfig(undefined);
+      assert.equal(config.scope, 'user');
+      assert.equal(config.tools?.fd, true);
+    } finally {
+      process.chdir(originalCwd);
+      if (originalXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = originalXdg;
+    }
+  });
+});
