@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-09-18
 
-Target: 20 · Found: 23 deduplicated items · Completed: 21/23
+Target: 20 · Found: 23 deduplicated items · Completed: 22/23
 
 > **How to use this document.** As you finish each item, change `- [ ]` to `- [x]`,
 > append ` ✅ <commit-sha>`, and bump the "Completed" counter. This file is the source
@@ -74,8 +74,9 @@ recorded as a pass.
   Rationale: a new catalog tool that misses one map silently breaks status/detect/generated files instead of failing the build.
 - [ ] **FEAT-06** Revert path for the Tier-0 Windows shell switch (Windows Terminal `defaultShell`, Git Bash PATH additions) — `cmd/agentenv/src/shell/detector.ts` · effort M · impact med
   Rationale: detector writes several per-user files and there is no way to know what changed or put it back.
-- [ ] **FEAT-07** Shell completions for commands/flags — `cmd/agentenv/src/index.ts` · effort M · impact med
+- [x] **FEAT-07** Shell completions for commands/flags — `cmd/agentenv/src/index.ts` · effort M · impact med  ✅ 2a1af4b
   Rationale: typing `agentenv set<TAB>` is slow and error-prone; generated completions match how mise/gh already work.
+  Note: `agentenv completion <bash|zsh|fish|powershell>` generates a script from the live command tree (`src/commands/completion.ts`), so it never drifts from registered commands/options.
 - [x] **FEAT-08** `setup --yes` can't opt into the superpowers integration without a pre-existing config (no `--superpowers` flag) — `cmd/agentenv/src/commands/setup.ts` · effort S · impact med  ✅ c435500
   Rationale: unattended setup users are stuck with the two default integrations unless they hand-edit agentenv.toml.
 - [x] **FEAT-09** Live existence-check of custom-tool OS paths during wizard input — `cmd/agentenv/src/commands/wizard.ts` · effort S · impact low  ✅ 4fa472b
