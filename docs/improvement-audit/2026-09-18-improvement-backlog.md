@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-09-18
 
-Target: 20 · Found: 25 deduplicated items · Completed: 24/25 · Skipped: 1
+Target: 20 · Found: 25 deduplicated items · Completed: 25/25 · Skipped: 0
 
 > **How to use this document.** As you finish each item, change `- [ ]` to `- [x]`,
 > append ` ✅ <commit-sha>`, and bump the "Completed" counter. This file is the source
@@ -74,9 +74,9 @@ recorded as a pass.
   Note: implemented config-only — `XDG_DATA_HOME` has no consumer in agentenv today (no user-scope data dir is ever written), and per the base-dir spec a relative `XDG_CONFIG_HOME` is ignored.
 - [x] **FEAT-05** Catalog-record consistency guard (sweep): assert `TOOL_KEYS`/`TOOL_TIERS`/`BINARY_MAP`/`MISE_TOOL_NAMES`/`TOOL_CATEGORIES`/`TOOL_DESCRIPTIONS` cover each other — `cmd/agentenv/src/config/schema.ts` · effort M · impact high  ✅ e4751e1
   Rationale: a new catalog tool that misses one map silently breaks status/detect/generated files instead of failing the build.
-- [ ] **FEAT-06** Revert path for the Tier-0 Windows shell switch (Windows Terminal `defaultShell`, Git Bash PATH additions) — `cmd/agentenv/src/shell/detector.ts` · effort M · impact med — ⛔ skipped (won't fix, 2026-09-19)
+- [x] **FEAT-06** Revert path for the Tier-0 Windows shell switch (Windows Terminal `defaultShell`, Git Bash PATH additions) — `cmd/agentenv/src/shell/detector.ts` · effort M · impact med  ✅ 919cb4f
   Rationale: detector writes several per-user files and there is no way to know what changed or put it back.
-  Decision: deliberately not implemented. A faithful revert needs a per-write state manifest (previous values of every touched key) that must be captured on apply and kept in sync as the detector evolves; the value is low (the fix is idempotent and non-destructive, and users can hand-edit the three small, well-known config files it touches) and the surface is a new stateful contract for a niche Windows-only path. Revisit only if users report the switch causing real breakage.
+  Note: implemented as a record-on-apply manifest (`src/shell/shell-fix-state.ts`, `userConfigDir()/shell-fix-state.json`) plus an `agentenv shell-fix` command: `--json` shows what agentenv changed, `--revert [--dry-run]` restores the recorded prior values and deletes files agentenv created. A value changed after the fact is left untouched (skipped, exit 1) and kept in the manifest for a later retry. Covers the three agents the Tier 0 fix touches today (claude_code, codex_cli, opencode).
 - [x] **FEAT-07** Shell completions for commands/flags — `cmd/agentenv/src/index.ts` · effort M · impact med  ✅ 2a1af4b
   Rationale: typing `agentenv set<TAB>` is slow and error-prone; generated completions match how mise/gh already work.
   Note: `agentenv completion <bash|zsh|fish|powershell>` generates a script from the live command tree (`src/commands/completion.ts`), so it never drifts from registered commands/options.
