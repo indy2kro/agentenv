@@ -147,14 +147,32 @@ export function shimsDir(): string {
 }
 
 /**
- * mise's global config directory. `shims_dir` is a global-only setting: mise
- * strips it from any config it does not consider global and warns ("ignored for
- * security reasons"), so it must live here. agentenv likewise never points the
- * `MISE_CONFIG_FILE` variable at a project `mise.toml` (see
- * {@link miseSpawnOptions}) — doing so would demote this file and re-trigger
- * that warning.
+ * Expand a single leading `~` (bare or `~/…`/`~\…`) to the home directory,
+ * mirroring mise's `replace_path` for path-valued env vars. Anything else is
+ * returned unchanged.
+ */
+function expandLeadingTilde(p: string): string {
+  if (p === '~') return os.homedir();
+  if (p.startsWith('~/') || p.startsWith('~\\')) return path.join(os.homedir(), p.slice(2));
+  return p;
+}
+
+/**
+ * mise's global config directory, resolved the same way mise resolves it —
+ * `MISE_CONFIG_DIR`, else an absolute `$XDG_CONFIG_HOME/mise`, else
+ * `~/.config/mise`. `shims_dir` is a global-only setting: mise strips it from
+ * any config it does not consider global and warns ("ignored for security
+ * reasons"), so it must land in the file mise actually reads. A custom
+ * `XDG_CONFIG_HOME` (common in Linux dotfile setups) otherwise points the two
+ * at different directories. agentenv likewise never points `MISE_CONFIG_FILE`
+ * at a project `mise.toml` (see {@link miseSpawnOptions}) — doing so would
+ * demote this file and re-trigger that warning.
  */
 export function miseGlobalConfigDir(): string {
+  const override = process.env.MISE_CONFIG_DIR;
+  if (override && override.trim() !== '') return expandLeadingTilde(override);
+  const xdg = process.env.XDG_CONFIG_HOME;
+  if (xdg && path.isAbsolute(xdg)) return path.join(xdg, 'mise');
   return path.join(os.homedir(), '.config', 'mise');
 }
 

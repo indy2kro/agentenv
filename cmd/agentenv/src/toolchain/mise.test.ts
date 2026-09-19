@@ -15,6 +15,8 @@ import {
   detectEulaPrompt,
   eulaPreflightHint,
   miseActivationHint,
+  miseGlobalConfigDir,
+  miseGlobalConfigPath,
   miseInstallInstructions,
   miseInstallOutcome,
   miseSpawnOptions,
@@ -196,6 +198,58 @@ describe('mise spawn environment', () => {
     assert.equal(miseSpawnOptions({ miseTomlPath: toml }).cwd, path.join('some', 'project'));
     assert.equal(miseSpawnOptions({ cwd: 'explicit', miseTomlPath: toml }).cwd, 'explicit');
     assert.equal(miseSpawnOptions().cwd, undefined);
+  });
+});
+
+describe('mise global config directory resolution', () => {
+  const KEYS = ['MISE_CONFIG_DIR', 'XDG_CONFIG_HOME'] as const;
+  const snapshot = () => KEYS.map((key) => [key, process.env[key]] as const);
+  const restore = (saved: ReturnType<typeof snapshot>) => {
+    for (const [key, value] of saved) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  };
+  const withEnv = (values: Partial<Record<(typeof KEYS)[number], string>>, fn: () => void) => {
+    const saved = snapshot();
+    for (const key of KEYS) delete process.env[key];
+    for (const [key, value] of Object.entries(values)) process.env[key] = value;
+    try {
+      fn();
+    } finally {
+      restore(saved);
+    }
+  };
+
+  const DEFAULT_DIR = path.join(os.homedir(), '.config', 'mise');
+
+  it('defaults to ~/.config/mise and derives config.toml from it', () => {
+    withEnv({}, () => {
+      assert.equal(miseGlobalConfigDir(), DEFAULT_DIR);
+      assert.equal(miseGlobalConfigPath(), path.join(DEFAULT_DIR, 'config.toml'));
+    });
+  });
+
+  it('prefers MISE_CONFIG_DIR, expanding a leading ~', () => {
+    withEnv({ MISE_CONFIG_DIR: path.join('custom', 'mise') }, () => {
+      assert.equal(miseGlobalConfigDir(), path.join('custom', 'mise'));
+    });
+    withEnv({ MISE_CONFIG_DIR: '~/misecfg' }, () => {
+      assert.equal(miseGlobalConfigDir(), path.join(os.homedir(), 'misecfg'));
+    });
+  });
+
+  it('honors an absolute XDG_CONFIG_HOME as $XDG_CONFIG_HOME/mise', () => {
+    const xdg = path.join(os.tmpdir(), 'agentenv-xdg-cfg');
+    withEnv({ XDG_CONFIG_HOME: xdg }, () => {
+      assert.equal(miseGlobalConfigDir(), path.join(xdg, 'mise'));
+    });
+  });
+
+  it('ignores a relative XDG_CONFIG_HOME and an empty MISE_CONFIG_DIR', () => {
+    withEnv({ XDG_CONFIG_HOME: 'relative/xdg', MISE_CONFIG_DIR: '  ' }, () => {
+      assert.equal(miseGlobalConfigDir(), DEFAULT_DIR);
+    });
   });
 });
 
