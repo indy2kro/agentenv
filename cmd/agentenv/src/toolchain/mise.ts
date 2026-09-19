@@ -147,9 +147,12 @@ export function shimsDir(): string {
 }
 
 /**
- * mise's global config directory. `shims_dir` is deliberately NOT honored in a
- * project/`MISE_CONFIG_FILE` config — mise ignores it there with a warning
- * ("ignored for security reasons") — so it must live in the global config.
+ * mise's global config directory. `shims_dir` is a global-only setting: mise
+ * strips it from any config it does not consider global and warns ("ignored for
+ * security reasons"), so it must live here. agentenv likewise never points the
+ * `MISE_CONFIG_FILE` variable at a project `mise.toml` (see
+ * {@link miseSpawnOptions}) — doing so would demote this file and re-trigger
+ * that warning.
  */
 export function miseGlobalConfigDir(): string {
   return path.join(os.homedir(), '.config', 'mise');
@@ -421,8 +424,34 @@ export function runMiseUninstall(
 
 export interface RunMiseCapturedOptions {
   cwd?: string;
-  /** When known, point mise at the project's mise.toml via MISE_CONFIG_FILE. */
+  /**
+   * Path to the generated project `mise.toml`. Used only to derive the working
+   * directory when `cwd` is omitted — mise discovers the file as a local config
+   * from there. It is deliberately NOT passed as `MISE_CONFIG_FILE`; see
+   * {@link miseSpawnOptions} for why.
+   */
   miseTomlPath?: string;
+}
+
+/**
+ * Build the working directory and environment for a mise invocation.
+ *
+ * `miseTomlPath` selects the directory to run from so mise discovers the
+ * generated `mise.toml` as a *local* config. It must never be exported as
+ * `MISE_CONFIG_FILE`: mise treats that variable as its **global** config file
+ * (`MISE_GLOBAL_CONFIG_FILE` falls back to `MISE_CONFIG_FILE`), so pointing it
+ * at a project file demotes the real global config
+ * (`~/.config/mise/config.toml`) to a non-global one. mise then strips
+ * global-only settings from it — including `shims_dir` — and warns
+ * "shims_dir in non-global config ... is ignored for security reasons".
+ * Running from the containing directory instead keeps the global config global.
+ */
+export function miseSpawnOptions(opts: RunMiseCapturedOptions = {}): {
+  cwd: string | undefined;
+  env: NodeJS.ProcessEnv;
+} {
+  const cwd = opts.cwd ?? (opts.miseTomlPath ? path.dirname(opts.miseTomlPath) : undefined);
+  return { cwd, env: process.env };
 }
 
 export interface MiseCapturedOutput {
@@ -443,13 +472,11 @@ export function runMiseCaptured(
   args: string[],
   opts: RunMiseCapturedOptions = {},
 ): MiseCapturedOutput {
-  const env = opts.miseTomlPath
-    ? { ...process.env, MISE_CONFIG_FILE: opts.miseTomlPath }
-    : process.env;
+  const { cwd, env } = miseSpawnOptions(opts);
   let result: child_process.SpawnSyncReturns<string>;
   try {
     result = child_process.spawnSync('mise', args, {
-      cwd: opts.cwd,
+      cwd,
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'pipe'],
       env,
@@ -885,12 +912,12 @@ export async function runMiseInstall(
   cwd: string = '.',
   onOutput?: (chunk: string, stream: 'stdout' | 'stderr') => void,
 ): Promise<MiseInstallResult> {
-  const env = { ...process.env, MISE_CONFIG_FILE: miseTomlPath };
+  const { cwd: spawnCwd, env } = miseSpawnOptions({ cwd, miseTomlPath });
   return new Promise<MiseInstallResult>((resolve) => {
     let child: child_process.ChildProcess;
     try {
       child = child_process.spawn('mise', ['install'], {
-        cwd,
+        cwd: spawnCwd,
         env,
         stdio: ['ignore', 'pipe', 'pipe'],
       });

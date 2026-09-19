@@ -17,6 +17,7 @@ import {
   miseActivationHint,
   miseInstallInstructions,
   miseInstallOutcome,
+  miseSpawnOptions,
   pathContainsDir,
   platformUnsupportedHint,
   shimsDir,
@@ -179,6 +180,22 @@ describe('global mise config shims_dir', () => {
     );
     assert.equal(getShimsDirValue('[env]\nshims_dir = "not-this"\n'), null);
     assert.equal(getShimsDirValue('[settings]\njobs = 4\n\n[tools]\n'), null);
+  });
+});
+
+describe('mise spawn environment', () => {
+  it('never exports MISE_CONFIG_FILE (that would demote the global config)', () => {
+    const toml = path.join('some', 'project', 'mise.toml');
+    const { env } = miseSpawnOptions({ miseTomlPath: toml });
+    assert.equal(env.MISE_CONFIG_FILE, undefined);
+    assert.equal(env.MISE_GLOBAL_CONFIG_FILE, undefined);
+  });
+
+  it('runs from the directory containing the mise.toml so mise finds it locally', () => {
+    const toml = path.join('some', 'project', 'mise.toml');
+    assert.equal(miseSpawnOptions({ miseTomlPath: toml }).cwd, path.join('some', 'project'));
+    assert.equal(miseSpawnOptions({ cwd: 'explicit', miseTomlPath: toml }).cwd, 'explicit');
+    assert.equal(miseSpawnOptions().cwd, undefined);
   });
 });
 
