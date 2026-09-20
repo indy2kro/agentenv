@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-09-19
 
-Target: 20 · Found: 23 deduplicated items · Completed: 18/23 · Skipped: 0
+Target: 20 · Found: 23 deduplicated items · Completed: 20/23 · Skipped: 0
 
 > **How to use this document.** As you finish each item, change `- [ ]` to `- [x]`,
 > append ` ✅ <commit-sha>`, and bump the "Completed" counter. This file is the source
@@ -35,7 +35,7 @@ bypass**. Both are correctness, not cosmetics.
 
 - [x] **SWEEP-01** Route every user-facing file write through the Windows-safe `writeFileWithRetry`/`writeFileWithVerify` helpers — `cmd/agentenv/src/shell/detector.ts` (three `patch*ShellFix` writers), `src/adapters/claude.ts` (`settings.json`, `CLAUDE.md`), `src/adapters/codex.ts` (`config.toml`) · effort M · impact high ✅ c8a0bb5
   Rationale: the retry helpers were added for exactly the Windows EBUSY/EPERM case, and every other write path (generate, schema, mise) already uses them; the Tier 0 writers and the two most editor-/agent-locked config files are the ones that still throw on first lock, and the Tier 0 block in `apply.ts` has no try/catch around it.
-- [ ] **SWEEP-02** Remove the dead public surface that has no callers and hides latent bugs — `src/toolchain/mise.ts` (`getMiseVersionSilent`, `blockedWarn`, `parseMiseToml`, `mergeMiseConfigs`, `parseToml`), `src/config/schema.ts` (`getEnabledTools`), `src/ui/output.ts` (`banner`), `src/adapters/base.ts` (`HookConfig`), `src/toolchain/fallbacks.ts` (unused install/verify/advice exports) · effort M · impact low
+- [x] **SWEEP-02** Remove the dead public surface that has no callers and hides latent bugs — `src/toolchain/mise.ts` (`getMiseVersionSilent`, `blockedWarn`, `parseMiseToml`, `mergeMiseConfigs`, `parseToml`), `src/config/schema.ts` (`getEnabledTools`), `src/ui/output.ts` (`banner`), `src/adapters/base.ts` (`HookConfig`), `src/toolchain/fallbacks.ts` (unused install/verify/advice exports) · effort M · impact low ✅ fcf428a
   Rationale: these exports masquerade as a live API but nothing in `src/` calls them, and the abandoned `parseToml` corrupts quoted numeric values while `blockedWarn`'s regex misclassifies real errors — deleting them stops the next contributor from reviving a trap.
 
 ## Correctness bugs   (BUG-NN)
@@ -77,7 +77,7 @@ bypass**. Both are correctness, not cosmetics.
   Rationale: the help text scopes `--dry-run` to `--revert`, but passing it alone prints the manifest as if the flag were absent; a usage error (like the `--json`+`--revert` guard) is clearer.
 - [x] **UX-03** Shell-argument completion for `agentenv completion <Tab>` is only implemented for bash · `src/commands/completion.ts:74-77` vs `:97-205` · effort S · impact low ✅ a5897b8
   Rationale: zsh/fish/powershell users get flags instead of `bash zsh fish powershell` when completing the completion command's own argument.
-- [ ] **UX-04** `setup --yes` in a directory with only a user-scope config writes a new project config instead of re-applying the existing one · `src/commands/setup.ts:151-198` · effort S · impact med
+- [x] **UX-04** `setup --yes` in a directory with only a user-scope config writes a new project config instead of re-applying the existing one · `src/commands/setup.ts:151-198` · effort S · impact med ✅ 61a3bb0
   Rationale: it resolves `configFilePath(scope)` without falling back to `findConfigPath()` (the wizard does), contradicting the README's "re-applies your existing `agentenv.toml`" and producing two divergent configs.
 - [ ] **UX-05** Superpowers `detect` labels a missing `claude` CLI as `unsupported` instead of `missing` · `src/integrations/superpowers.ts:130-136` · effort S · impact low
   Rationale: `unsupported` means "agentenv can't automate this agent", but claude_code is the one agent it does automate; `missing` would fail apply loudly instead of silently skipping with a warning.
