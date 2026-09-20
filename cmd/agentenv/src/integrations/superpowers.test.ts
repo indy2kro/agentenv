@@ -96,6 +96,21 @@ describe('SuperpowersAdapter', () => {
     assert.equal(result.agents[0].state, 'missing');
   });
 
+  it('detects "missing" (not "unsupported") when the claude CLI itself is not on PATH (UX-05)', async () => {
+    const { runner } = fakeRunner(() => ({
+      success: false,
+      exitCode: null,
+      stdout: '',
+      stderr: 'spawn claude ENOENT',
+    }));
+    const adapter = new SuperpowersAdapter({ runClaudeCli: runner, fs: fakeFs() });
+
+    const result = await adapter.detect('/base', { ...enabledConfig, agents: ['claude_code'] });
+
+    assert.equal(result.agents[0].state, 'missing');
+    assert.equal(result.agents[0].detail, 'spawn claude ENOENT');
+  });
+
   it('detects "installed" when listed and the marker ref matches the config ref', async () => {
     const { runner } = fakeRunner(() => ({
       success: true,

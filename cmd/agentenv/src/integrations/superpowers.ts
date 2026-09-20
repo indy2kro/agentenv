@@ -128,9 +128,14 @@ export class SuperpowersAdapter implements IntegrationAdapter {
   ): IntegrationAgentState {
     const list = this.runClaudeCli(['plugin', 'list'], baseDir);
     if (!list.success && list.exitCode === null) {
+      // Spawn failure with no exit code means the `claude` binary itself is
+      // missing — that is a "not installed" state, not "we can't automate
+      // claude_code". Only agents agentenv *could* automate if present are
+      // `unsupported`; claude_code is automatable, so report it as missing so
+      // apply fails loudly instead of silently skipping.
       return {
         agent: 'claude_code',
-        state: 'unsupported',
+        state: 'missing',
         detail: list.stderr || 'claude CLI not found on PATH',
       };
     }
