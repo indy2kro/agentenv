@@ -122,9 +122,10 @@ of `setup`/`configure`/`apply` funnel into, in this fixed order:
 
 `agentenv status` (`src/commands/status.ts`) walks the same config to report
 drift (configured vs. actually installed/on-PATH) without changing anything.
-`agentenv doctor` (`src/commands/doctor.ts`) is a standalone environment
-sanity check (mise, shims dir, shell, per-agent binary detection) independent
-of any `agentenv.toml`. `agentenv shell-fix` (`src/commands/shell-fix.ts`) is
+`agentenv doctor` (`src/commands/doctor.ts`) is a standalone read-only
+environment sanity check (mise, shims dir, shell, config, per-agent binary
+detection); it loads and validates a config when one exists but never changes
+anything. `agentenv shell-fix` (`src/commands/shell-fix.ts`) is
 the read/revert side of step 2: `apply` records every per-user Tier 0 edit in a
 manifest (`src/shell/shell-fix-state.ts`, at
 `userConfigDir()/shell-fix-state.json`) and `--revert` restores the recorded

@@ -150,9 +150,10 @@ integration, validation errors) and `0` otherwise. The exact definition is in
 
 ### `agentenv doctor`
 
-A standalone environment sanity check **independent of your config** — mise on
-PATH, the shims dir, the shell, then (when a `agentenv.toml` exists) the
-enabled tools and agents.
+A read-only machine sanity check: mise on PATH and the shims dir, the shell,
+then (when an `agentenv.toml` exists) the config's enabled tools and agents.
+It loads and validates the config, so a broken config also shows up as
+`[fail]` — but `doctor` never changes anything.
 
 ```sh
 agentenv doctor                 # full report

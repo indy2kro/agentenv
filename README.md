@@ -84,7 +84,7 @@ PATH (a hard prerequisite — see [`docs/guides/installing.md`](docs/guides/inst
 | `setup` (alias `configure`) | Interactive wizard (agents, tools, custom binaries, scope, rtk, Superpowers) that reviews a diff before applying. `--yes` runs unattended. |
 | `apply` | Non-interactive: read `agentenv.toml`, install tools, generate everything. Idempotent. `--skip-mise-install`, `--dry-run`. |
 | `status` | What's configured vs. actually installed, where they disagree (drift). `--short`, `--json`. |
-| `doctor` | Read-only machine sanity check (mise, shims, shell, config, tools, agents) independent of your config. `--json`. |
+| `doctor` | Read-only machine sanity check: mise, shims, shell, config, tools, agents. `--json`. |
 | `update` | Unattended update of mise + config tools (pinned tools are never moved). |
 | `uninstall` | Remove config tools from mise's store; `apply` reinstalls them. |
 | `shell-fix` | Inspect/`--revert` the per-user Windows shell changes `apply` records. |
