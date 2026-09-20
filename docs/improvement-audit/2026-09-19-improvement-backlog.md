@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-09-19
 
-Target: 20 · Found: 23 deduplicated items · Completed: 17/23 · Skipped: 0
+Target: 20 · Found: 23 deduplicated items · Completed: 18/23 · Skipped: 0
 
 > **How to use this document.** As you finish each item, change `- [ ]` to `- [x]`,
 > append ` ✅ <commit-sha>`, and bump the "Completed" counter. This file is the source
@@ -33,7 +33,7 @@ bypass**. Both are correctness, not cosmetics.
 
 ## Cross-cutting sweeps (SWEEP-NN)
 
-- [ ] **SWEEP-01** Route every user-facing file write through the Windows-safe `writeFileWithRetry`/`writeFileWithVerify` helpers — `cmd/agentenv/src/shell/detector.ts` (three `patch*ShellFix` writers), `src/adapters/claude.ts` (`settings.json`, `CLAUDE.md`), `src/adapters/codex.ts` (`config.toml`) · effort M · impact high
+- [x] **SWEEP-01** Route every user-facing file write through the Windows-safe `writeFileWithRetry`/`writeFileWithVerify` helpers — `cmd/agentenv/src/shell/detector.ts` (three `patch*ShellFix` writers), `src/adapters/claude.ts` (`settings.json`, `CLAUDE.md`), `src/adapters/codex.ts` (`config.toml`) · effort M · impact high ✅ c8a0bb5
   Rationale: the retry helpers were added for exactly the Windows EBUSY/EPERM case, and every other write path (generate, schema, mise) already uses them; the Tier 0 writers and the two most editor-/agent-locked config files are the ones that still throw on first lock, and the Tier 0 block in `apply.ts` has no try/catch around it.
 - [ ] **SWEEP-02** Remove the dead public surface that has no callers and hides latent bugs — `src/toolchain/mise.ts` (`getMiseVersionSilent`, `blockedWarn`, `parseMiseToml`, `mergeMiseConfigs`, `parseToml`), `src/config/schema.ts` (`getEnabledTools`), `src/ui/output.ts` (`banner`), `src/adapters/base.ts` (`HookConfig`), `src/toolchain/fallbacks.ts` (unused install/verify/advice exports) · effort M · impact low
   Rationale: these exports masquerade as a live API but nothing in `src/` calls them, and the abandoned `parseToml` corrupts quoted numeric values while `blockedWarn`'s regex misclassifies real errors — deleting them stops the next contributor from reviving a trap.
