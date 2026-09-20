@@ -170,12 +170,16 @@ export async function applyConfiguration(
   // Step 1 — Tier 0 shell compatibility fix.
   if (config.tier0?.check_enabled !== false) {
     const enabledAgents = getEnabledAgents(config) as AgentKey[];
-    const tier0 = fixShellConfiguration(baseDir, enabledAgents, process.stdin.isTTY === true);
-    (tier0.success ? messages : errors).push(`Tier 0: ${tier0.message}`);
-    if (tier0.results) {
-      for (const result of tier0.results) {
-        messages.push(`  ${result.agent}: ${result.message}`);
+    try {
+      const tier0 = fixShellConfiguration(baseDir, enabledAgents, process.stdin.isTTY === true);
+      (tier0.success ? messages : errors).push(`Tier 0: ${tier0.message}`);
+      if (tier0.results) {
+        for (const result of tier0.results) {
+          messages.push(`  ${result.agent}: ${result.message}`);
+        }
       }
+    } catch (error) {
+      errors.push(`Tier 0: failed — ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 

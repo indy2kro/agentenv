@@ -10,6 +10,7 @@ import * as child_process from 'child_process';
 import { AGENT_KEYS } from '../config/schema.js';
 import type { AgentKey } from '../config/schema.js';
 import { pathContainsDir } from '../toolchain/mise.js';
+import { writeFileWithRetry } from '../utils/fs-retry.js';
 import {
   clearShellFixState,
   mergeShellFixEntries,
@@ -506,7 +507,7 @@ function patchClaudeShellFix(bashExe: string, home: string): ShellFixResult {
 
   if (!fs.existsSync(file)) {
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(
+    writeFileWithRetry(
       file,
       JSON.stringify({ env: { CLAUDE_CODE_GIT_BASH_PATH: bashExe } }, null, 2),
     );
@@ -544,7 +545,7 @@ function patchClaudeShellFix(bashExe: string, home: string): ShellFixResult {
   const previous = typeof env[bashKey] === 'string' ? (env[bashKey] as string) : null;
   env[bashKey] = bashExe;
   settings.env = env;
-  fs.writeFileSync(file, JSON.stringify(settings, null, 2));
+  writeFileWithRetry(file, JSON.stringify(settings, null, 2));
   return {
     agent: 'claude_code',
     file,
@@ -565,7 +566,7 @@ function patchCodexShellFix(bashExe: string, home: string): ShellFixResult {
 
   if (!fs.existsSync(file)) {
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, `[windows]\n${valueLine}\n`);
+    writeFileWithRetry(file, `[windows]\n${valueLine}\n`);
     return {
       agent: 'codex_cli',
       file,
@@ -586,7 +587,7 @@ function patchCodexShellFix(bashExe: string, home: string): ShellFixResult {
     return { agent: 'codex_cli', file, action: 'unchanged', message: `Already set in ${file}` };
   }
 
-  fs.writeFileSync(file, updated);
+  writeFileWithRetry(file, updated);
   return {
     agent: 'codex_cli',
     file,
@@ -606,7 +607,7 @@ function patchOpenCodeShellFix(bashExe: string, home: string): ShellFixResult {
 
   if (!fs.existsSync(file)) {
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, JSON.stringify({ shell: bashExe, defaultShell: bashExe }, null, 2));
+    writeFileWithRetry(file, JSON.stringify({ shell: bashExe, defaultShell: bashExe }, null, 2));
     return {
       agent: 'opencode',
       file,
@@ -642,7 +643,7 @@ function patchOpenCodeShellFix(bashExe: string, home: string): ShellFixResult {
     typeof config.defaultShell === 'string' ? (config.defaultShell as string) : null;
   config.shell = bashExe;
   config.defaultShell = bashExe;
-  fs.writeFileSync(file, JSON.stringify(config, null, 2));
+  writeFileWithRetry(file, JSON.stringify(config, null, 2));
   return {
     agent: 'opencode',
     file,
@@ -1041,7 +1042,7 @@ function restoreClaudeShellFix(
     if (!dryRun) fs.rmSync(entry.file, { force: true });
     return revertResult(entry, 'removed', `Removed ${entry.file} (created by agentenv)`);
   }
-  if (!dryRun) fs.writeFileSync(entry.file, JSON.stringify(settings, null, 2));
+  if (!dryRun) writeFileWithRetry(entry.file, JSON.stringify(settings, null, 2));
   return revertResult(entry, 'reverted', `Restored ${entry.file}`);
 }
 
@@ -1070,7 +1071,7 @@ function restoreCodexShellFix(
     if (!dryRun) fs.rmSync(entry.file, { force: true });
     return revertResult(entry, 'removed', `Removed ${entry.file} (created by agentenv)`);
   }
-  if (next !== content && !dryRun) fs.writeFileSync(entry.file, next);
+  if (next !== content && !dryRun) writeFileWithRetry(entry.file, next);
   return revertResult(entry, 'reverted', `Restored ${entry.file}`);
 }
 
@@ -1117,7 +1118,7 @@ function restoreOpenCodeShellFix(
     if (!dryRun) fs.rmSync(entry.file, { force: true });
     return revertResult(entry, 'removed', `Removed ${entry.file} (created by agentenv)`);
   }
-  if (changed && !dryRun) fs.writeFileSync(entry.file, JSON.stringify(config, null, 2));
+  if (changed && !dryRun) writeFileWithRetry(entry.file, JSON.stringify(config, null, 2));
   return revertResult(entry, 'reverted', `Restored ${entry.file}`);
 }
 

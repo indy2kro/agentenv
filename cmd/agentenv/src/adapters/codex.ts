@@ -10,6 +10,7 @@ import * as path from 'path';
 import { BaseAdapter, AdapterConfig, AdapterResult } from './base.js';
 import { isAgentInstalled } from './detect.js';
 import { RTK_INIT_FLAGS, resolveRtkInit, rtkMessage } from '../toolchain/rtk.js';
+import { writeFileWithRetry } from '../utils/fs-retry.js';
 
 export class CodexCliAdapter extends BaseAdapter {
   private configDir: string;
@@ -63,7 +64,7 @@ export class CodexCliAdapter extends BaseAdapter {
     const configPath = path.join(this.configDir, 'config.toml');
     try {
       if (!fs.existsSync(configPath)) {
-        fs.writeFileSync(configPath, this.generateConfigToml());
+        writeFileWithRetry(configPath, this.generateConfigToml());
         result.filesCreated.push(configPath);
       }
     } catch (err) {

@@ -129,7 +129,7 @@ export class ClaudeCodeAdapter extends BaseAdapter {
       }
 
       // Save settings
-      fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+      writeFileWithRetry(settingsPath, JSON.stringify(settings, null, 2));
 
       if (!hasRtkHook) {
         result.filesModified.push(settingsPath);
@@ -150,7 +150,7 @@ export class ClaudeCodeAdapter extends BaseAdapter {
       const claudeMdContent = this.generateClaudeMdContent();
 
       if (!fs.existsSync(claudeMdPath)) {
-        fs.writeFileSync(claudeMdPath, claudeMdContent);
+        writeFileWithRetry(claudeMdPath, claudeMdContent);
         result.filesCreated.push(claudeMdPath);
       }
     } catch (err) {
