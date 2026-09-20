@@ -3,7 +3,12 @@ import * as fs from 'fs';
 import { detectInstalledAgents } from '../adapters/detect.js';
 import { loadConfig, saveConfig, validateConfig } from '../config/schema.js';
 import type { AgentKey, AgentenvConfig } from '../config/schema.js';
-import { configFilePath, parseScopeFlag, resolveScopeDir } from '../config/scopes.js';
+import {
+  configFilePath,
+  findConfigPath,
+  parseScopeFlag,
+  resolveScopeDir,
+} from '../config/scopes.js';
 import type { ScopeValue } from '../config/scopes.js';
 import { applyConfiguration } from './apply.js';
 import { runConfigWizard } from './wizard.js';
@@ -130,7 +135,7 @@ export async function unattendedSetup(
     return;
   }
 
-  let config: AgentenvConfig;
+  let config: AgentenvConfig | undefined;
   let file: string;
 
   if (options.config) {
@@ -160,7 +165,24 @@ export async function unattendedSetup(
         process.exitCode = 1;
         return;
       }
-    } else {
+    } else if (options.scope === undefined) {
+      // No config at the preferred scope and the user didn't ask for a
+      // specific one. Re-apply the nearest existing config (project first,
+      // then user) instead of silently writing a fresh project config.
+      const nearest = findConfigPath();
+      if (nearest) {
+        printConfigPath(nearest);
+        file = nearest;
+        config = loadConfig(nearest);
+        const report = validateConfig(config);
+        if (!reportValidation(report, 'Configuration invalid — not applying.')) {
+          process.exitCode = 1;
+          return;
+        }
+      }
+    }
+
+    if (config === undefined) {
       let agents: AgentKey[];
       if (options.agents) {
         try {

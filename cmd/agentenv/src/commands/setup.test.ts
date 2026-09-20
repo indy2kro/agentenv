@@ -84,6 +84,7 @@ describe('unattended setup pipeline', () => {
 
   it('enables the Superpowers integration when --superpowers is passed', async () => {
     const dir = tempDir('agentenv-setup-');
+    const xdgDir = tempDir('agentenv-xdg-');
     let saved: import('../config/schema.js').AgentenvConfig | undefined;
     const stubApply: typeof applyConfiguration = async (config) => {
       saved = config;
@@ -93,9 +94,12 @@ describe('unattended setup pipeline', () => {
     const originalLog = console.log;
     const originalError = console.error;
     const originalCwd = process.cwd();
+    const originalXdg = process.env.XDG_CONFIG_HOME;
     console.log = () => {};
     console.error = () => {};
     try {
+      fs.mkdirSync(path.join(xdgDir, 'agentenv'), { recursive: true });
+      process.env.XDG_CONFIG_HOME = xdgDir;
       process.chdir(dir);
       await unattendedSetup(
         { yes: true, agents: 'claude_code', superpowers: 'v7.0.0', tier2: false, rtk: false },
@@ -106,6 +110,8 @@ describe('unattended setup pipeline', () => {
       );
     } finally {
       process.chdir(originalCwd);
+      if (originalXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = originalXdg;
       console.log = originalLog;
       console.error = originalError;
     }
@@ -115,5 +121,54 @@ describe('unattended setup pipeline', () => {
     assert.deepEqual(saved?.integrations?.superpowers?.agents, ['claude_code']);
     const toml = fs.readFileSync(path.join(dir, 'agentenv.toml'), 'utf-8');
     assert.match(toml, /\[integrations\.superpowers\]/);
+  });
+
+  it('re-applies the nearest user config instead of writing a fresh project config (UX-04)', async () => {
+    const projectDir = tempDir('agentenv-project-');
+    const xdgDir = tempDir('agentenv-xdg-');
+    const userToml = path.join(xdgDir, 'agentenv', 'agentenv.toml');
+    fs.mkdirSync(path.dirname(userToml), { recursive: true });
+    saveConfig({ ...DEFAULT_CONFIG, scope: 'user', agents: { claude_code: true } }, userToml);
+
+    let appliedConfig: import('../config/schema.js').AgentenvConfig | undefined;
+    let appliedBaseDir: string | undefined;
+    const stubApply: typeof applyConfiguration = async (config, baseDir) => {
+      appliedConfig = config;
+      appliedBaseDir = baseDir;
+      return { success: true, messages: [], errors: [] };
+    };
+
+    const logs: string[] = [];
+    const originalLog = console.log;
+    const originalError = console.error;
+    const originalCwd = process.cwd();
+    const originalXdg = process.env.XDG_CONFIG_HOME;
+    console.log = (message?: unknown) => logs.push(String(message));
+    console.error = () => {};
+    try {
+      process.env.XDG_CONFIG_HOME = xdgDir;
+      process.chdir(projectDir);
+      await unattendedSetup(
+        { yes: true, agents: 'claude_code' },
+        {
+          misePrereqCheckDeps: { isInstalled: () => true, version: () => '3.2.1' },
+          applyConfiguration: stubApply,
+        },
+      );
+    } finally {
+      process.chdir(originalCwd);
+      if (originalXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = originalXdg;
+      console.log = originalLog;
+      console.error = originalError;
+    }
+
+    assert.equal(appliedConfig?.scope, 'user');
+    assert.equal(appliedBaseDir, path.join(xdgDir, 'agentenv'));
+    assert.equal(fs.existsSync(path.join(projectDir, 'agentenv.toml')), false);
+    assert.ok(
+      logs.some((line) => line.includes(userToml)),
+      'should print the nearest config path',
+    );
   });
 });
