@@ -3,7 +3,7 @@
  * Exports all agent adapters for use by the CLI
  */
 
-export { BaseAdapter, AdapterConfig, AdapterResult, HookConfig } from './base.js';
+export { BaseAdapter, AdapterConfig, AdapterResult } from './base.js';
 export { AGENT_COMMANDS, detectInstalledAgents } from './detect.js';
 export type { DetectFn } from './detect.js';
 export { ClaudeCodeAdapter } from './claude.js';

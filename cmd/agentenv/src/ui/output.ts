@@ -11,16 +11,9 @@ export function isQuiet(): boolean {
   return quiet;
 }
 
-/** Pure predicate so banner gating is unit-testable without a real TTY. */
+/** Pure predicate so TTY-gated printing is unit-testable without a real TTY. */
 export function shouldPrintBanner(isTTY: boolean, quietMode: boolean): boolean {
   return isTTY && !quietMode;
-}
-
-/** Print a banner/footer heading, suppressed when piped or in quiet mode. */
-export function banner(text: string): void {
-  if (shouldPrintBanner(process.stdout.isTTY === true, quiet)) {
-    console.log(theme.heading(text));
-  }
 }
 
 /** Embedded `agentenv` wordmark, printed once at the start of every command. */

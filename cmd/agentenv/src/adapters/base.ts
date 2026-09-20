@@ -22,13 +22,6 @@ export interface AdapterResult {
   errors: string[];
 }
 
-export interface HookConfig {
-  name: string;
-  type: 'pre' | 'post' | 'session' | 'tool';
-  command: string;
-  description: string;
-}
-
 export abstract class BaseAdapter {
   protected config: AdapterConfig;
 

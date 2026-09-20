@@ -1125,52 +1125,6 @@ function diffNestedSettings(
 }
 
 /**
- * Get enabled tools from config
- */
-export function getEnabledTools(config: AgentenvConfig): string[] {
-  const tools = config.tools || DEFAULT_CONFIG.tools || {};
-  const enabled: string[] = [];
-
-  const toolKeys = [
-    'ripgrep',
-    'fd',
-    'jq',
-    'rtk',
-    'ast_grep',
-    'git_delta',
-    'gh',
-    'difftastic',
-    'yq',
-    'bat',
-    'eza',
-    'miller',
-    'tokei',
-    'hyperfine',
-    'fzf',
-    'just',
-    'watchexec',
-    'direnv',
-  ];
-
-  for (const key of toolKeys) {
-    if (tools[key as keyof AgentenvConfig['tools']]) {
-      enabled.push(key);
-    }
-  }
-
-  // Add custom tools
-  if (config.custom_tools) {
-    for (const ct of config.custom_tools) {
-      if (ct.already_installed || ct.mise_source) {
-        enabled.push(ct.name);
-      }
-    }
-  }
-
-  return enabled;
-}
-
-/**
  * Resolve the effective scope for an integration: its own `scope` field when
  * set, otherwise the agentenv-level scope, defaulting to "project".
  */

@@ -61,12 +61,6 @@ export interface MiseTool {
   category: string;
 }
 
-export interface MiseConfig {
-  tools: Record<string, string>;
-  env?: Record<string, string>;
-  settings?: Record<string, any>;
-}
-
 /**
  * Tools agentenv invokes directly are pinned to versions we have verified;
  * everything else resolves to latest. rtk is invoked by agentenv's delegation
@@ -497,7 +491,6 @@ export interface MiseCapturedOutput {
   status: number | null;
   stdout: string;
   stderr: string;
-  blockedWarn: boolean;
 }
 
 /**
@@ -525,7 +518,6 @@ export function runMiseCaptured(
       status: null,
       stdout: '',
       stderr: err instanceof Error ? err.message : String(err),
-      blockedWarn: false,
     };
   }
   const stderr = result.error ? result.error.message : (result.stderr ?? '');
@@ -533,7 +525,6 @@ export function runMiseCaptured(
     status: result.status,
     stdout: result.stdout ?? '',
     stderr,
-    blockedWarn: /warn|self-update|version .* available/i.test(stderr),
   };
 }
 
@@ -554,11 +545,6 @@ export function getMiseVersion(): string {
   const result = runMiseCaptured(['--version']);
   const version = result.stdout.trim();
   return result.status === 0 && version !== '' ? version : 'unknown';
-}
-
-/** Alias used by prereq/status/doctor so version probes never surface mise WARN. */
-export function getMiseVersionSilent(): string {
-  return getMiseVersion();
 }
 
 /**
@@ -1092,144 +1078,4 @@ export function getInstalledToolState(
   opts: RunMiseCapturedOptions = {},
 ): Record<string, InstalledToolState> {
   return parseInstalledToolState(raw ?? runMiseCaptured(['ls', '--json'], opts).stdout) ?? {};
-}
-
-/**
- * Parse existing mise.toml file
- */
-export function parseMiseToml(filePath: string): MiseConfig | null {
-  try {
-    if (!fs.existsSync(filePath)) {
-      return null;
-    }
-
-    const content = fs.readFileSync(filePath, 'utf-8');
-    return parseToml(content) as MiseConfig;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Simple TOML parser helper
- */
-function parseToml(content: string): Record<string, any> {
-  const result: Record<string, any> = {};
-  let currentTable: Record<string, any> = result;
-
-  const lines = content.split('\n');
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-
-    // Skip comments and empty lines
-    if (trimmed === '' || trimmed.startsWith('#')) {
-      continue;
-    }
-
-    // Section header
-    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
-      const section = trimmed.slice(1, -1);
-
-      if (section.includes('.')) {
-        // Nested section
-        const parts = section.split('.');
-        let parent: Record<string, any> = result;
-
-        for (let i = 0; i < parts.length - 1; i++) {
-          if (!parent[parts[i]]) {
-            parent[parts[i]] = {};
-          }
-          parent = parent[parts[i]];
-        }
-
-        currentTable = parent;
-      } else {
-        if (!result[section]) {
-          result[section] = {};
-        }
-        currentTable = result[section];
-      }
-      continue;
-    }
-
-    // Key-value pair
-    const equalsIndex = trimmed.indexOf('=');
-    if (equalsIndex > 0) {
-      const key = trimmed.slice(0, equalsIndex).trim();
-      const value = trimmed.slice(equalsIndex + 1).trim();
-
-      // Remove quotes if present
-      let cleanValue: any = value;
-      if (
-        (value.startsWith('"') && value.endsWith('"')) ||
-        (value.startsWith("'") && value.endsWith("'"))
-      ) {
-        cleanValue = value.slice(1, -1);
-      }
-
-      // Parse boolean
-      if (cleanValue.toLowerCase() === 'true') {
-        cleanValue = true;
-      } else if (cleanValue.toLowerCase() === 'false') {
-        cleanValue = false;
-      }
-
-      // Parse number
-      if (!isNaN(Number(cleanValue))) {
-        cleanValue = Number(cleanValue);
-      }
-
-      currentTable[key] = cleanValue;
-    }
-  }
-
-  return result;
-}
-
-/**
- * Merge existing mise.toml with new tools
- * Preserves existing tools that are not in the new config
- */
-export function mergeMiseConfigs(existing: MiseConfig | null, newConfig: MiseConfig): MiseConfig {
-  const result: MiseConfig = {
-    tools: { ...newConfig.tools },
-    env: { ...newConfig.env },
-    settings: { ...newConfig.settings },
-  };
-
-  if (existing) {
-    // Merge tools - preserve existing versions if not in new config
-    for (const [tool, version] of Object.entries(existing.tools || {})) {
-      if (!result.tools[tool]) {
-        result.tools[tool] = version;
-      }
-    }
-
-    // Merge env
-    if (existing.env) {
-      for (const [key, value] of Object.entries(existing.env)) {
-        if (!result.env || !result.env[key]) {
-          if (!result.env) {
-            result.env = {};
-          }
-          result.env[key] = value;
-        }
-      }
-    }
-
-    // Merge settings
-    if (existing.settings) {
-      for (const [key, value] of Object.entries(existing.settings)) {
-        if (!result.settings || result.settings[key] === undefined) {
-          if (!result.settings) {
-            result.settings = {};
-          }
-          result.settings[key] = value;
-        }
-      }
-    }
-  }
-
-  return result;
 }
