@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-09-19
 
-Target: 20 · Found: 23 deduplicated items · Completed: 23/23 · Skipped: 0
+Target: 20 · Found: 23 deduplicated items · Completed: 24/23 · Skipped: 0
 
 > **How to use this document.** As you finish each item, change `- [ ]` to `- [x]`,
 > append ` ✅ <commit-sha>`, and bump the "Completed" counter. This file is the source
@@ -91,5 +91,5 @@ bypass**. Both are correctness, not cosmetics.
 
 ## Docs   (DOCS-NN)
 
-- [ ] **DOCS-01** Command tables and the `doctor` description have drifted from the code · `cmd/agentenv/README.md:130-137`, `README.md:79-88`, `AGENTS.md` · effort S · impact low
+- [x] **DOCS-01** Command tables and the `doctor` description have drifted from the code · `cmd/agentenv/README.md:130-137`, `README.md:79-88`, `AGENTS.md` · effort S · impact low ✅ f69e228
   Rationale: `doctor`/`update`/`completion` and `apply --dry-run` are missing from the command tables, and "independent of any `agentenv.toml`" is misleading since `doctor` loads and validates the config and its exit code depends on it.
