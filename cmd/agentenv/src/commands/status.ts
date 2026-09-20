@@ -629,7 +629,7 @@ export function renderStatus(report: StatusReport): string {
   }
   for (const agent of report.agents) {
     const line =
-      `  ${agent.label.padEnd(16)} installed: ${agent.installed ? 'yes' : 'no'}   ` +
+      `  ${agent.label.padEnd(16)} installed: ${(agent.installed ? 'yes' : 'no').padEnd(3)}   ` +
       `configured: ${agent.configured ? 'yes' : 'no'}${agent.drift ? '   <- drift: installed but not configured' : ''}`;
     chunks.push(agent.drift ? theme.warn(line) : line);
   }

@@ -19,7 +19,12 @@ import { findConfigPath } from '../config/scopes.js';
 import type { AgentenvConfig } from '../config/schema.js';
 import { SuperpowersAdapter, integrationResultLines } from '../integrations/index.js';
 import type { SuperpowersAdapterDeps } from '../integrations/index.js';
-import { generateInstructionFiles, updateWithMarkers } from '../generate/agentsmd.js';
+import {
+  generateAgentsMd,
+  generateInstructionFiles,
+  updateWithMarkers,
+} from '../generate/agentsmd.js';
+import type { GeneratedFile } from '../generate/agentsmd.js';
 import { fixShellConfiguration } from '../shell/detector.js';
 import type { RtkInitFn } from '../toolchain/rtk.js';
 import { isUnsupportedRtkAgentError } from '../toolchain/rtk.js';
@@ -118,6 +123,25 @@ function enabledIntegrations(config: AgentenvConfig, options: ApplyOptions): Sup
   return adapters;
 }
 
+/**
+ * For user/global scope the instruction files are written into each enabled
+ * agent's own user-level instruction file (e.g. ~/.claude/CLAUDE.md for
+ * Claude Code) instead of only the baseDir copies, which no agent reads.
+ * Returns the per-agent files for the scope; empty for project scope.
+ */
+export function userScopeInstructionFiles(
+  config: AgentenvConfig,
+  baseDir: string,
+  options: ApplyOptions,
+): GeneratedFile[] {
+  if (config.scope !== 'user') return [];
+  const content = generateAgentsMd(config);
+  return adaptersFor(config, baseDir, options).map((adapter) => ({
+    path: adapter.getUserInstructionFile(),
+    content,
+  }));
+}
+
 /** Apply a validated configuration and return structured results for the CLI. */
 export async function applyConfiguration(
   config: AgentenvConfig,
@@ -213,7 +237,10 @@ export async function applyConfiguration(
   // Step 4 — instruction files for the agents.
   const markerStart = config.generate?.marker_start ?? '<!-- agentenv-managed-start -->';
   const markerEnd = config.generate?.marker_end ?? '<!-- agentenv-managed-end -->';
-  for (const file of generateInstructionFiles(config, baseDir)) {
+  for (const file of [
+    ...generateInstructionFiles(config, baseDir),
+    ...userScopeInstructionFiles(config, baseDir, options),
+  ]) {
     const update = updateWithMarkers(file.path, file.content, markerStart, markerEnd);
     (update.success ? messages : errors).push(update.message);
   }
@@ -282,7 +309,10 @@ export const applyCommand = new Command()
     const baseDir = resolveScopeDir(config.scope);
     if (dryRun) {
       const enabledToolCount = Object.values(config.tools ?? {}).filter((on) => on === true).length;
-      const files = generateInstructionFiles(config, baseDir);
+      const files = [
+        ...generateInstructionFiles(config, baseDir),
+        ...userScopeInstructionFiles(config, baseDir, options),
+      ];
       const agents = [...getEnabledAgents(config)];
       const integrations = enabledIntegrations(config, options);
       console.log(

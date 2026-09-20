@@ -4,6 +4,7 @@ import {
   AGENT_CONFIG_FILES,
   computeStatusExitCode,
   gatherStatus,
+  renderStatus,
   renderStatusShort,
   statusToJson,
 } from './status.js';
@@ -388,5 +389,52 @@ describe('renderStatusShort', () => {
     assert.match(out, /Tools: 1 configured, 1 drifted/);
     assert.match(out, /Generated files: 1, 1 missing\/unmanaged/);
     assert.doesNotMatch(out, /gh/);
+  });
+});
+
+describe('renderStatus agent lines', () => {
+  const report = (agents: StatusReport['agents']): StatusReport => ({
+    command: 'status',
+    config: '/tmp/agentenv.toml',
+    scope: 'project',
+    baseDir: '/tmp',
+    exitCode: 0,
+    validation: { errors: [], warnings: [] },
+    agents,
+    tools: [],
+    customTools: [],
+    generated: [],
+    integrations: [],
+    rtkEnabled: true,
+    tier0: null,
+    ghAuth: null,
+    miseVersion: '2026.9.5',
+    integrationDetails: [],
+  });
+
+  it('aligns the configured column for installed yes/no (UX-06)', () => {
+    const out = renderStatus(
+      report([
+        {
+          key: 'claude_code',
+          label: 'Claude Code',
+          installed: true,
+          configured: true,
+          drift: false,
+        },
+        { key: 'codex_cli', label: 'Codex CLI', installed: false, configured: false, drift: false },
+      ]),
+    );
+    const yesLine = out.split('\n').find((line) => line.includes('Claude Code'));
+    const noLine = out.split('\n').find((line) => line.includes('Codex CLI'));
+    assert.ok(yesLine && noLine);
+    assert.ok(yesLine.includes('installed: yes '));
+    // 'no' is padded to width 3 before the three-space separator, so the
+    // `configured:` column starts at the same offset on both lines.
+    assert.equal(
+      yesLine.indexOf('configured:'),
+      noLine.indexOf('configured:'),
+      'configured column must align regardless of yes/no',
+    );
   });
 });

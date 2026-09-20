@@ -28,6 +28,11 @@ export class CopilotAdapter extends BaseAdapter {
     return this.configDir;
   }
 
+  getUserInstructionFile(): string {
+    const home = process.env.HOME || process.env.USERPROFILE || '';
+    return path.join(home, '.copilot', 'copilot-instructions.md');
+  }
+
   isInstalled(): boolean {
     return isAgentInstalled('copilot');
   }

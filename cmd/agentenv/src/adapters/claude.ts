@@ -26,6 +26,10 @@ export class ClaudeCodeAdapter extends BaseAdapter {
     return this.configDir;
   }
 
+  getUserInstructionFile(): string {
+    return path.join(this.configDir, 'CLAUDE.md');
+  }
+
   isInstalled(): boolean {
     return isAgentInstalled('claude_code');
   }

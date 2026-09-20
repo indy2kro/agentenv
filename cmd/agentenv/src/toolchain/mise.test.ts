@@ -418,7 +418,7 @@ describe('Windows 3-state verify and activation hint', () => {
     // from the generated mise.toml, so `mise install` can never produce it.
     const availability = verifyToolAvailability(
       { ...DEFAULT_CONFIG, tools: { tokei: true } },
-      { installedState: {} },
+      { installedState: {}, resolveFn: () => null, shimCheck: () => false },
     );
     assert.equal(availability.length, 1);
     assert.equal(availability[0].status, 'manual');
@@ -447,14 +447,17 @@ describe('toolAvailabilityClassification', () => {
   const resolvable = (value: string | null) => () => value;
   const noShim = () => false;
 
-  it('marks a fallback tool manual regardless of PATH', () => {
+  it('marks a fallback tool manual when absent but resolvable when on PATH', () => {
+    // tokei is never handed to mise, but `apt install tokei` on Linux puts it
+    // on PATH — then it IS installed, just not via mise (BUG-16): report it
+    // as resolvable instead of nagging the user to install what they have.
     assert.equal(
       toolAvailabilityClassification('tokei', 'tokei', empty, resolvable(null), noShim),
       'manual',
     );
     assert.equal(
       toolAvailabilityClassification('tokei', 'tokei', empty, resolvable('/usr/bin/tokei'), noShim),
-      'manual',
+      'resolvable',
     );
   });
 

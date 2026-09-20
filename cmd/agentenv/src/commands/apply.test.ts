@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { applyConfiguration } from './apply.js';
+import { applyConfiguration, userScopeInstructionFiles } from './apply.js';
 import type { AgentenvConfig } from '../config/schema.js';
 import type { ClaudeCliRunner } from '../integrations/superpowers.js';
 import type { RtkInitFn } from '../toolchain/rtk.js';
@@ -430,5 +430,95 @@ describe('apply pipeline', () => {
     });
     assert.equal(result.success, true, result.errors.join('; '));
     assert.equal(result.messages.filter((m) => m.startsWith('Prerequisite: mise')).length, 0);
+  });
+
+  describe('user-scope instruction files', () => {
+    const USER_CONFIG: AgentenvConfig = {
+      ...CONFIG,
+      scope: 'user',
+    };
+
+    it('writes agentenv-managed instructions into each enabled agent user-level file', async () => {
+      const home = tempDir('agentenv-home-');
+      const base = tempDir('agentenv-base-');
+      process.env.HOME = home;
+      process.env.USERPROFILE = home;
+      const rtk = fakeRtkInit();
+
+      const result = await applyConfiguration(USER_CONFIG, base, {
+        skipMiseInstall: true,
+        rtkInit: rtk.fn,
+      });
+      assert.equal(result.success, true, result.errors.join('; '));
+
+      // Global copies remain in the scope dir for reference/status.
+      assert.ok(fs.existsSync(path.join(base, 'AGENTS.md')), 'missing baseDir AGENTS.md');
+      assert.ok(fs.existsSync(path.join(base, 'CLAUDE.md')), 'missing baseDir CLAUDE.md');
+
+      // Each enabled agent must get instructions where it actually reads them.
+      const expected = [
+        path.join(home, '.claude', 'CLAUDE.md'),
+        path.join(home, '.codex', 'AGENTS.md'),
+        path.join(home, '.copilot', 'copilot-instructions.md'),
+        path.join(home, '.config', 'opencode', 'AGENTS.md'),
+      ];
+      for (const file of expected) {
+        assert.ok(fs.existsSync(file), `missing ${file}`);
+        const content = fs.readFileSync(file, 'utf-8');
+        assert.ok(content.includes('agentenv-managed-start'), `${file} missing start marker`);
+        assert.ok(content.includes('Available Tools'), `${file} missing tool instructions`);
+      }
+    });
+
+    it('creates the agent config dirs before writing user-level instructions', async () => {
+      const home = tempDir('agentenv-home-');
+      const base = tempDir('agentenv-base-');
+      process.env.HOME = home;
+      process.env.USERPROFILE = home;
+      const rtk = fakeRtkInit();
+
+      const result = await applyConfiguration(USER_CONFIG, base, {
+        skipMiseInstall: true,
+        rtkInit: rtk.fn,
+      });
+      assert.equal(result.success, true, result.errors.join('; '));
+
+      assert.equal(fs.existsSync(path.join(home, '.claude')), true);
+      assert.equal(fs.existsSync(path.join(home, '.codex')), true);
+      assert.equal(fs.existsSync(path.join(home, '.copilot')), true);
+      assert.equal(fs.existsSync(path.join(home, '.config', 'opencode')), true);
+    });
+
+    it('preserves existing user instructions outside the managed markers', async () => {
+      const home = tempDir('agentenv-home-');
+      const base = tempDir('agentenv-base-');
+      process.env.HOME = home;
+      process.env.USERPROFILE = home;
+      const rtk = fakeRtkInit();
+
+      const claudeMd = path.join(home, '.claude', 'CLAUDE.md');
+      fs.mkdirSync(path.join(home, '.claude'), { recursive: true });
+      fs.writeFileSync(claudeMd, '# My personal Claude hints\n\nAlways use delta for diffs.\n');
+
+      const result = await applyConfiguration(USER_CONFIG, base, {
+        skipMiseInstall: true,
+        rtkInit: rtk.fn,
+      });
+      assert.equal(result.success, true, result.errors.join('; '));
+
+      const content = fs.readFileSync(claudeMd, 'utf-8');
+      assert.ok(
+        content.includes('# My personal Claude hints'),
+        'user content was lost:\n' + content,
+      );
+      assert.ok(content.includes('Always use delta for diffs.'), 'user content was lost');
+      assert.ok(content.includes('agentenv-managed-start'), 'managed block missing');
+    });
+
+    it('returns no extra files when scope is project', () => {
+      const base = tempDir('agentenv-base-');
+      const files = userScopeInstructionFiles(CONFIG, base, {});
+      assert.deepEqual(files, []);
+    });
   });
 });

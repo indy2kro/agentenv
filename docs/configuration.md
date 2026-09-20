@@ -316,6 +316,26 @@ Anything you've written outside that block survives every `apply`. If a crash
 leaves *one* marker behind, the next `apply` treats the file as partial and
 recovers it without clobbering your content.
 
+In **user scope** (`scope = "user"`), the baseDir copies still land in
+`~/.config/agentenv/` for reference, but the same marker-preserved instructions
+are additionally written into each *enabled* agent's own user-level instruction
+file — the one that agent actually reads every session:
+
+| Agent | User-level instruction file |
+|---|---|
+| Claude Code | `~/.claude/CLAUDE.md` |
+| Codex CLI | `~/.codex/AGENTS.md` |
+| OpenCode | `~/.config/opencode/AGENTS.md` |
+| GitHub Copilot | `~/.copilot/copilot-instructions.md` |
+| Gemini CLI | `~/.gemini/AGENTS.md` |
+| Cursor | `~/.cursor/AGENTS.md` |
+| Windsurf | `~/.windsurf/AGENTS.md` |
+| Cline | `~/.cline/AGENTS.md` |
+| Mistral Vibe | `~/.vibe/AGENTS.md` |
+
+The same agentenv-managed marker block (and preservation rule) applies there, so
+existing hand-written user instructions are never replaced.
+
 ### `[generate]`
 
 | Key | Type | Default | Meaning |

@@ -740,7 +740,13 @@ export function toolAvailabilityClassification(
   resolveFn: (binary: string) => string | null = resolveBinary,
   shimCheck: (binary: string) => boolean = shimExists,
 ): ToolResolvability {
-  if (requiresFallback(key) || isPlatformUnsupported(key)) return 'manual';
+  if (requiresFallback(key) || isPlatformUnsupported(key)) {
+    // A tool agentenv never hands to mise (tokei) or can't install on this
+    // platform (jless/rga on Windows) may still be present on PATH: e.g.
+    // `apt install tokei` → /usr/bin/tokei on Linux. Report it as installed
+    // then; only absent ones are "manual / install manually", never drift.
+    return resolveFn(binary) !== null ? 'resolvable' : 'manual';
+  }
   const miseName = MISE_TOOL_NAMES[key] ?? key;
   const onPath = resolveFn(binary) !== null;
   return classifyToolResolvability(
@@ -757,6 +763,10 @@ export interface VerifyToolOptions {
   /** cwd / mise.toml for the lazy `mise ls --json` probe (scope-aware). */
   cwd?: string;
   miseTomlPath?: string;
+  /** Injectable PATH resolver; defaults to the real `resolveBinary`. */
+  resolveFn?: (binary: string) => string | null;
+  /** Injectable shim check; defaults to the real `shimExists`. */
+  shimCheck?: (binary: string) => boolean;
 }
 
 /**
@@ -776,14 +786,16 @@ export function verifyToolAvailability(
     getInstalledToolState(undefined, { cwd: options.cwd, miseTomlPath: options.miseTomlPath });
   const tools = config.tools || {};
   const result: ToolAvailability[] = [];
+  const resolveFn = options.resolveFn ?? resolveBinary;
+  const shimCheck = options.shimCheck ?? shimExists;
   for (const key of TOOL_KEYS) {
     if (tools[key] !== true) continue;
     const binary = BINARY_MAP[key];
     result.push({
       key,
       binary,
-      onPath: resolveBinary(binary) !== null,
-      status: toolAvailabilityClassification(key, binary, installedState),
+      onPath: resolveFn(binary) !== null,
+      status: toolAvailabilityClassification(key, binary, installedState, resolveFn, shimCheck),
     });
   }
   return result;
