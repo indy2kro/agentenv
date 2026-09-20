@@ -11,6 +11,11 @@ import { AgentenvConfig, BINARY_MAP, TOOL_KEYS, TOOL_TIERS } from '../config/sch
 import { resolveBinary } from '../adapters/detect.js';
 import { writeFileWithVerify } from '../utils/fs-retry.js';
 import { FALLBACK_REQUIRED_TOOLS, isPlatformUnsupported, requiresFallback } from './fallbacks.js';
+import {
+  mergeShellFixEntries,
+  readShellFixState,
+  writeShellFixState,
+} from '../shell/shell-fix-state.js';
 
 // Tool to mise name mappings
 export const MISE_TOOL_NAMES: Record<string, string> = {
@@ -261,10 +266,50 @@ export function getShimsDirValue(content: string): string | null {
 }
 
 /**
+ * Remove the `shims_dir` line that upsertShimsDir writes and, if that leaves
+ * the `[settings]` section with no other keys, the section header too ("other
+ * keys" means any non-empty line between the header and the next section).
+ * Returns the content unchanged when no `shims_dir` line is present. Surgical
+ * counterpart to upsertShimsDir, used by `shell-fix --revert`.
+ */
+export function removeShimsDirValue(content: string): string {
+  const lines = content.split(/\r?\n/);
+  const shimsIdx = lines.findIndex((line) => /^\s*shims_dir\s*=/.test(line.trim()));
+  if (shimsIdx === -1) return content;
+  lines.splice(shimsIdx, 1);
+
+  const headerIdx = lines.findIndex((line) => /^\s*\[settings\]\s*$/.test(line.trim()));
+  if (headerIdx !== -1) {
+    let empty = true;
+    for (let i = headerIdx + 1; i < lines.length; i++) {
+      const trimmed = lines[i].trim();
+      if (/^\s*\[.*\]$/.test(trimmed)) break;
+      if (trimmed !== '') {
+        empty = false;
+        break;
+      }
+    }
+    if (empty) {
+      lines.splice(headerIdx, 1);
+      if (lines[headerIdx]?.trim() === '') lines.splice(headerIdx, 1);
+    }
+  }
+
+  while (lines.length > 0 && lines[lines.length - 1].trim() === '') lines.pop();
+  return lines.length > 0 ? `${lines.join('\n')}\n` : '';
+}
+
+/**
  * Ensure mise's GLOBAL config declares the shims_dir agentenv relies on, and
  * tell the user whether the shims dir is actually on PATH. Idempotent.
+ *
+ * When `statePath` is given, a change made here is recorded in the shell-fix
+ * manifest (agent `mise`) so `agentenv shell-fix --revert` can undo it. The
+ * existing manifest's bashExe is preserved when merging so a Tier 0 entry and
+ * the mise entry coexist in one apply run without clobbering each other's
+ * revert comparison value.
  */
-export function ensureGlobalShimsDir(): {
+export function ensureGlobalShimsDir(statePath?: string): {
   success: boolean;
   message: string;
 } {
@@ -274,7 +319,12 @@ export function ensureGlobalShimsDir(): {
     fs.mkdirSync(miseGlobalConfigDir(), { recursive: true });
     const existing = fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf-8') : '';
     const updated = upsertShimsDir(existing, dir);
-    if (updated !== existing) fs.writeFileSync(configPath, updated);
+    if (updated !== existing) {
+      fs.writeFileSync(configPath, updated);
+      if (statePath) {
+        recordShimsDirState(configPath, existing, tomlPath(dir), statePath);
+      }
+    }
 
     const pathLine = shimsDirOnPath()
       ? `${dir} is on PATH`
@@ -300,6 +350,40 @@ export function ensureGlobalShimsDir(): {
 /** Format a path for embedding in a TOML string (mise wants forward slashes). */
 function tomlPath(p: string): string {
   return p.replace(/\\/g, '/');
+}
+
+/**
+ * Record a mise shims_dir write in the shell-fix manifest, preserving the
+ * existing manifest's bashExe so Tier 0 entries keep comparing against the
+ * git-bash path they were written with. Advisory: a recording failure must
+ * never fail the (already-successful) shims config itself.
+ */
+function recordShimsDirState(
+  configPath: string,
+  existing: string,
+  setValue: string,
+  statePath: string,
+): void {
+  try {
+    const existingState = readShellFixState(statePath);
+    writeShellFixState(
+      mergeShellFixEntries(
+        existingState,
+        [
+          {
+            agent: 'mise',
+            file: configPath,
+            createdFile: existing === '',
+            fields: [{ key: 'shims_dir', previous: getShimsDirValue(existing), set: setValue }],
+          },
+        ],
+        existingState?.bashExe ?? setValue,
+      ),
+      statePath,
+    );
+  } catch {
+    // Recording is advisory; the fix itself already succeeded.
+  }
 }
 
 /**

@@ -20,10 +20,18 @@ export interface ShellFixField {
   /** Dotted location within the file, e.g. `env.CLAUDE_CODE_GIT_BASH_PATH`, `[windows].shell_path`, `shell`. */
   key: string;
   previous: string | null;
+  /**
+   * The value agentenv actually wrote. `shell-fix --revert` compares the live
+   * value against this instead of the shared `state.bashExe` when present —
+   * needed for entries whose written value is not a shell (e.g. mise's
+   * `shims_dir`), and a more precise guard than the global bashExe for the
+   * per-agent files too.
+   */
+  set?: string;
 }
 
 export interface ShellFixStateEntry {
-  agent: AgentKey;
+  agent: AgentKey | 'mise';
   file: string;
   /** True when agentenv created the whole file (revert may delete it). */
   createdFile: boolean;

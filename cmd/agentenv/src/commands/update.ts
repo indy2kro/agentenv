@@ -10,6 +10,7 @@ import {
   resolveScopeDir,
 } from '../config/scopes.js';
 import type { ScopeValue } from '../config/scopes.js';
+import { shellFixStatePath } from '../shell/shell-fix-state.js';
 import {
   ensureGlobalShimsDir,
   getMiseVersion,
@@ -101,7 +102,7 @@ async function doUpdate(options: UpdateCommandOptions): Promise<void> {
       : `would add ${dir} to the global mise config PATH`;
     console.log(`Shims: ${pathLine}`);
   } else {
-    const shims = ensureGlobalShimsDir();
+    const shims = ensureGlobalShimsDir(shellFixStatePath());
     if (shims.success) {
       console.log(`Shims: ${shims.message}`);
     } else {

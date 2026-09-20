@@ -7,6 +7,7 @@ import {
   MISE_TOOL_NAMES,
   generateMiseToml,
   getShimsDirValue,
+  removeShimsDirValue,
   getToolsToInstall,
   getUpgradeableTools,
   getInstalledToolState,
@@ -188,6 +189,35 @@ describe('global mise config shims_dir', () => {
     );
     assert.equal(getShimsDirValue('[env]\nshims_dir = "not-this"\n'), null);
     assert.equal(getShimsDirValue('[settings]\njobs = 4\n\n[tools]\n'), null);
+  });
+
+  it('removeShimsDirValue undoes the shims_dir line', () => {
+    const input = upsertShimsDir('[env]\nFOO = "bar"\n', 'C:\\Users\\me\\.local\\bin');
+    assert.equal(removeShimsDirValue(input), '[env]\nFOO = "bar"\n');
+  });
+
+  it('removeShimsDirValue drops a [settings] section left empty by the removal', () => {
+    const input = upsertShimsDir('', 'C:\\Users\\me\\.local\\bin');
+    assert.equal(removeShimsDirValue(input), '');
+  });
+
+  it('removeShimsDirValue keeps [settings] and everything after its shims_dir line', () => {
+    const input = upsertShimsDir(
+      '[settings]\njobs = 4\n\n[env]\nFOO = "bar"',
+      'C:\\Users\\me\\.local\\bin',
+    );
+    assert.equal(removeShimsDirValue(input), '[settings]\njobs = 4\n\n[env]\nFOO = "bar"\n');
+  });
+
+  it('removeShimsDirValue is a no-op when no shims_dir is set', () => {
+    const input = '[settings]\njobs = 4\n';
+    assert.equal(removeShimsDirValue(input), input);
+  });
+
+  it('removeShimsDirValue drops the [settings] header but keeps a trailing [[tools]] array', () => {
+    const input = '[settings]\n\n[[tools]]\nname = "x"\n';
+    const output = upsertShimsDir(input, 'C:\\Users\\me\\.local\\bin');
+    assert.equal(removeShimsDirValue(output), '[[tools]]\nname = "x"\n');
   });
 });
 

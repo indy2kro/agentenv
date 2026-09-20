@@ -66,7 +66,8 @@ export function renderShellFixShow(payload: ShellFixShowJson): string {
       lines.push(`  ${entry.agent} — ${entry.file}${created}`);
       for (const field of entry.fields) {
         const previous = field.previous === null ? '(unset)' : field.previous;
-        lines.push(`    ${field.key}: ${previous} → ${payload.bashExe ?? ''}`);
+        const target = field.set ?? payload.bashExe ?? '';
+        lines.push(`    ${field.key}: ${previous} → ${target}`);
       }
     }
   }

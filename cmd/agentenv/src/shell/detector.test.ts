@@ -356,6 +356,85 @@ describe('Tier 0 shell fix', () => {
       assert.equal(revertShellFixes(statePath)[0].action, 'absent');
     });
 
+    it('revert of a mise entry deletes a config file agentenv created', () => {
+      const statePath = tempStatePath();
+      const file = path.join(tempHome(), '.config', 'mise', 'config.toml');
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, '[settings]\nshims_dir = "C:/Users/me/.local/bin"\n');
+      writeShellFixState(
+        mergeShellFixEntries(
+          null,
+          [
+            {
+              agent: 'mise',
+              file,
+              createdFile: true,
+              fields: [{ key: 'shims_dir', previous: null, set: 'C:/Users/me/.local/bin' }],
+            },
+          ],
+          'C:/Users/me/.local/bin',
+        ),
+        statePath,
+      );
+
+      const reverted = revertShellFixes(statePath)[0];
+      assert.equal(reverted.action, 'removed');
+      assert.equal(fs.existsSync(file), false);
+      assert.equal(readShellFixState(statePath), null);
+    });
+
+    it('revert of a mise entry keeps an existing file but drops shims_dir', () => {
+      const statePath = tempStatePath();
+      const file = path.join(tempHome(), '.config', 'mise', 'config.toml');
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, '[settings]\nshims_dir = "C:/Users/me/.local/bin"\njobs = 4\n');
+      writeShellFixState(
+        mergeShellFixEntries(
+          null,
+          [
+            {
+              agent: 'mise',
+              file,
+              createdFile: false,
+              fields: [{ key: 'shims_dir', previous: null, set: 'C:/Users/me/.local/bin' }],
+            },
+          ],
+          'C:/Users/me/.local/bin',
+        ),
+        statePath,
+      );
+
+      const reverted = revertShellFixes(statePath)[0];
+      assert.equal(reverted.action, 'reverted');
+      assert.equal(fs.readFileSync(file, 'utf-8'), '[settings]\njobs = 4\n');
+    });
+
+    it('revert of a mise entry skips a user-changed shims_dir', () => {
+      const statePath = tempStatePath();
+      const file = path.join(tempHome(), '.config', 'mise', 'config.toml');
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, '[settings]\nshims_dir = "C:/user/edited"\n');
+      writeShellFixState(
+        mergeShellFixEntries(
+          null,
+          [
+            {
+              agent: 'mise',
+              file,
+              createdFile: false,
+              fields: [{ key: 'shims_dir', previous: null, set: 'C:/Users/me/.local/bin' }],
+            },
+          ],
+          'C:/Users/me/.local/bin',
+        ),
+        statePath,
+      );
+
+      const reverted = revertShellFixes(statePath)[0];
+      assert.equal(reverted.action, 'skipped');
+      assert.ok(fs.readFileSync(file, 'utf-8').includes('C:/user/edited'));
+    });
+
     it('revert leaves a user-changed value untouched and keeps the manifest', () => {
       const statePath = tempStatePath();
       const home = tempHome();

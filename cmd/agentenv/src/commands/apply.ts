@@ -26,6 +26,7 @@ import {
 } from '../generate/agentsmd.js';
 import type { GeneratedFile } from '../generate/agentsmd.js';
 import { fixShellConfiguration } from '../shell/detector.js';
+import { shellFixStatePath } from '../shell/shell-fix-state.js';
 import type { RtkInitFn } from '../toolchain/rtk.js';
 import { isUnsupportedRtkAgentError } from '../toolchain/rtk.js';
 import {
@@ -199,7 +200,7 @@ export async function applyConfiguration(
 
   // Step 3 — global shims config + trust + install + verify.
   if (errors.length === 0 && !options.skipMiseInstall) {
-    const shims = ensureGlobalShimsDir();
+    const shims = ensureGlobalShimsDir(shellFixStatePath());
     (shims.success ? messages : errors).push(shims.message);
 
     const trust = trustMiseToml(misePath, baseDir);

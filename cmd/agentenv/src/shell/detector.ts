@@ -9,7 +9,7 @@ import * as winPath from 'path/win32';
 import * as child_process from 'child_process';
 import { AGENT_KEYS } from '../config/schema.js';
 import type { AgentKey } from '../config/schema.js';
-import { pathContainsDir } from '../toolchain/mise.js';
+import { getShimsDirValue, pathContainsDir, removeShimsDirValue } from '../toolchain/mise.js';
 import { writeFileWithRetry } from '../utils/fs-retry.js';
 import {
   clearShellFixState,
@@ -433,14 +433,14 @@ export interface ShellFixResult {
 export type ShellFixRevertAction = 'removed' | 'reverted' | 'skipped' | 'absent';
 
 export interface ShellFixRevertResult {
-  agent: AgentKey;
+  agent: AgentKey | 'mise';
   file: string;
   action: ShellFixRevertAction;
   message: string;
 }
 
-function priorField(key: string, previous: string | null): ShellFixField {
-  return { key, previous };
+function priorField(key: string, previous: string | null, set?: string): ShellFixField {
+  return { key, previous, set };
 }
 
 /**
@@ -520,7 +520,7 @@ function patchClaudeShellFix(bashExe: string, home: string): ShellFixResult {
         agent: 'claude_code',
         file,
         createdFile: true,
-        fields: [priorField('env.CLAUDE_CODE_GIT_BASH_PATH', null)],
+        fields: [priorField('env.CLAUDE_CODE_GIT_BASH_PATH', null, bashExe)],
       },
     };
   }
@@ -555,7 +555,7 @@ function patchClaudeShellFix(bashExe: string, home: string): ShellFixResult {
       agent: 'claude_code',
       file,
       createdFile: false,
-      fields: [priorField('env.CLAUDE_CODE_GIT_BASH_PATH', previous)],
+      fields: [priorField('env.CLAUDE_CODE_GIT_BASH_PATH', previous, bashExe)],
     },
   };
 }
@@ -576,7 +576,7 @@ function patchCodexShellFix(bashExe: string, home: string): ShellFixResult {
         agent: 'codex_cli',
         file,
         createdFile: true,
-        fields: [priorField('[windows].shell_path', null)],
+        fields: [priorField('[windows].shell_path', null, bashExe)],
       },
     };
   }
@@ -597,7 +597,9 @@ function patchCodexShellFix(bashExe: string, home: string): ShellFixResult {
       agent: 'codex_cli',
       file,
       createdFile: false,
-      fields: [priorField('[windows].shell_path', readTomlWindowsShellPath(original) ?? null)],
+      fields: [
+        priorField('[windows].shell_path', readTomlWindowsShellPath(original) ?? null, bashExe),
+      ],
     },
   };
 }
@@ -617,7 +619,7 @@ function patchOpenCodeShellFix(bashExe: string, home: string): ShellFixResult {
         agent: 'opencode',
         file,
         createdFile: true,
-        fields: [priorField('shell', null), priorField('defaultShell', null)],
+        fields: [priorField('shell', null, bashExe), priorField('defaultShell', null, bashExe)],
       },
     };
   }
@@ -653,7 +655,10 @@ function patchOpenCodeShellFix(bashExe: string, home: string): ShellFixResult {
       agent: 'opencode',
       file,
       createdFile: false,
-      fields: [priorField('shell', priorShell), priorField('defaultShell', priorDefault)],
+      fields: [
+        priorField('shell', priorShell, bashExe),
+        priorField('defaultShell', priorDefault, bashExe),
+      ],
     },
   };
 }
@@ -1122,6 +1127,44 @@ function restoreOpenCodeShellFix(
   return revertResult(entry, 'reverted', `Restored ${entry.file}`);
 }
 
+function restoreMiseShimsDir(
+  entry: ShellFixStateEntry,
+  _bashExe: string,
+  dryRun: boolean,
+): ShellFixRevertResult {
+  const field = entry.fields.find((candidate) => candidate.key === 'shims_dir');
+  const expected = field?.set;
+  if (expected === undefined) {
+    return revertResult(
+      entry,
+      'skipped',
+      `${entry.file}: no recorded shims_dir value; leaving it untouched`,
+    );
+  }
+  if (!fs.existsSync(entry.file)) {
+    if (entry.createdFile) {
+      return revertResult(entry, 'removed', `${entry.file} is already gone`);
+    }
+    return revertResult(entry, 'absent', `${entry.file} is already gone`);
+  }
+  const content = fs.readFileSync(entry.file, 'utf-8');
+  const current = getShimsDirValue(content);
+  if (current !== expected) {
+    return revertResult(
+      entry,
+      'skipped',
+      `${entry.file}: shims_dir changed after agentenv set it; leaving it untouched`,
+    );
+  }
+  const next = removeShimsDirValue(content);
+  if (entry.createdFile && next.trim() === '') {
+    if (!dryRun) fs.rmSync(entry.file, { force: true });
+    return revertResult(entry, 'removed', `Removed ${entry.file} (created by agentenv)`);
+  }
+  if (next !== content && !dryRun) writeFileWithRetry(entry.file, next);
+  return revertResult(entry, 'reverted', `Restored ${entry.file}`);
+}
+
 function revertShellFixEntry(
   entry: ShellFixStateEntry,
   bashExe: string,
@@ -1134,6 +1177,8 @@ function revertShellFixEntry(
       return restoreCodexShellFix(entry, bashExe, dryRun);
     case 'opencode':
       return restoreOpenCodeShellFix(entry, bashExe, dryRun);
+    case 'mise':
+      return restoreMiseShimsDir(entry, bashExe, dryRun);
     default:
       return revertResult(entry, 'skipped', `${entry.agent}: no revert handler`);
   }
