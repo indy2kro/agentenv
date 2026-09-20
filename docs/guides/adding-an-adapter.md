@@ -2,8 +2,6 @@
 
 This guide explains how to wire a new AI-coding agent into `agentenv` so it
 is covered by `agentenv configure`, `agentenv apply`, and `agentenv status`.
-It assumes you already read `docs/plans/agentenv-dev-plan.md` (especially
-§8 "Adapter architecture").
 
 ## What an adapter does
 

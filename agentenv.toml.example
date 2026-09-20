@@ -1,7 +1,7 @@
 # agentenv Configuration File (Example)
 # ====================================
 # This is a hand-written example config file that Phase 1 will read as ground truth.
-# It demonstrates the full schema described in docs/plans/agentenv-dev-plan.md §6.3 and §6.4.
+# It demonstrates the full schema described in docs/configuration.md.
 #
 # Place this file at:
 # - Project scope: <repo-root>/agentenv.toml (checked into the repo)

@@ -90,8 +90,7 @@ windows/macos/ubuntu matrix, then a real-mise acceptance job on PRs and
 
 For wiring in a new agent, see
 [`../../docs/guides/adding-an-adapter.md`](../../docs/guides/adding-an-adapter.md);
-for the design rationale and roadmap,
-[`../../docs/plans/agentenv-dev-plan.md`](../../docs/plans/agentenv-dev-plan.md).
+for the docs index, [`../../docs/README.md`](../../docs/README.md).
 
 ## License
 

@@ -5,9 +5,9 @@
 for each of the four target agents (Claude Code, Codex CLI, GitHub Copilot CLI/Chat,
 OpenCode).
 
-This document re-verifies the table in §4 of `docs/plans/agentenv-dev-plan.md`
-and confirms whether the mechanisms described there are still current as of
-September 2026.
+This document re-verifies the per-agent adapter table (instructions file +
+hook/extensibility mechanism per agent) and confirms whether the mechanisms
+described there are still current as of September 2026.
 
 ## Agent Adapter Table (Updated)
 

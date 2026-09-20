@@ -86,8 +86,6 @@ See also:
   wiring in a new agent.
 - [`docs/guides/releasing.md`](docs/guides/releasing.md) — shipping an npm
   release (one-button `Release` workflow).
-- [`docs/plans/agentenv-dev-plan.md`](docs/plans/agentenv-dev-plan.md) — the
-  design doc of record: goals, phased roadmap, current status.
 
 ## License
 

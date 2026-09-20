@@ -2,7 +2,7 @@
 
 Instructions for AI coding agents contributing to this repository (the
 `agentenv` project itself — not the instructions `agentenv` generates for
-other repos; those live in `templates/`).
+other repos; those are written by `cmd/agentenv/src/generate/agentsmd.ts`).
 
 ## GitHub Actions
 
@@ -41,8 +41,7 @@ Windows/macOS/Linux. It never reimplements a dev tool: tool installation is
 100% delegated to [mise](https://mise.jdx.dev), command rewriting/hooks to
 [rtk](https://github.com/rtk-ai/rtk), and repo instructions follow the
 [AGENTS.md](https://agents.md) standard. All the actual CLI code lives under
-`cmd/agentenv/`; `internal/` and `templates/` are stubs. `docs/plans/agentenv-dev-plan.md`
-is the design doc of record (goals, phased roadmap, current status).
+`cmd/agentenv/`; see `docs/README.md` for the docs index.
 
 ## Commands
 

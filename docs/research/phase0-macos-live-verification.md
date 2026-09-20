@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-14
 **Machine:** macOS 15.7.9 (Sequoia), Apple Silicon (arm64), zsh, Homebrew 6.0.21
-**Purpose:** `docs/research/phase0-findings.md` consolidates desk research and one
+**Purpose:** `docs/research/phase0-windows-findings.md` consolidates desk research and one
 real-machine pass on **Windows**. This document re-runs the macOS-relevant Phase 0
 checks (Task 9's "needs CI verification" items in particular) against a real macOS
 box instead of assumption, per the dev plan's own repeated instruction ("verified
@@ -25,7 +25,7 @@ per-tool, not assumed").
 | `coreutils`/`gnu-sed`/`findutils`/`gawk` | **Not installed** |
 
 **Finding not previously documented:** the "BSD vs GNU" framing in
-`phase0-findings.md` §2 is real for `sed`/`awk`/`diff`, but on a machine already
+`phase0-windows-findings.md` §2 is real for `sed`/`awk`/`diff`, but on a machine already
 running Claude Code, `grep`/`find` are commonly shadowed by **Claude Code's own
 shell-snapshot substitution** (`ugrep`/`bfs`), which is separate from both the
 BSD/GNU split and from rtk. Tier 0 detection logic should not assume `which grep`
@@ -64,7 +64,7 @@ isolated scratch directory.
 | universal-ctags | `universal-ctags` (mise registry) | ❌ FAIL | — | `not found in mise tool registry` — confirmed, as documented |
 | tokei | `tokei` / `cargo:tokei` | ❌ FAIL | — | mise's own registry lists `aqua:XAMPPRocky/tokei`, but that entry itself redirects to the `cargo` backend (`package type 'cargo' is not supported in the aqua backend`); the cargo backend then fails outright with no local Rust toolchain present. **Confirmed: no path to a prebuilt tokei binary through mise on macOS**, exactly as documented, but the failure mode is one hop deeper than "not in registry" — worth noting for anyone debugging it.
 
-**Corrections to `phase0-findings.md`'s "Needs CI Verification" list:**
+**Corrections to `phase0-windows-findings.md`'s "Needs CI Verification" list:**
 - **eza on macOS** — resolves cleanly via `vfox:jdx/vfox-eza`, native arm64 binary. Can be promoted to "Validated" without waiting for CI.
 - **git-delta on Apple Silicon** — resolves cleanly, native arm64. (The doc's Intel-Mac x86_64 asset concern for delta 0.19.2 is a separate, narrower risk — not reproducible on this arm64 box; still needs an Intel runner to confirm.)
 - **hyperfine** — new finding, not previously flagged: only ships an x86_64 asset for macOS upstream. Works fine via Rosetta 2 (present by default on Apple Silicon Macs with Xcode tools installed) but is not a native arm64 binary. Low risk, but should be called out in the catalog notes rather than marked identically to the native-arm64 tools.
@@ -78,7 +78,7 @@ brew info universal-ctags   # stable 6.2.1, bottled
 brew info tokei             # stable 15.0.0, bottled
 ```
 This means the "custom tool, manual install" fallback documented in
-`phase0-findings.md` §7 has a concrete, low-friction implementation on macOS
+`phase0-windows-findings.md` §7 has a concrete, low-friction implementation on macOS
 specifically: `agentenv` can shell out to `brew install <formula>` as the
 macOS-specific fallback path for registry gaps, rather than only documenting a
 manual instruction to the user. (Same tools still need their own fallback
@@ -100,7 +100,7 @@ but not `coreutils`, `gnu-sed`, `findutils`, or `gawk`. All four are available a
 | `findutils` | ✅ | GNU `find`, installs as `gfind` unless prefixed |
 | `gawk` | ✅ | GNU `awk`, installs as `gawk` |
 
-**Confirms and sharpens `phase0-findings.md` §2's macOS mitigation:** the
+**Confirms and sharpens `phase0-windows-findings.md` §2's macOS mitigation:** the
 Homebrew packages exist and install without compiling, but by default they
 install under `g`-prefixed binary names (`gsed`, `ggrep`, `gfind`) — they do
 **not** silently shadow the BSD tools. The `gnubin` directory
@@ -137,7 +137,7 @@ $ rtk init -g --opencode --dry-run
 ```
 
 This **exactly matches** what `docs/research/rtk-init-delegation.md` and
-`phase0-findings.md` §4 already documented against rtk `0.42.4` — confirmed
+`phase0-windows-findings.md` §4 already documented against rtk `0.42.4` — confirmed
 unchanged behavior on macOS at the newer `0.44.1`, live, not just read from rtk's
 own docs.
 
@@ -179,7 +179,7 @@ release.
 
 ---
 
-## 5. Net changes to this findings set vs. `phase0-findings.md`
+## 5. Net changes to this findings set vs. `phase0-windows-findings.md`
 
 | Item | Prior status | Now |
 |---|---|---|

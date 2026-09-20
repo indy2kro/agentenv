@@ -28,7 +28,7 @@ Use the same pattern for any `dist/**/*.test.js` target; the project relies on N
 ## High-level architecture
 
 - `agentenv.toml` is the user-authored source for configuration.
-- The active implementation lives in `cmd/agentenv/`; `internal/` and `templates/` are still scaffolding/stubs.
+- The active implementation lives in `cmd/agentenv/`.
 - `agentenv apply` is the shared pipeline behind the setup/configure/apply flow: validate prerequisites, handle shell/toolchain setup, generate `mise.toml`, regenerate managed instruction blocks, and apply agent-specific adapter configuration.
 - Agent-specific behavior is concentrated in `src/adapters/`; the project intentionally keeps the actual tool installation delegated to `mise` and hook behavior delegated to `rtk`.
 - `agentenv status`/`doctor` are read-only checks for drift and environment health rather than mutation-heavy setup paths.

@@ -188,7 +188,7 @@ direnv = false
   });
 
   it('exits 1 for status with no config', () => {
-    assert.equal(run(['status'], empty).status, 1);
+    assert.equal(run(['status'], empty, shellEnv).status, 1);
   });
 
   it('exits 1 for apply with no config instead of silently applying defaults', () => {
@@ -202,7 +202,7 @@ direnv = false
   });
 
   it('emits parseable JSON with a matching exitCode field', () => {
-    const missing = run(['status', '--json'], empty);
+    const missing = run(['status', '--json'], empty, shellEnv);
     assert.equal(missing.status, 1);
     const missingJson = JSON.parse(missing.stdout);
     assert.equal(missingJson.command, 'status');
@@ -289,11 +289,10 @@ direnv = false
   });
 
   it('exits 1 for uninstall with no config and for unknown tool args', () => {
-    const missing = run(['uninstall'], empty);
+    const missing = run(['uninstall'], empty, shellEnv);
     assert.equal(missing.status, 1);
     assert.match(missing.stderr, /No agentenv\.toml found/);
-
-    const unknown = run(['uninstall', 'totally-not-a-tool'], wipe);
+    const unknown = run(['uninstall', 'totally-not-a-tool'], wipe, shellEnv);
     assert.equal(unknown.status, 1);
     assert.match(unknown.stderr, /Unknown tool\(s\) to uninstall: totally-not-a-tool/);
   });

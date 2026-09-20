@@ -12,13 +12,13 @@ historical research context.
 Should the per-agent adapters write hook config themselves, or should they
 invoke `rtk init <agent> ...` and let rtk own hook registration?
 
-`docs/research/phase0-findings.md` §9 ("rtk Integration Requirements") states:
+`docs/research/phase0-windows-findings.md` §9 ("rtk Integration Requirements") states:
 
 > - Call `rtk init` per-agent during `agentenv apply` (or `agentenv setup`)
 > - Only call for enabled agents
 
-This matches the dev plan's core constraint (`docs/plans/agentenv-dev-plan.md`
-§2 / §10): "the CLI only ever calls out to mise/rtk, never replaces them."
+This matches the design constraint that the CLI only ever calls out to
+mise/rtk, never replaces them.
 
 The current adapters, however, hand-write the hook files:
 
@@ -111,5 +111,5 @@ On each OS, after `mise install` makes `rtk` available:
 
 - `docs/research/agent-adapters.md` — per-agent hook/extensibility mechanisms
 - `docs/research/rtk-init-behavior.md` — confirmed `rtk init` flags 0.42.4
-- `docs/research/phase0-findings.md` §9 — rtk integration requirements
+- `docs/research/phase0-windows-findings.md` §9 — rtk integration requirements
 - `cmd/agentenv/src/adapters/` — current hand-written implementation

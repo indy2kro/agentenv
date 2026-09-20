@@ -5,7 +5,7 @@
 **Under test:** mise 2026.9.7, rtk 0.49.0 (the version pinned in `mise.toml`), agentenv @ `b148fea`
 **Method:** everything run under a throwaway `HOME` + sandboxed `MISE_DATA_DIR`/`CACHE`/`STATE`/`CONFIG`. No real user config touched.
 
-`docs/research/phase0-findings.md` was produced on a Windows box; its macOS and Linux
+`docs/research/phase0-windows-findings.md` was produced on a Windows box; its macOS and Linux
 columns are confidence ratings, not measurements. This document replaces the Linux
 column with measured results.
 
@@ -30,7 +30,7 @@ GNU-only flag probes — **7/7 supported**: `grep -P`, `sed -i` (no backup suffi
 
 **Conclusion:** on mainstream glibc Linux, Tier 0 needs **detection only** — no install
 step. This confirms the plan's assumption (§3 "Availability plan per tier") for Ubuntu.
-The Alpine/musl caveat in `phase0-findings.md` §2 is untested and should stay flagged.
+The Alpine/musl caveat in `phase0-windows-findings.md` §2 is untested and should stay flagged.
 
 ### ⚠️ New finding — Tier 0 detection can measure the wrong `grep`
 
@@ -83,7 +83,7 @@ probe. Worth probing through the agent's own shell (or at minimum reporting what
 
 **17 / 19 install and execute on Linux.**
 
-### Corrections to `phase0-findings.md`
+### Corrections to `phase0-windows-findings.md`
 
 - **eza (row 12)** — predicted "✅ High" on Linux; **confirmed measured**. The vfox
   backend works. (macOS remains the open one.)
@@ -137,7 +137,7 @@ appearing in a changelog diff of documented flags. Suggest asserting both in
 
 ### ⚠️ Stale claim: rtk does not write a `settings.json` hook
 
-`phase0-findings.md` §4 states `rtk init` (default) writes *"`PreToolUse` hook in
+`phase0-windows-findings.md` §4 states `rtk init` (default) writes *"`PreToolUse` hook in
 `settings.json` calling `rtk hook claude`"*. On Linux at 0.49.0 it writes
 `CLAUDE.md` + `.rtk/filters.toml` and **no `settings.json` at all**.
 `rtk init --hook-only` refuses without `--global`:
@@ -179,14 +179,14 @@ Run from a clean `npm ci` on Node 24.18.0:
 
 ## 5. Documentation defects found while reading
 
-1. **`phase0-findings.md` §10 contradicts §6.** The checklist says
+1. **`phase0-windows-findings.md` §10 contradicts §6.** The checklist says
    *"Tech stack decided (**Go + Huh v2**)"*, §6 and ADR 0002 say TypeScript /
    @inquirer/prompts / commander. §6's own consequences list still carries
    *"⚠️ Go learning curve for contributors"* and *"Larger binary size than Rust"* —
    leftovers from the Go draft.
 2. **`AGENTS.md` points at `docs/decisions/0001-cli-tech-stack.md`;** the file on disk
    is `0002-cli-tech-stack.md`. (The dev plan correctly says 0002.)
-3. **`phase0-findings.md` §8 lists the example `agentenv.toml` as "⏳ Pending —
+3. **`phase0-windows-findings.md` §8 lists the example `agentenv.toml` as "⏳ Pending —
    to be created by Task 10 Step 3"**, and §10's last checkbox is unticked with
    *"Phase 0 is complete once the example agentenv.toml is created"*. But
    `agentenv.toml.example` exists at the repo root (7.2 kB). Either tick the box or

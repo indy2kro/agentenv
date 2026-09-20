@@ -24,8 +24,6 @@ Supporting references:
   new supported AI coding agent.
 - [`guides/releasing.md`](guides/releasing.md) — cutting an npm release
   (one-button `Release` workflow).
-- [`plans/agentenv-dev-plan.md`](plans/agentenv-dev-plan.md) — the design doc
-  of record: goals, phased roadmap, status.
 - [`improvement-audit/2026-09-19-improvement-backlog.md`](improvement-audit/2026-09-19-improvement-backlog.md) —
   active improvement backlog; tick items as they land.
 
@@ -38,5 +36,5 @@ Supporting references:
 - [`improvement-audit/`](improvement-audit/) — prior audit records, kept as
   history.
 
-Implemented phase plans were removed when their work landed; the roadmap that
-remains lives in [`plans/agentenv-dev-plan.md`](plans/agentenv-dev-plan.md).
+Implemented phase plans were removed when their work landed; the design
+rationale is captured in the files above.

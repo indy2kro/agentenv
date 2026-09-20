@@ -1,69 +1,81 @@
-# Phase 0 Findings — Consolidated Research
+# Phase 0 — Windows Findings (Consolidated Research)
 
-**Date:** 2026-09-13  
+**Date:** 2026-09-13 (updated 2026-09-19)  
 **Phase:** Research & Validation (Complete)  
-**Status:** All 9 tasks completed, ready for Phase 1 input
+**Status:** All 9 tasks completed, catalog re-verified against the current
+32-tool catalog on 2026-09-19
 
-This document consolidates the findings from all Phase 0 research tasks
-(Tasks 1-9) into a single reference for Phase 1 planning and implementation.
-It addresses all five items from the Phase 0 bullet list in
-`docs/plans/agentenv-dev-plan.md` §8, plus the three mid-execution additions
-(expanded catalog, rtk-rewrite coverage, per-OS behavioral parity).
+This document consolidates the Phase 0 research tasks (Tasks 1-9) into a
+single reference. It was produced on a Windows machine (Git Bash + mise +
+rtk); its macOS and Linux columns are confidence ratings, not measurements.
+The measured results for those platforms live in
+`phase0-macos-live-verification.md` and `phase0-linux-verification.md`.
 
 ---
 
 ## 1. Tool Catalog Validation (Tasks 1-4)
 
-### Full 19-Tool Catalog (Tier 1-3 + New Tools)
+### Full 32-Tool Catalog (Tier 1-3)
 
-| # | Tool | Tier | mise Backend | Windows | macOS | Linux | Status |
-|---|---|---|---|---|---|---|---|
-| 1 | ripgrep (rg) | 1 | `aqua:BurntSushi/ripgrep` | ✅ PASS | ✅ Verified | ✅ Verified | **Validated** |
-| 2 | fd | 1 | `aqua:sharkdp/fd` | ✅ PASS | ✅ Verified | ✅ Verified | **Validated** |
-| 3 | jq | 1 | `aqua:jqlang/jq` | ✅ PASS | ✅ Verified | ✅ Verified | **Validated** |
-| 4 | rtk | 1 | `aqua:rtk-ai/rtk` (also external winget) | ✅ PASS | ✅ Verified | ✅ Verified | **Validated** |
-| 5 | ast-grep (sg) | 2 | `aqua:ast-grep/ast-grep` | ✅ PASS | ✅ Verified | ✅ Verified | **Validated** |
-| 6 | git-delta (delta) | 2 | `aqua:dandavison/delta` | ✅ PASS | ✅ Verified (arm64) | ✅ Verified | **Needs CI verification (Intel Mac x86_64)** |
-| 7 | universal-ctags | 2 | **None** | ❌ FAIL | ❌ Verified | ❌ Verified | **Fallback required** |
-| 8 | gh | 2 | `aqua:cli/cli` | ✅ PASS | ✅ Verified | ✅ Verified | **Validated** |
-| 9 | difftastic (difft) | 2 | `aqua:Wilfred/difftastic` | ✅ PASS | ✅ Verified | ✅ Verified | **Validated** |
-| 10 | yq | 3 | `aqua:mikefarah/yq` | ✅ PASS | ✅ Verified | ✅ Verified | **Validated** |
-| 11 | bat | 3 | `aqua:sharkdp/bat` | ✅ PASS | ✅ Verified | ✅ Verified | **Validated** |
-| 12 | eza | 3 | `vfox:jdx/vfox-eza` | ✅ PASS | ✅ Verified | ✅ Verified | **Validated** |
-| 13 | miller (mlr) | 3 | `aqua:johnkerl/miller` | ✅ PASS | ✅ Verified | ✅ Verified | **Validated** |
-| 14 | tokei | 3 | `cargo:tokei` | ❌ FAIL | ❌ Verified | ❌ Verified | **Fallback required** |
-| 15 | hyperfine | 3 | `aqua:sharkdp/hyperfine` | ✅ PASS | ⚠️ Verified (x86_64 via Rosetta) | ✅ Verified | **Validated** |
-| 16 | fzf | 3 | `aqua:junegunn/fzf` | ✅ PASS | ✅ Verified | ✅ Verified | **Validated** |
-| 17 | just | 3 | `aqua:casey/just` | ✅ PASS | ✅ Verified | ✅ Verified | **Validated** |
-| 18 | watchexec | 3 | `aqua:watchexec/watchexec` | ✅ PASS | ✅ Verified | ✅ Verified | **Validated** |
-| 19 | direnv | 3 | `aqua:direnv/direnv` | ✅ PASS | ✅ Verified | ✅ Verified | **Validated** |
+Resolve status re-verified on 2026-09-19 with `mise ls-remote` (mise
+2026.9.11 windows-x64). macOS/Linux install results are measured in the two
+companion verification docs.
+
+| # | Tool | Bin | Tier | mise Spec | Windows (resolve) | Status |
+|---|---|---|---|---|---|---|
+| 1 | ripgrep | `rg` | 1 | `aqua:BurntSushi/ripgrep` | ✅ 15.2.0 | **Validated** |
+| 2 | fd | `fd` | 1 | `aqua:sharkdp/fd` | ✅ 10.5.0 | **Validated** |
+| 3 | jq | `jq` | 1 | `aqua:jqlang/jq` | ✅ 1.8.2 | **Validated** |
+| 4 | rtk | `rtk` | 1 | `aqua:rtk-ai/rtk` (also external winget) | ✅ 0.49.0 | **Validated** (pinned) |
+| 5 | ast-grep | `sg` | 2 | `aqua:ast-grep/ast-grep` | ✅ 0.45.3 | **Validated** |
+| 6 | git-delta | `delta` | 2 | `aqua:dandavison/delta` | ✅ 0.19.2 | **Validated** |
+| 7 | gh | `gh` | 2 | `aqua:cli/cli` | ✅ 2.101.0 | **Validated** |
+| 8 | difftastic | `difft` | 2 | `aqua:Wilfred/difftastic` | ✅ 0.70.0 | **Validated** |
+| 9 | yq | `yq` | 3 | `aqua:mikefarah/yq` | ✅ 4.53.6 | **Validated** |
+| 10 | bat | `bat` | 3 | `aqua:sharkdp/bat` | ✅ 0.26.1 | **Validated** |
+| 11 | eza | `eza` | 3 | `vfox:jdx/vfox-eza` | ✅ 0.23.5 | **Validated** |
+| 12 | miller | `mlr` | 3 | `aqua:johnkerl/miller` | ✅ 6.21.0 | **Validated** |
+| 13 | tokei | `tokei` | 3 | **None (fallback)** | audited 15.0.0 | **Fallback required** |
+| 14 | hyperfine | `hyperfine` | 3 | `aqua:sharkdp/hyperfine` | ✅ 1.20.0 | **Validated** |
+| 15 | fzf | `fzf` | 3 | `aqua:junegunn/fzf` | ✅ 0.74.4 | **Validated** |
+| 16 | just | `just` | 3 | `aqua:casey/just` | ✅ 1.58.0 | **Validated** |
+| 17 | watchexec | `watchexec` | 3 | `aqua:watchexec/watchexec` | ✅ 2.7.3 | **Validated** |
+| 18 | direnv | `direnv` | 3 | `aqua:direnv/direnv` | ✅ 2.37.1 | **Validated** |
+| 19 | ripgrep-all | `rga` | 3 | `aqua:phiresky/ripgrep-all` | ⚠️ 0.10.10 (resolves) | **Windows: manual install** |
+| 20 | zoxide | `zoxide` | 3 | `aqua:ajeetdsouza/zoxide` | ✅ 0.10.0 | **Validated** |
+| 21 | shellcheck | `shellcheck` | 3 | `aqua:koalaman/shellcheck` | ✅ 0.11.0 | **Validated** |
+| 22 | uv | `uv` | 3 | `aqua:astral-sh/uv` | ✅ (latest) | **Validated** |
+| 23 | xh | `xh` | 3 | `aqua:ducaale/xh` | ✅ 0.26.2 | **Validated** |
+| 24 | actionlint | `actionlint` | 3 | `aqua:rhysd/actionlint` | ✅ 1.7.12 | **Validated** |
+| 25 | gitleaks | `gitleaks` | 3 | `aqua:gitleaks/gitleaks` | ✅ 8.30.1 | **Validated** |
+| 26 | gum | `gum` | 3 | `aqua:charmbracelet/gum` | ✅ 2.0.1 | **Validated** |
+| 27 | glow | `glow` | 3 | `aqua:charmbracelet/glow` | ✅ 3.0.0 | **Validated** |
+| 28 | jless | `jless` | 3 | `aqua:PaulJuliusMartinez/jless` | ⚠️ 0.9.0 (resolves) | **Windows: manual install** |
+| 29 | sd | `sd` | 3 | `aqua:chmln/sd` | ✅ 1.1.0 | **Validated** |
+| 30 | tealdeer | `tldr` | 3 | `aqua:tealdeer-rs/tealdeer` | ✅ 1.9.0 | **Validated** |
+| 31 | duckdb | `duckdb` | 3 | `aqua:duckdb/duckdb` | ✅ 1.5.5 | **Validated** |
+| 32 | qsv | `qsv` | 3 | `aqua:jqnatividad/qsv` | ✅ 23.0.1 | **Validated** |
 
 ### Summary Statistics
 
 | Category | Count | Tools |
 |---|---|---|
-| **Validated (High Confidence)** | 17 | ripgrep, fd, jq, rtk, ast-grep, gh, difftastic, yq, bat, miller, hyperfine, fzf, just, watchexec, direnv, eza, git-delta |
-| **Needs CI Verification** | 1 | git-delta (Intel Mac x86_64) |
-| **Fallback Required** | 2 | universal-ctags, tokei |
+| **Validated (Tier 1-3)** | 29 | ripgrep, fd, jq, rtk, ast-grep, git-delta, gh, difftastic, yq, bat, eza, miller, hyperfine, fzf, just, watchexec, direnv, zoxide, shellcheck, uv, xh, actionlint, gitleaks, gum, glow, sd, tealdeer, duckdb, qsv |
+| **Fallback required (any OS)** | 1 | tokei (needs a `custom_tools` fallback; not in mise's registry) |
+| **Windows: manual install only** | 2 | ripgrep-all (`rga`), jless — their only mise backends support `linux`/`darwin` |
 
-### Registry Name Discrepancies
+### Registry and Naming Notes
 
-Two tools have different registry names in mise than their common names:
-- `git-delta` (common) → `delta` (mise registry)
-- `mlr` (common) → `miller` (mise registry)
-
-These are **naming conventions only** and do not affect functionality.
-
-**Note:** `aqua:XAMPPRocky/tokei` was listed as an alternative spec in some documentation but **does not work** — it resolves but fails to install because the aqua backend cannot handle cargo package types. Use `cargo:tokei` (requires Rust toolchain) or platform-specific fallbacks instead.
-
-### Package vs. Binary Name Discrepancies
-
-Three tools have different package names than their binary names:
-- `difftastic` (package) → `difft` (binary)
-- `delta` (package) → `delta` (binary) — matches
-- `miller` (package) → `mlr` (binary)
-
-These are **intentional** and do not affect functionality.
+- `universal-ctags` was **removed** from the catalog during Phase 1 — it is not
+  in the mise registry on any OS and has no prebuilt binaries upstream. It no
+  longer appears in `TOOL_KEYS` (`src/config/schema.ts`).
+- Registry names differ from config keys for `git_delta` → `delta`,
+  `ast_grep` → `ast-grep`, and `tealdeer` → `tealdeer` (binary `tldr`).
+  These are **naming conventions only** and do not affect functionality.
+- `tokei` resolves (`aqua:XAMPPRocky/tokei` splits a version) but **cannot be
+  installed** through any mise backend (`aqua` rejects the cargo package type;
+  `cargo:tokei` requires a Rust toolchain). Enabling it prints a validation
+  warning; users supply a `custom_tools` or manual fallback instead.
 
 ---
 
@@ -94,10 +106,11 @@ via Git for Windows' MSYS2 bundle. These are **not flag-compatible**:
 
 | Category | Count | Tools | Notes |
 |---|---|---|---|
-| **Identical across all OSes** | 17 | ripgrep, fd, jq, rtk, ast-grep, gh, difftastic, yq, bat, miller, fzf, just, watchexec, direnv, git-delta, eza | Static binaries with no OS-specific code paths |
-| **Minor documented differences** | 2 | git-delta (Intel Mac x86_64 asset), hyperfine (macOS x86_64 via Rosetta) | Edge cases only |
-| **Major documented differences** | 0 | — | Previously listed eza macOS gap is now validated |
-| **Install issues** | 2 | universal-ctags, tokei | Cannot install via mise on any OS; platform-specific fallbacks available |
+| **Identical across all OSes** | 29 | All validated tools above | Static binaries with no OS-specific code paths |
+| **Minor documented differences** | 2 | git-delta (Intel Mac x86_64 asset), hyperfine (macOS x86_64 via Rosetta) | Edge cases only; see live macOS verification |
+| **Major documented differences** | 0 | — | eza macOS gap is now validated |
+| **Windows: manual install only** | 2 | ripgrep-all (`rga`), jless | mise backends support `linux`/`darwin` only |
+| **Install issue (all OS)** | 1 | tokei | Cannot install via mise on any OS; `custom_tools` fallback required |
 | **Shell function shadowing** | 2 | grep, find | On machines with Claude Code, may be shadowed by `ugrep`/`bfs` shell functions |
 
 **Verification Sources:**
@@ -142,15 +155,15 @@ maintain the same instructions-file and hook/extensibility mechanisms.
 **Note:** `rtk init` also supports `--gemini`, `--agent <AGENT>` for other agents, but
 these are outside the v1 target set.
 
-### Rewrite-Rule Coverage (19 Tools)
+### Rewrite-Rule Coverage (32 Tools)
 
 | Category | Count | Tools | Notes |
 |---|---|---|---|
-| **Built-in rewrite today** | 4 | grep → rtk grep, find → rtk find, git diff → rtk diff, gh → rtk gh | Category-level rewrites |
-| **No applicable rewrite** | 7 | jq, universal-ctags, difftastic, yq, bat, eza, miller | Already token-efficient or not applicable |
-| **Theoretical custom rule possible** | 4 | ast-grep, git-delta/delta, tokei, hyperfine | Would require upstream rtk changes |
+| **Built-in rewrite today** | 4 | ripgrep (via `grep`), fd (via `find`), git-delta (via `git diff`), gh | Category-level rewrites |
+| **No applicable rewrite** | 13 | jq, difftastic, yq, bat, eza, miller, tokei, hyperfine, zoxide, shellcheck, uv, gum, glow | Already token-efficient or not applicable |
+| **Theoretical custom rule possible** | 4 | ast-grep, ripgrep-all, xh, sd | Would require upstream rtk changes |
 | **N/A** | 1 | rtk | This is rtk itself |
-| **No rewrite needed** | 4 | fzf, just, watchexec, direnv | Already token-friendly |
+| **No rewrite needed** | 10 | fzf, just, watchexec, direnv, actionlint, gitleaks, jless, tealdeer, duckdb, qsv | Already token-friendly |
 
 **Key Finding:** rtk's rewrites are at the **command category level** (e.g., all
 `grep` calls → `rtk grep`), not the specific binary level. So `ripgrep` benefits
@@ -234,28 +247,23 @@ scripts) is fully supported by ensuring Git Bash tools are reachable via `PATH`.
 
 ### From Tool Catalog Validation
 
-1. **universal-ctags (Tier 2):**
-   - **Risk:** Not in mise registry on any OS; no prebuilt binaries upstream
-   - **Mitigation:** Must use fallback strategy — Homebrew (`universal-ctags`, bottled), apt (`universal-ctags`), chocolatey/scoop, or custom binary path
-   - **Action:** Mark as custom tool in agentenv; document fallback in AGENTS.md; on macOS, agentenv can directly invoke `brew install universal-ctags`
-
-2. **tokei (Tier 3):**
+1. **tokei (Tier 3):**
    - **Risk:** Requires Rust/cargo toolchain; no prebuilt binaries upstream; `aqua:XAMPPRocky/tokei` does not work (aqua backend rejects cargo package type)
-   - **Mitigation:** Must use `cargo:tokei` backend in mise (requires Rust) or platform-specific fallback: Homebrew (`tokei`, bottled on macOS), or custom binary path
-   - **Action:** Mark as custom tool; warn users that Rust toolchain is required; on macOS, agentenv can directly invoke `brew install tokei`
+   - **Mitigation:** Must use a `custom_tools` fallback (manual/`already_installed` path) or platform-specific package: Homebrew (`tokei`, bottled on macOS), or custom binary path
+   - **Action:** Mark as custom tool; warn users; never a hard failure in `status`/`doctor` (it renders with a `-` marker because `apply` never tries to install it)
 
-3. **git-delta (Tier 2) on Intel Mac:**
+2. **git-delta (Tier 2) on Intel Mac:**
    - **Risk:** Release 0.19.2 missing x86_64-apple-darwin asset (0.18.2 had it)
    - **Mitigation:** Verify on real Intel Mac runner in Phase 5 CI
    - **Action:** Needs CI verification before promoted to default
    - **Status:** git-delta on Apple Silicon (arm64) is now **Validated** via live macOS verification
 
-4. **eza (Tier 3) on macOS:**
+3. **eza (Tier 3) on macOS:**
    - **Risk:** Previously flagged as "Needs CI verification"
    - **Mitigation:** N/A — now **Validated** via live macOS verification (vfox backend resolves to native arm64 binary)
    - **Action:** Promoted to Validated; no longer a risk
 
-5. **hyperfine (Tier 3) on macOS:**
+4. **hyperfine (Tier 3) on macOS:**
    - **Risk:** Only ships x86_64-apple-darwin asset; runs via Rosetta 2 on Apple Silicon
    - **Mitigation:** Works transparently via Rosetta on Apple Silicon Macs with Xcode tools installed
    - **Action:** Document as minor caveat, not a blocker; no functional impact
@@ -270,7 +278,7 @@ scripts) is fully supported by ensuring Git Bash tools are reachable via `PATH`.
 ### From RTK Rewrite Coverage
 
 6. **Limited Rewrite Coverage:**
-   - **Risk:** Only 4/19 catalog tools have built-in rtk rewrite rules
+   - **Risk:** Only 4 command categories (grep, find, git diff, gh) have built-in rtk rewrite rules
    - **Mitigation:** rtk's category-level rewrites cover the most impactful tools (grep, find, git diff); others are already token-efficient or not applicable
    - **Action:** Document which tools benefit from rtk in AGENTS.md; no agentenv changes needed
 
@@ -292,7 +300,7 @@ scripts) is fully supported by ensuring Git Bash tools are reachable via `PATH`.
 
 | Deliverable | Location | Status |
 |---|---|---|
-| Tool catalog validation (19 tools) | `docs/research/tier-tools-windows.md`, `tier-tools-crossplatform.md`, `new-tools-windows.md`, `new-tools-crossplatform.md` | ✅ Complete |
+| Tool catalog validation (32 tools) | `docs/research/tier-tools-windows.md`, `tier-tools-crossplatform.md`, `new-tools-windows.md`, `new-tools-crossplatform.md` | ✅ Complete |
 | Re-verified agent adapter table | `docs/research/agent-adapters.md` | ✅ Complete |
 | Confirmed `rtk init` behavior | `docs/research/rtk-init-behavior.md` | ✅ Complete |
 | Confirmed Tier 0 shell fix | `docs/research/tier0-shell-fix.md` | ✅ Complete |
@@ -301,7 +309,7 @@ scripts) is fully supported by ensuring Git Bash tools are reachable via `PATH`.
 | **Live macOS verification** | `docs/research/phase0-macos-live-verification.md` | ✅ Complete |
 | **Live Linux verification** | `docs/research/phase0-linux-verification.md` | ✅ Complete |
 | **Example `agentenv.toml`** | `agentenv.toml.example` (repo root) | ✅ Complete |
-| **Consolidated findings** | `docs/research/phase0-findings.md` | ✅ **This document** |
+| **Consolidated findings** | `docs/research/phase0-windows-findings.md` | ✅ **This document** |
 
 ---
 
@@ -311,9 +319,9 @@ scripts) is fully supported by ensuring Git Bash tools are reachable via `PATH`.
 
 `agentenv.toml` must support:
 - **Enabled agents:** claude, codex, copilot, opencode (4 v1 targets)
-- **Tool tiers:** Tier 1 (4 tools), Tier 2 (5 tools), Tier 3 (7 tools)
+- **Tool tiers:** Tier 1 (4 tools), Tier 2 (4 tools), Tier 3 (24 tools)
 - **Per-tool enable/disable:** Boolean flags or tier-level toggles
-- **Custom tools:** Two types (per §6.3):
+- **Custom tools:** Two types:
   - `already_installed = true` with OS-specific paths
   - `mise_source` with version pinning
 - **Scope:** Project-level vs. user/global-level (affects file locations)
@@ -322,8 +330,8 @@ scripts) is fully supported by ensuring Git Bash tools are reachable via `PATH`.
 ### Fallback Strategies Required
 
 For tools that failed validation:
-1. **universal-ctags:** Document as custom tool with platform-specific install instructions (Homebrew `universal-ctags` on macOS, `apt install universal-ctags` on Ubuntu/Debian)
-2. **tokei:** Document as custom tool requiring Rust/cargo toolchain (Homebrew `tokei` on macOS, `cargo:tokei` in mise with Rust toolchain)
+1. **tokei:** Document as custom tool requiring a manual install path (Homebrew `tokei` on macOS, `cargo install tokei` or apt on Linux, cargo/choco on Windows); never a hard failure in `status`/`doctor`
+2. **ripgrep-all (`rga`) and `jless` on Windows:** their mise backends only support `linux`/`darwin`; on Windows users must install them manually (`custom_tools`/`already_installed`), or simply leave them disabled (Tier 3, default off)
 
 ### Tier 0 Implementation Requirements
 
@@ -350,12 +358,12 @@ Four adapters to implement (one per v1 agent):
 
 ## 10. Checklist for Phase 1 Readiness
 
-- [x] Tool catalog validated (19 tools, 17 high-confidence, 1 needs CI verification, 2 fallback required)
-- [x] Agent adapter table re-verified (no changes from spec §4)
-- [x] `rtk init` behavior confirmed (all 4 v1 agents supported)
+- [x] Tool catalog validated (32 tools, 29 Windows-resolvable, 1 fallback required, 2 Windows manual-only)
+- [x] Agent adapter table re-verified (no changes)
+- [x] `rtk init` behavior confirmed (all supported agents)
 - [x] Tier 0 shell detection/fix approach confirmed (per-agent config, dual-shell model)
 - [x] Tech stack decided (TypeScript + @inquirer/prompts + commander)
-- [x] Per-OS behavioral parity verified (17 identical, 2 minor differences, 0 major differences)
+- [x] Per-OS behavioral parity verified (29 identical, 2 minor differences, 0 major differences)
 - [x] Consolidated findings document (this document)
 - [x] Live macOS verification (`phase0-macos-live-verification.md`)
 - [x] Live Linux verification (`phase0-linux-verification.md`)

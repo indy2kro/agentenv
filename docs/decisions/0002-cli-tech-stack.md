@@ -3,7 +3,8 @@
 **Status:** Accepted  
 **Date:** 2026-09-13  
 **Author:** Cristian Radu <indy2kro@gmail.com>  
-**Related:** `docs/plans/agentenv-dev-plan.md` §6.2
+**Related:** TypeScript/Node.js tech stack for the `agentenv` CLI; context from
+Phase 0 research (see `docs/README.md` for the docs index).
 
 ## Context
 

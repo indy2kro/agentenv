@@ -1,7 +1,7 @@
 /**
  * Platform-specific Fallback Installations
  * Handles tools that cannot be installed via mise (tokei)
- * Implements platform-specific fallback paths as documented in phase0-findings.md
+ * Implements platform-specific fallback paths as documented in phase0-windows-findings.md
  */
 
 import * as child_process from 'child_process';
@@ -59,7 +59,7 @@ export const FALLBACK_TOOLS: Record<string, FallbackTool> = {
 
 /**
  * Tools that have special installation requirements
- * These are marked as "Fallback required" in phase0-findings.md
+ * These are marked as "Fallback required" in phase0-windows-findings.md
  */
 export const FALLBACK_REQUIRED_TOOLS = ['tokei'];
 
