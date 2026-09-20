@@ -134,6 +134,17 @@ describe('configuration validation', () => {
     assert.ok(report.errors.some((error) => error.includes('scope must be "project" or "user"')));
   });
 
+  it('accepts generate.files limited to AGENTS.md and CLAUDE.md', () => {
+    const report = validateConfig({ generate: { files: ['AGENTS.md'] } });
+    assert.deepEqual(report, { errors: [], warnings: [] });
+  });
+
+  it('warns on generate.files entries agentenv cannot generate', () => {
+    const report = validateConfig({ generate: { files: ['README.md', 'AGENTS.md'] } });
+    assert.equal(report.errors.length, 0);
+    assert.ok(report.warnings.some((warning) => warning.includes('README.md')));
+  });
+
   it('flags registry-gap tools as warnings, not errors', () => {
     const report = validateConfig({ tools: { tokei: true } });
     assert.equal(report.errors.length, 0);

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { generateAgentsMd, updateWithMarkers } from './agentsmd.js';
+import { generateAgentsMd, generateInstructionFiles, updateWithMarkers } from './agentsmd.js';
 import type { AgentenvConfig } from '../config/schema.js';
 
 const start = '<!-- agentenv-managed-start -->';
@@ -82,5 +82,36 @@ describe('generated AGENTS.md tool listing', () => {
     const output = generateAgentsMd(config);
     assert.equal((output.match(/### Token Optimization/g) ?? []).length, 1);
     assert.equal((output.match(/--- RTK Configuration/m) ?? []).length, 0);
+  });
+});
+
+describe('generateInstructionFiles (config.generate.files)', () => {
+  const metaConfig: AgentenvConfig = { scope: 'project', agents: { claude_code: true } };
+
+  it('generates both AGENTS.md and CLAUDE.md by default', () => {
+    const files = generateInstructionFiles(metaConfig, '/base');
+    assert.deepEqual(
+      files.map((file) => file.path),
+      [path.join('/base', 'AGENTS.md'), path.join('/base', 'CLAUDE.md')],
+    );
+  });
+
+  it('honors a requested subset of files (FEAT-01)', () => {
+    const files = generateInstructionFiles(
+      { ...metaConfig, generate: { files: ['AGENTS.md'] } },
+      '/base',
+    );
+    assert.deepEqual(
+      files.map((file) => file.path),
+      [path.join('/base', 'AGENTS.md')],
+    );
+  });
+
+  it('generates nothing when only unknown file names are requested', () => {
+    const files = generateInstructionFiles(
+      { ...metaConfig, generate: { files: ['README.md'] } },
+      '/base',
+    );
+    assert.deepEqual(files, []);
   });
 });

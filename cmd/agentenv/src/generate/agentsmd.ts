@@ -282,29 +282,40 @@ function getEnabledToolsForOutput(config: AgentenvConfig): string[] {
 }
 
 /**
- * Generate both AGENTS.md and CLAUDE.md files
+ * The instruction files agentenv can generate. `config.generate.files` may
+ * request a subset (e.g. only AGENTS.md) so output repos are never handed a
+ * CLAUDE.md they don't want.
+ */
+export const GENERATED_FILE_NAMES = ['AGENTS.md', 'CLAUDE.md'] as const;
+
+/**
+ * Generate the requested AGENTS.md / CLAUDE.md files, honoring
+ * `config.generate.files` (default: both). Files outside that list are never
+ * produced here; a config requesting only unknown names yields an empty list.
  */
 export function generateInstructionFiles(
   config: AgentenvConfig,
   baseDir: string = '.',
 ): GeneratedFile[] {
   const files: GeneratedFile[] = [];
+  const requested =
+    config.generate?.files && config.generate.files.length > 0
+      ? config.generate.files
+      : GENERATED_FILE_NAMES;
 
-  // Generate AGENTS.md
-  const agentsMdPath = path.join(baseDir, 'AGENTS.md');
-  const agentsMdContent = generateAgentsMd(config);
-  files.push({
-    path: agentsMdPath,
-    content: agentsMdContent,
-  });
+  if (requested.includes('AGENTS.md')) {
+    files.push({
+      path: path.join(baseDir, 'AGENTS.md'),
+      content: generateAgentsMd(config),
+    });
+  }
 
-  // Generate CLAUDE.md
-  const claudemdPath = path.join(baseDir, 'CLAUDE.md');
-  const claudemdContent = generateClaudeMd(config);
-  files.push({
-    path: claudemdPath,
-    content: claudemdContent,
-  });
+  if (requested.includes('CLAUDE.md')) {
+    files.push({
+      path: path.join(baseDir, 'CLAUDE.md'),
+      content: generateClaudeMd(config),
+    });
+  }
 
   return files;
 }

@@ -922,6 +922,27 @@ export function validateConfig(config: AgentenvConfig): {
     }
   }
 
+  const generate = config.generate ?? DEFAULT_CONFIG.generate;
+  if (generate) {
+    if (generate.marker_start !== undefined && typeof generate.marker_start !== 'string') {
+      errors.push('generate.marker_start must be a string');
+    }
+    if (generate.marker_end !== undefined && typeof generate.marker_end !== 'string') {
+      errors.push('generate.marker_end must be a string');
+    }
+    if (generate.files !== undefined && !Array.isArray(generate.files)) {
+      errors.push('generate.files must be an array of file names');
+    } else if (generate.files) {
+      for (const name of generate.files) {
+        if (name !== 'AGENTS.md' && name !== 'CLAUDE.md') {
+          warnings.push(
+            `generate.files lists "${name}", which agentenv cannot generate (supported: AGENTS.md, CLAUDE.md)`,
+          );
+        }
+      }
+    }
+  }
+
   return { errors, warnings };
 }
 
