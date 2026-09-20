@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-09-19
 
-Target: 20 · Found: 23 deduplicated items · Completed: 21/23 · Skipped: 0
+Target: 20 · Found: 23 deduplicated items · Completed: 22/23 · Skipped: 0
 
 > **How to use this document.** As you finish each item, change `- [ ]` to `- [x]`,
 > append ` ✅ <commit-sha>`, and bump the "Completed" counter. This file is the source
@@ -84,7 +84,7 @@ bypass**. Both are correctness, not cosmetics.
 
 ## New functionality   (FEAT-NN)
 
-- [ ] **FEAT-01** `[generate] files` is fully plumbed through the schema but never consulted · `src/generate/agentsmd.ts:285-308` · effort S · impact med
+- [x] **FEAT-01** `[generate] files` is fully plumbed through the schema but never consulted · `src/generate/agentsmd.ts:285-308` · effort S · impact med ✅ 2df13c7
   Rationale: editing the list has zero effect yet it is serialized, diffed and documented; honor it (generate only the listed files) or remove it from the schema/README.
 - [ ] **FEAT-02** `ensureGlobalShimsDir` overwrites an existing user `shims_dir` with no undo record · `src/toolchain/mise.ts:263-294` · effort M · impact med
   Rationale: users with a custom `shims_dir` (scoop/dotfiles/XDG) get it silently replaced on every `apply`/`update`, and unlike the Tier 0 files there is no recorded prior value for `shell-fix --revert` to restore.
