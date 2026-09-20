@@ -71,10 +71,20 @@ export interface MiseConfig {
  * Tools agentenv invokes directly are pinned to versions we have verified;
  * everything else resolves to latest. rtk is invoked by agentenv's delegation
  * (its `init` flags are the hook contract), moves fast, and must stay pinned —
- * bump deliberately per plan §10.
+ * bump deliberately per plan §10. A catalog tool is also pinned when its
+ * `latest` release is currently broken upstream (mise's aqua backend cannot
+ * install it), so the generated mise.toml ships a known-good version instead
+ * of reproducing the upstream failure on every user machine.
  */
 export const PINNED_TOOL_VERSIONS: Record<string, string> = {
   rtk: '0.49.0',
+  // difftastic 0.71.0+ renamed its release assets to `difft-<version>-…`
+  // (unversioned before), which the aqua registry's asset template does not
+  // match on any platform — `mise install` fails with "no asset found:
+  // difft-x86_64-unknown-linux-musl.tar.gz". 0.70.0 is the last verified
+  // installable release (phase0 research docs). Unpin when upstream fixes
+  // the asset naming or mise resolves it for us.
+  difftastic: '0.70.0',
 };
 
 /**

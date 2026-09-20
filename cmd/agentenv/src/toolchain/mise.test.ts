@@ -130,9 +130,14 @@ describe('mise.toml generation', () => {
     });
 
     assert.ok(upgradeable.includes('ripgrep'));
-    assert.ok(upgradeable.includes('difftastic'));
+    assert.ok(upgradeable.includes('fd'));
     assert.equal(upgradeable.includes('rtk'), false);
     assert.equal(upgradeable.includes('jq'), false);
+    assert.equal(
+      upgradeable.includes('difftastic'),
+      false,
+      'difftastic is pinned (0.71.0+ upstream asset naming broke the aqua backend)',
+    );
   });
 });
 
