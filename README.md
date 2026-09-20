@@ -1,5 +1,7 @@
 # agentenv
 
+![agentenv](agentenv-logo.png)
+
 **Give AI coding agents a working toolbelt on any machine — without setting it
 up yourself.**
 
