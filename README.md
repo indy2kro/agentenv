@@ -1,43 +1,81 @@
 # agentenv
 
-Give AI coding agents a consistent, capable shell environment on Windows,
-macOS, and Linux — with minimal setup friction and without maintaining any dev
-tools yourself. `agentenv` is a thin orchestration + config layer on top of
-[mise](https://mise.jdx.dev) (tool installation), [rtk](https://github.com/rtk-ai/rtk)
-(command rewriting + hooks), and [AGENTS.md](https://agents.md) (repo-level
-instructions). It never re-implements a dev tool — it drives mise/rtk and
-writes config files for you.
+**Give AI coding agents a working toolbelt on any machine — without setting it
+up yourself.**
 
-Supports nine agents: **Claude Code**, **OpenAI Codex CLI**, **GitHub Copilot
-(CLI/Chat)**, **OpenCode**, **Gemini CLI**, **Cursor**, **Windsurf**,
-**Cline CLI**, and **Mistral Vibe**. Claude Code and Codex CLI are on by
-default; the rest are opt-in.
+If you've ever watched Claude Code, Codex, Copilot, or any other AI coding agent
+stumble because `rg` or `jq` weren't installed, or redo the same config dance
+for a third different agent, this project is for you. `agentenv` handles the
+boring "set up my dev environment" part so your agents can just work — on
+Windows, macOS, and Linux alike.
 
-If you've ever watched an agent fumble because `rg`/`fd`/`jq` weren't on PATH,
-or redo the same hook-wiring dance for a different config file format, this
-fixes that:
+## Why you need this
 
-- **One command** — `agentenv setup` gets a fresh machine to a working state
-  for whichever supported agents you have installed, Windows included.
-- **One source of truth** — a single `agentenv.toml` drives everything:
-  `mise.toml`, `AGENTS.md`/`CLAUDE.md`, and each agent's hook files are all
-  generated from it, never hand-maintained.
-- **Nothing reinvented** — tool installation is 100% mise; command rewriting
-  and hooks are 100% rtk.
-- **Safe to re-run** — `agentenv apply` is idempotent; with no config change
-  it touches nothing and reinstalls nothing.
+AI coding agents are only as capable as the tools around them. They assume a
+normal developer shell: fast search, JSON parsing, git helpers, a good diff
+viewer, and so on. On a fresh machine — especially a default Windows setup —
+most of that is missing. Agents then flail, burn tokens guessing, and
+half-install tools ad hoc, leaving a mess behind.
 
-## Getting started
+`agentenv` fixes that by giving every agent you use the same consistent,
+capable environment, from a single point of control.
+
+## What you get
+
+- **One setup, every agent.** Your tools and instructions apply across
+  **Claude Code, OpenAI Codex CLI, GitHub Copilot, OpenCode, Gemini CLI,
+  Cursor, Windsurf, Cline CLI, and Mistral Vibe** — no per-agent config
+  sprawl to hand-maintain.
+- **One file to rule them all.** Edit a single `agentenv.toml`. The tool list,
+  the instruction files agents read (`AGENTS.md`/`CLAUDE.md`), and every
+  agent's hook files are all generated from it.
+- **Windows, handled properly.** Deep down a shell on Windows is a different
+  world; agents routinely trip over it. `agentenv` fixes the classic
+  PowerShell/Git-Bash toolchain problems for you and records exactly what it
+  changed, so it can be reverted.
+- **Reproducible.** A teammate clones the repo and runs one command; they get
+  the same tools, the same versions, the same instructions. No "works on my
+  machine."
+- **Safe and reversible.** Re-running `apply` changes nothing if you changed
+  nothing. `status` shows you exactly where your config and reality disagree.
+  `uninstall` cleans up; Windows shell changes can be rolled back.
+- **Nothing reinvented.** `agentenv` is a thin orchestration layer, not
+  another stack to learn: [mise](https://mise.jdx.dev) installs the tools,
+  [rtk](https://github.com/rtk-ai/rtk) wires the command hooks, and the
+  instructions follow the [AGENTS.md](https://agents.md) standard.
+
+## How it works — in one picture
+
+```
+agentenv.toml ──► agentenv apply
+                   ├── mise installs your tools (rg, fd, jq, gh, …)
+                   ├── generates AGENTS.md / CLAUDE.md instructions
+                   └── wires each agent's hooks (via rtk)
+
+                    ┌──────────────────────┐
+                    │  Claude Code   Codex  │
+                    │  Copilot   OpenCode   │
+                    │  Gemini   Cursor      │
+                    │  Windsurf   Cline     │
+                    │  Vibe                 │
+                    └──────────────────────┘
+                       everyone sees the same
+                       tools and instructions
+```
+
+## Quick start
 
 ```sh
 npm install -g @indy2kro/agentenv   # the installed command is plain `agentenv`
 agentenv setup                       # interactive wizard → writes config → applies
 ```
 
+That's it. `setup` walks you through your choices, shows you the diff before
+changing anything, and applies it. No prompts? Use `agentenv setup --yes`, or
+hand-write `agentenv.toml` and run `agentenv apply`.
+
 Prerequisites: **Node.js >= 22.13** and **[mise](https://mise.jdx.dev)** on
 PATH (a hard prerequisite — see [`docs/guides/installing.md`](docs/guides/installing.md)).
-Not in a terminal? Use `agentenv setup --yes` or `agentenv apply` against a
-hand-written `agentenv.toml`.
 
 ## Commands at a glance
 
