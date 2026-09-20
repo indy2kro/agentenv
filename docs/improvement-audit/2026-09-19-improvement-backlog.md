@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-09-19
 
-Target: 20 · Found: 23 deduplicated items · Completed: 20/23 · Skipped: 0
+Target: 20 · Found: 23 deduplicated items · Completed: 21/23 · Skipped: 0
 
 > **How to use this document.** As you finish each item, change `- [ ]` to `- [x]`,
 > append ` ✅ <commit-sha>`, and bump the "Completed" counter. This file is the source
@@ -79,7 +79,7 @@ bypass**. Both are correctness, not cosmetics.
   Rationale: zsh/fish/powershell users get flags instead of `bash zsh fish powershell` when completing the completion command's own argument.
 - [x] **UX-04** `setup --yes` in a directory with only a user-scope config writes a new project config instead of re-applying the existing one · `src/commands/setup.ts:151-198` · effort S · impact med ✅ 61a3bb0
   Rationale: it resolves `configFilePath(scope)` without falling back to `findConfigPath()` (the wizard does), contradicting the README's "re-applies your existing `agentenv.toml`" and producing two divergent configs.
-- [ ] **UX-05** Superpowers `detect` labels a missing `claude` CLI as `unsupported` instead of `missing` · `src/integrations/superpowers.ts:130-136` · effort S · impact low
+- [x] **UX-05** Superpowers `detect` labels a missing `claude` CLI as `unsupported` instead of `missing` · `src/integrations/superpowers.ts:130-136` · effort S · impact low ✅ 50d4fdf
   Rationale: `unsupported` means "agentenv can't automate this agent", but claude_code is the one agent it does automate; `missing` would fail apply loudly instead of silently skipping with a warning.
 
 ## New functionality   (FEAT-NN)
