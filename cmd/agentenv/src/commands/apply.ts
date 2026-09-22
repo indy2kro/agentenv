@@ -1,4 +1,5 @@
 import { Command } from 'commander';
+import * as fs from 'fs';
 import * as path from 'path';
 import {
   ClaudeCodeAdapter,
@@ -14,8 +15,13 @@ import {
 import type { BaseAdapter } from '../adapters/index.js';
 import { getEnabledAgents, loadConfig, validateConfig } from '../config/schema.js';
 import type { AgentKey } from '../config/schema.js';
-import { resolveScopeDir } from '../config/scopes.js';
-import { findConfigPath } from '../config/scopes.js';
+import {
+  configFilePath,
+  findConfigPath,
+  parseScopeFlag,
+  resolveScopeDir,
+} from '../config/scopes.js';
+import type { ScopeValue } from '../config/scopes.js';
 import type { AgentenvConfig } from '../config/schema.js';
 import { SuperpowersAdapter, integrationResultLines } from '../integrations/index.js';
 import type { SuperpowersAdapterDeps } from '../integrations/index.js';
@@ -325,14 +331,26 @@ export const applyCommand = new Command()
     '--shell-fix <mode>',
     'Tier 0 Windows shell fix: auto (default; only writes files with a TTY) | always (write even without a TTY — for an agent running apply) | never',
   )
+  .option('--scope <scope>', 'config scope to apply: project|user (default: nearest config)')
   .action(
     async (
-      options: { skipMiseInstall?: boolean; dryRun?: boolean; shellFix?: string },
+      options: {
+        skipMiseInstall?: boolean;
+        dryRun?: boolean;
+        shellFix?: string;
+        scope?: ScopeValue;
+      },
       command: Command,
     ) => {
       const startedAt = Date.now();
       renderLogo();
       const dryRun = options.dryRun === true;
+
+      const scope = parseScopeFlag(options.scope);
+      if (scope.error) {
+        command.error(scope.error);
+        return;
+      }
 
       let tier0Mode: 'auto' | 'always' | 'never' | undefined;
       if (options.shellFix !== undefined) {
@@ -347,11 +365,21 @@ export const applyCommand = new Command()
       }
 
       let config: AgentenvConfig;
-      const configPath = findConfigPath();
-      if (!configPath) {
-        console.error('No agentenv.toml found. Run `agentenv setup` first.');
-        process.exitCode = 1;
-        return;
+      let configPath: string | null;
+      if (scope.scope) {
+        configPath = configFilePath(scope.scope);
+        if (!fs.existsSync(configPath)) {
+          console.error(`No agentenv.toml found at ${configPath} (scope ${scope.scope}).`);
+          process.exitCode = 1;
+          return;
+        }
+      } else {
+        configPath = findConfigPath() ?? null;
+        if (!configPath) {
+          console.error('No agentenv.toml found. Run `agentenv setup` first.');
+          process.exitCode = 1;
+          return;
+        }
       }
       try {
         config = loadConfig(configPath);

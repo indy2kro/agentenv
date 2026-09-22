@@ -121,6 +121,7 @@ The single pipeline all of `setup`/`configure`/`apply` funnel into. Reads
 | `--skip-mise-install` | Generate files only — no `mise install`, no verification. For CI dry-runs or when mise isn't available. |
 | `--dry-run` | Show what would be written/changed without changing anything. |
 | `--shell-fix <mode>` | Override `[tier0].mode` for this run: `auto` (default; the Windows shell fix only writes files with a TTY), `always` (write even without one — pass this when an AI agent runs `apply`, which never has a TTY), or `never`. |
+| `--scope <scope>` | config scope to apply: `project`\|`user` (default: nearest config), matching `update`/`uninstall`/`setup`. |
 
 `apply` is idempotent: with no config change it touches nothing and
 reinstalls nothing.

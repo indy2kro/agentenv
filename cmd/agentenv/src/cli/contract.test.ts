@@ -251,6 +251,7 @@ direnv = false
 
   it('rejects an invalid --scope value as a usage error on every scope-taking command', () => {
     for (const args of [
+      ['apply', '--scope', 'usre'],
       ['update', '--scope', 'usre'],
       ['uninstall', '--scope', 'usre'],
       ['setup', '--yes', '--scope', 'usre'],
@@ -259,6 +260,30 @@ direnv = false
       assert.equal(result.status, 2, `${args.join(' ')} should be a usage error`);
       assert.match(result.stderr, /invalid --scope "usre"/);
     }
+  });
+
+  it('apply --scope user targets the user config dir, matching update/uninstall/setup', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-apply-scope-'));
+    const userDir = path.join(home, '.config', 'agentenv');
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-apply-scope-cwd-'));
+    const userEnv: NodeJS.ProcessEnv = { ...process.env, HOME: home, USERPROFILE: home };
+    delete userEnv.XDG_CONFIG_HOME;
+
+    // No agentenv.toml at the user scope yet.
+    const missing = run(['apply', '--scope', 'user'], cwd, userEnv);
+    assert.equal(missing.status, 1);
+    assert.match(missing.stderr, /No agentenv\.toml found at/);
+    assert.match(missing.stderr, /scope user/);
+
+    fs.mkdirSync(userDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(userDir, 'agentenv.toml'),
+      'scope = "user"\n[agents]\nclaude_code = false\ncodex_cli = false\n[tools]\n',
+    );
+    const applied = run(['apply', '--scope', 'user', '--skip-mise-install'], cwd, userEnv);
+    assert.equal(applied.status, 0, applied.stderr);
+    assert.equal(fs.existsSync(path.join(userDir, 'mise.toml')), true);
+    assert.equal(fs.existsSync(path.join(cwd, 'mise.toml')), false);
   });
 
   it('shell-fix reports an empty manifest and is a revert no-op (sandboxed)', () => {
