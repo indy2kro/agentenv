@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-09-22
 
-Target: 40 · Found: 46 deduplicated items · Completed: 16/46 (+1 partial)
+Target: 40 · Found: 46 deduplicated items · Completed: 17/46 (+1 partial)
 
 > **How to use this document — read before implementing anything.**
 > As you finish each item, change `- [ ]` to `- [x]`, append ` ✅ <commit-sha>`,
@@ -83,7 +83,7 @@ Themes this round:
   For six agents, `configured` just means `baseDir/RTK.md` exists. With `rtk.enabled = false`, every installed one is flagged as drift. Meanwhile one successful `rtk init` (or a skipped vibe) marks them all configured.
 - [x] **BUG-07** ✅ 531e3ff A Tier 0 failure aborts mise install/verify for the whole apply — `src/commands/apply.ts:172-184,201` · effort S · impact med
   Tier 0 pushes to `errors`, and step 3 is gated on `errors.length === 0`, so one unpatchable agent settings file means no tools are installed.
-- [ ] **BUG-08** The wizard swallows `agentenv.toml` parse errors and silently starts from defaults — `src/commands/wizard.ts:55-60` · effort S · impact med
+- [x] **BUG-08** ✅ fc288f9 The wizard swallows `agentenv.toml` parse errors and silently starts from defaults — `src/commands/wizard.ts:55-60` · effort S · impact med
   A single TOML typo makes the wizard pre-fill defaults, then overwrite the user's real config on save instead of reporting the parse error.
 - [ ] **BUG-09** Re-saving `agentenv.toml` in setup strips the user's comments and formatting — `src/commands/setup.ts` (`saveAndApply`), `src/config/schema.ts:451` (`saveConfig`) · effort M · impact med
   `setup --yes` re-applying an existing hand-commented config (which `agentenv.toml.example` encourages) re-serializes it from scratch. At minimum, skip the save when the config is unchanged.
