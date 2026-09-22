@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-09-22
 
-Target: 40 · Found: 46 deduplicated items · Completed: 18/46 (+1 partial)
+Target: 40 · Found: 46 deduplicated items · Completed: 19/46 (+1 partial)
 
 > **How to use this document — read before implementing anything.**
 > As you finish each item, change `- [ ]` to `- [x]`, append ` ✅ <commit-sha>`,
@@ -89,7 +89,7 @@ Themes this round:
   `setup --yes` re-applying an existing hand-commented config (which `agentenv.toml.example` encourages) re-serializes it from scratch. At minimum, skip the save when the config is unchanged.
 - [ ] **BUG-10** Git Bash is only looked for in four hardcoded `C:\Program Files` paths — `src/shell/detector.ts:44-49,89-99,742` · effort S · impact med
   Per-user (`%LOCALAPPDATA%\Programs\Git`), scoop and non-C: installs are missed. The fallback message says "not found on PATH", but PATH is never searched (`where git`).
-- [ ] **BUG-11** The Codex adapter reports success when creating `config.toml` fails — `src/adapters/codex.ts:64-74` · effort S · impact low
+- [x] **BUG-11** ✅ 18d9c98 The Codex adapter reports success when creating `config.toml` fails — `src/adapters/codex.ts:64-74` · effort S · impact low
   The error is pushed but `success` stays true, and `apply` only shows adapter errors when `success` is false, so the failure is invisible.
 - [ ] **BUG-12** The managed block ignores the target file's line endings — `src/generate/agentsmd.ts:361-478` (`updateWithMarkers`) · effort S · impact low
   On Windows, a CRLF `AGENTS.md` gets an LF block appended, which mixes line endings and makes diffs noisy.
