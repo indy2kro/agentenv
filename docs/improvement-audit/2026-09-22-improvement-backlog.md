@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-09-22
 
-Target: 40 · Found: 46 deduplicated items · Completed: 14/46
+Target: 40 · Found: 46 deduplicated items · Completed: 15/46 (+1 partial)
 
 > **How to use this document — read before implementing anything.**
 > As you finish each item, change `- [ ]` to `- [x]`, append ` ✅ <commit-sha>`,
@@ -50,7 +50,7 @@ Themes this round:
   None has a timeout, so a hung network call freezes `status`/`doctor`/`apply` indefinitely.
 - [ ] **SWEEP-03** [bug] Honor agent config-dir overrides (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `XDG_CONFIG_HOME` for copilot/opencode) and drop the `HOME || USERPROFILE || ''` relative fallback — `src/adapters/claude.ts:17`, `codex.ts:20`, `copilot.ts:19`, the `RtkDelegationAdapter` subclasses, `commands/status.ts:35-56` · effort M · impact med
   Users who relocate agent config get hooks written where the agent never reads them, and an unset HOME makes adapters write `.claude/` into the cwd.
-- [ ] **SWEEP-04** [bug] Check the real `rtk init -g` install locations for global-only agents (gemini_cli, cursor, windsurf, vibe) in both `status` and the adapter's `filesCreated` — `src/commands/status.ts:43-55`, `src/adapters/rtk-delegation.ts:111` · effort M · impact med
+- [~] **SWEEP-04** [bug] Check the real `rtk init -g` install locations for global-only agents (gemini_cli, cursor, windsurf, vibe) in both `status` and the adapter's `filesCreated` — `src/commands/status.ts:43-55`, `src/adapters/rtk-delegation.ts:111` · effort M · impact med — **partially done** ✅ 3bedfd2 (gemini_cli, cursor fixed and verified live against a real rtk install; windsurf/vibe left as a TODO in the source — live probe against an older rtk build was inconclusive/contradictory, needs re-verification against the pinned 0.49.0 via `smoke:real` before changing). `adapters/rtk-delegation.ts:111`'s own `expectedPath` still has the same unresolved issue for windsurf/vibe.
   These agents are wired into home-dir config, but both places look for `RTK.md` in the project `baseDir`.
 - [ ] **SWEEP-05** [feature] `--json` output for the mutating commands `apply` / `update` / `uninstall` — `src/commands/apply.ts`, `update.ts`, `uninstall.ts` · effort M · impact med
   Only the read-only commands emit JSON. `ApplyResult` is already structured, yet CI has to scrape colored text.
@@ -79,7 +79,7 @@ Themes this round:
   With `bat`/`eza`/`delta` disabled (or skipped on the platform), agents are still told to use binaries that aren't installed. Generate the list from the enabled tools.
 - [x] **BUG-05** ✅ 34259b9 `rtk` is resolved by a bare PATH lookup instead of through mise — `src/toolchain/rtk.ts:40-56`, `src/adapters/detect.ts:64-90` · effort S · impact high
   On a first `setup`, the rtk mise just installed is often not on PATH yet (`needs-new-terminal`), so every adapter fails. Otherwise an unpinned or name-colliding `rtk` earlier on PATH is used instead of the pinned 0.49.0. Use `mise which rtk` / `mise exec` in `baseDir`.
-- [ ] **BUG-06** In `status`, rtk-delegated agents show drift when rtk is disabled, and one shared `RTK.md` masks per-agent failures — `src/commands/status.ts:35-56,328-339` · effort M · impact high
+- [x] **BUG-06** ✅ 3bedfd2 In `status`, rtk-delegated agents show drift when rtk is disabled, and one shared `RTK.md` masks per-agent failures — `src/commands/status.ts:35-56,328-339` · effort M · impact high
   For six agents, `configured` just means `baseDir/RTK.md` exists. With `rtk.enabled = false`, every installed one is flagged as drift. Meanwhile one successful `rtk init` (or a skipped vibe) marks them all configured.
 - [ ] **BUG-07** A Tier 0 failure aborts mise install/verify for the whole apply — `src/commands/apply.ts:172-184,201` · effort S · impact med
   Tier 0 pushes to `errors`, and step 3 is gated on `errors.length === 0`, so one unpatchable agent settings file means no tools are installed.
