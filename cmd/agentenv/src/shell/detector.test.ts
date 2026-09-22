@@ -9,6 +9,7 @@ import {
   checkAgentShellConfiguration,
   checkGNUCoreutils,
   checkMissingUtilities,
+  detectShell,
   fixShellConfiguration,
   removeTomlWindowsShellPath,
   revertShellFixes,
@@ -493,6 +494,38 @@ describe('Tier 0 shell fix', () => {
       const content = '[model]\nx = 1\n';
       assert.equal(removeTomlWindowsShellPath(content), content);
     });
+  });
+});
+
+describe('detectShell (BUG-02)', () => {
+  it('never runs `brew install` (or any brew subcommand other than --prefix) on macOS', () => {
+    const originalPlatform = process.platform;
+    Object.defineProperty(process, 'platform', { value: 'darwin' });
+    const calls: Array<{ cmd: string; args: string[] }> = [];
+    const fakeSpawnSync: typeof import('child_process').spawnSync = ((
+      cmd: string,
+      args?: string[],
+    ) => {
+      calls.push({ cmd, args: args ?? [] });
+      return { status: 1, stdout: '', stderr: '', pid: 0, output: [], signal: null } as ReturnType<
+        typeof import('child_process').spawnSync
+      >;
+    }) as typeof import('child_process').spawnSync;
+
+    try {
+      // detectShell() itself only ever calls the injected spawnSync for the
+      // read-only `brew --prefix coreutils` probe; checkGNUCoreutils()
+      // (unmocked here) never touches brew at all. Regardless of what either
+      // reports, no call reaching this seam may be an install/list mutation.
+      detectShell(fakeSpawnSync);
+      assert.ok(calls.length > 0, 'expected the brew --prefix probe to run');
+      for (const call of calls) {
+        assert.equal(call.cmd, 'brew');
+        assert.deepEqual(call.args, ['--prefix', 'coreutils']);
+      }
+    } finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform });
+    }
   });
 });
 

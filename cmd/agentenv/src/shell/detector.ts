@@ -61,9 +61,15 @@ export interface ShellInfo {
 }
 
 /**
- * Detect the current shell environment
+ * Detect the current shell environment.
+ *
+ * `spawnSync` is injectable (defaults to the real `child_process.spawnSync`)
+ * purely so tests can observe — and assert nothing installs anything through
+ * — the one remaining subprocess call this function makes directly (BUG-02).
  */
-export function detectShell(): ShellInfo {
+export function detectShell(
+  spawnSync: typeof child_process.spawnSync = child_process.spawnSync,
+): ShellInfo {
   const isWindows = process.platform === 'win32';
   const isMacOS = process.platform === 'darwin';
   const currentShell = determineCurrentShell();
@@ -98,27 +104,26 @@ export function detectShell(): ShellInfo {
       }
     }
   } else if (isMacOS) {
-    // On macOS, check for GNU coreutils
+    // On macOS, check for GNU coreutils. detectShell() must stay read-only —
+    // status/doctor call it too, and both are documented as never changing
+    // the machine — so it only ever detects, never installs. Installing is
+    // fixShellConfiguration()'s job (the explicit, reported Tier 0 apply
+    // step), which calls installGNUCoreutilsMacOS() itself when needed.
     isPosixCompatible = checkGNUCoreutils();
 
-    // If GNU coreutils are not available, we may need to install them
-    if (!isPosixCompatible) {
-      gnubinPath = installGNUCoreutilsMacOS();
-      if (gnubinPath) {
-        isPosixCompatible = true;
-      }
-    } else {
-      // Try to get the gnubin path if coreutils are installed
-      try {
-        const result = child_process.spawnSync('brew', ['--prefix', 'coreutils'], {
-          encoding: 'utf-8',
-          stdio: ['ignore', 'pipe', 'pipe'],
-        });
+    // Read-only probe: report the gnubin path when coreutils happen to
+    // already be installed via Homebrew; do nothing (and no error) otherwise.
+    try {
+      const result = spawnSync('brew', ['--prefix', 'coreutils'], {
+        encoding: 'utf-8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      if (result.status === 0) {
         const prefix = result.stdout.trim();
-        gnubinPath = path.join(prefix, 'libexec', 'gnubin');
-      } catch {
-        // coreutils not installed via Homebrew, or Homebrew not available
+        if (prefix) gnubinPath = path.join(prefix, 'libexec', 'gnubin');
       }
+    } catch {
+      // coreutils not installed via Homebrew, or Homebrew not available
     }
   } else {
     // On Linux and other Unix-like systems, check for GNU coreutils
