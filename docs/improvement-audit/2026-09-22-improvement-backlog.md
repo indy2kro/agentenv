@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-09-22
 
-Target: 40 · Found: 46 deduplicated items · Completed: 17/46 (+1 partial)
+Target: 40 · Found: 46 deduplicated items · Completed: 18/46 (+1 partial)
 
 > **How to use this document — read before implementing anything.**
 > As you finish each item, change `- [ ]` to `- [x]`, append ` ✅ <commit-sha>`,
@@ -112,7 +112,7 @@ Themes this round:
   `apply` adds `Tier 0: ` to a message that already starts with it.
 - [ ] **UX-07** `setup --yes` calls `loadConfig` without a guard in the existing/nearest-config branches — `src/commands/setup.ts:160,176` · effort S · impact low
   The `--config` branch reports parse errors with a themed message; these two fall through to the generic top-level handler.
-- [ ] **UX-08** Usage errors exit 1 instead of 2 (`doctor --section` with no match; unknown tool names given to `uninstall`) — `src/commands/doctor.ts:325-333`, `src/commands/uninstall.ts:204-208` · effort S · impact low
+- [x] **UX-08** ✅ 64de45d Usage errors exit 1 instead of 2 (`doctor --section` with no match; unknown tool names given to `uninstall`) — `src/commands/doctor.ts:325-333`, `src/commands/uninstall.ts:204-208` · effort S · impact low
   `docs/guides/exit-codes.md` promises exit 2 for invalid arguments on every command. Use `command.error()` as `parseScopeFlag` callers do.
 - [ ] **UX-09** `doctor --section` still runs every check before filtering — `src/commands/doctor.ts:320-323` · effort S · impact low
   The flag is described as "only run one report section", but `gatherDoctor()` still spawns every mise/agent probe, so it is no faster.
