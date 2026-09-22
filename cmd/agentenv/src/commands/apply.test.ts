@@ -3,7 +3,12 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { applyConfiguration, resolveTier0WriteFiles, userScopeInstructionFiles } from './apply.js';
+import {
+  applyConfiguration,
+  resolveTier0WriteFiles,
+  shouldRunMiseInstall,
+  userScopeInstructionFiles,
+} from './apply.js';
 import type { AgentenvConfig } from '../config/schema.js';
 import type { ClaudeCliRunner } from '../integrations/superpowers.js';
 import type { RtkInitFn } from '../toolchain/rtk.js';
@@ -537,5 +542,24 @@ describe('resolveTier0WriteFiles (FEAT-01)', () => {
   it('"never" never writes, even with a TTY', () => {
     assert.equal(resolveTier0WriteFiles('never', true), false);
     assert.equal(resolveTier0WriteFiles('never', false), false);
+  });
+});
+
+describe('shouldRunMiseInstall (BUG-07)', () => {
+  it('runs once mise.toml was written, regardless of unrelated earlier errors (e.g. Tier 0)', () => {
+    // The old logic gated this on `errors.length === 0`, so a Tier 0 failure
+    // (pushed to `errors` before mise.toml is even written) used to skip
+    // installing every configured tool. shouldRunMiseInstall only takes
+    // whether mise.toml itself was written — it has no way to see the
+    // unrelated error count at all, which is exactly the fix.
+    assert.equal(shouldRunMiseInstall(true, false), true);
+  });
+
+  it('does not run when mise.toml itself failed to write (nothing to install)', () => {
+    assert.equal(shouldRunMiseInstall(false, false), false);
+  });
+
+  it('does not run when --skip-mise-install was passed', () => {
+    assert.equal(shouldRunMiseInstall(true, true), false);
   });
 });

@@ -110,6 +110,19 @@ export function resolveTier0WriteFiles(mode: 'auto' | 'always' | 'never', isTTY:
   return isTTY;
 }
 
+/**
+ * Whether step 3 (mise install/verify) should run: only when mise.toml was
+ * actually written (there'd be nothing to install otherwise) and
+ * --skip-mise-install wasn't passed. Deliberately NOT gated on the
+ * cumulative error count — a Tier 0 failure (step 1) is unrelated and must
+ * not also skip installing every configured tool (BUG-07); before this fix,
+ * `errors.length === 0` meant one broken agent shell-fix write silently
+ * skipped tool installation entirely.
+ */
+export function shouldRunMiseInstall(miseTomlWritten: boolean, skipMiseInstall: boolean): boolean {
+  return miseTomlWritten && !skipMiseInstall;
+}
+
 function adaptersFor(
   config: AgentenvConfig,
   baseDir: string,
@@ -208,8 +221,10 @@ export async function applyConfiguration(
   // Step 2 — mise.toml (declares the tools).
   const enabledToolCount = Object.values(config.tools ?? {}).filter((on) => on === true).length;
   const misePath = path.join(baseDir, 'mise.toml');
+  let miseTomlWritten = false;
   try {
     saveMiseToml(generateMiseToml(config, config.custom_tools ?? []), misePath);
+    miseTomlWritten = true;
     messages.push(`Tools: wrote ${misePath} (${enabledToolCount} enabled)`);
     const platformSkip = platformUnsupportedHint(config);
     if (platformSkip) messages.push(platformSkip);
@@ -220,7 +235,7 @@ export async function applyConfiguration(
   }
 
   // Step 3 — global shims config + trust + install + verify.
-  if (errors.length === 0 && !options.skipMiseInstall) {
+  if (shouldRunMiseInstall(miseTomlWritten, options.skipMiseInstall === true)) {
     const shims = ensureGlobalShimsDir(shellFixStatePath());
     (shims.success ? messages : errors).push(shims.message);
 
