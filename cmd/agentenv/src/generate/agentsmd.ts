@@ -66,6 +66,22 @@ export interface GeneratedFile {
 }
 
 /**
+ * Per-tool tips for the "General Instructions" section. Only tools that are
+ * actually enabled get a tip, so agents are never told to use a binary that
+ * isn't installed (BUG-04). `bat`/`git_delta` point agents at non-interactive
+ * flags/commands instead of a pager, since agents run without a TTY (UX-01).
+ */
+const GENERAL_INSTRUCTION_TIPS: Record<string, string> = {
+  ripgrep: 'For file search, use `rg` (ripgrep) instead of `grep -r`',
+  fd: 'For finding files, use `fd` instead of `find`',
+  jq: 'For JSON processing, use `jq`',
+  bat: 'For viewing files, use `bat --plain --paging=never` instead of `cat` (skips the pager and decorations, which matter for a human, not an agent)',
+  eza: 'For directory listings, use `eza` instead of `ls`',
+  git_delta:
+    '`delta` gives syntax-highlighted diffs for human review; run `git --no-pager diff` (or plain `git diff`) directly instead of piping through it',
+};
+
+/**
  * Generate AGENTS.md content from configuration
  */
 export function generateAgentsMd(config: AgentenvConfig): string {
@@ -78,6 +94,7 @@ export function generateAgentsMd(config: AgentenvConfig): string {
     config.generate?.marker_end ||
     DEFAULT_CONFIG.generate?.marker_end ||
     '<!-- agentenv-managed-end -->';
+  const isUserScope = config.scope === 'user';
 
   // Keep all agentenv-owned content in a single block. User-authored content
   // can safely live before or after it.
@@ -86,22 +103,11 @@ export function generateAgentsMd(config: AgentenvConfig): string {
   // Header
   lines.push('# AI Coding Agent Instructions');
   lines.push('');
-  lines.push('This file provides instructions for AI coding agents operating in this repository.');
-  lines.push('');
-
-  // Supported Agents section
-  lines.push('## Supported Agents');
-  lines.push('');
-
-  const enabledAgents = getEnabledAgentsForOutput(config);
-  if (enabledAgents.length > 0) {
-    for (const agent of enabledAgents) {
-      lines.push(`- ${agent}`);
-    }
-  } else {
-    lines.push('- No agents configured');
-  }
-
+  lines.push(
+    isUserScope
+      ? 'This file provides instructions for AI coding agents, configured globally by agentenv.'
+      : 'This file provides instructions for AI coding agents operating in this repository.',
+  );
   lines.push('');
 
   // Available Tools section
@@ -128,53 +134,57 @@ export function generateAgentsMd(config: AgentenvConfig): string {
     }
   }
 
-  // RTK special section
+  // A single rtk section (catalog entry + usage notes combined, rather than
+  // repeating the same "rewrites commands to save tokens" claim twice under
+  // two separate headings — UX-03).
   if (config.rtk?.enabled) {
     lines.push('### Token Optimization');
     lines.push('');
     lines.push(
-      '- **rtk**: CLI proxy that reduces LLM token consumption by 60-90% on common dev commands',
+      '- **rtk** (binary: `rtk`): CLI proxy that reduces LLM token consumption by 60-90% on common dev commands',
     );
     lines.push(
-      '  - Automatically rewrites commands like `grep`, `find`, `cat`, etc. to faster, more token-efficient alternatives',
+      '  - Automatically rewrites commands like `grep`, `find`, `cat`, etc. to faster, more token-efficient alternatives; output is truncated to reduce token usage while preserving essential information',
     );
-    lines.push('  - Maintains command semantics while optimizing for LLM context');
+    lines.push(
+      "  - If a rewrite misbehaves (e.g. drops a flag it doesn't understand), run `rtk proxy <cmd>` to execute the original command unmodified",
+    );
+    lines.push('  - Use `rtk --help` for more information');
     lines.push('');
   }
 
   lines.push('');
 
-  // General Instructions section
+  // General Instructions section — generated from the enabled tools so an
+  // agent is never told to use a binary that isn't actually available.
   lines.push('## General Instructions');
   lines.push('');
   lines.push('- Prefer using the tools listed above for their respective tasks');
-  lines.push('- For file search, use `rg` (ripgrep) instead of `grep -r`');
-  lines.push('- For finding files, use `fd` instead of `find`');
-  lines.push('- For JSON processing, use `jq`');
-  lines.push('- For viewing files, use `bat` instead of `cat`');
-  lines.push('- For directory listings, use `eza` instead of `ls`');
-  lines.push('- When working with git diffs, use `delta` for syntax-highlighted output');
-
-  if (config.rtk?.enabled) {
-    lines.push('');
-    lines.push('## RTK Configuration');
-    lines.push('');
-    lines.push('RTK (Red Teaming Kit) is enabled and will optimize your commands:');
-    lines.push('- Commands are automatically rewritten to use the most efficient tools available');
-    lines.push(
-      '- Output is truncated to reduce token usage while preserving essential information',
-    );
-    lines.push('- Use `rtk --help` for more information about RTK');
+  for (const tool of enabledTools) {
+    const tip = GENERAL_INSTRUCTION_TIPS[tool];
+    if (tip) lines.push(`- ${tip}`);
   }
 
   lines.push('');
   lines.push('## Environment Notes');
   lines.push('');
-  lines.push(
-    '- This repository has been configured with agentenv for optimal AI coding agent performance',
-  );
-  lines.push('- Tools are managed via [mise](https://mise.jdx.dev)');
-  lines.push('- If a listed tool is missing, run `mise trust` and `mise install` in the repo root');
+  if (isUserScope) {
+    lines.push(
+      '- This machine has been configured with agentenv (user scope) for optimal AI coding agent performance',
+    );
+    lines.push('- Tools are managed via [mise](https://mise.jdx.dev)');
+    lines.push(
+      '- If a listed tool is missing, run `mise trust` and `mise install` in your agentenv user config directory (`~/.config/agentenv` by default, or `$XDG_CONFIG_HOME/agentenv`)',
+    );
+  } else {
+    lines.push(
+      '- This repository has been configured with agentenv for optimal AI coding agent performance',
+    );
+    lines.push('- Tools are managed via [mise](https://mise.jdx.dev)');
+    lines.push(
+      '- If a listed tool is missing, run `mise trust` and `mise install` in the repo root',
+    );
+  }
   lines.push('- Configuration is managed in `agentenv.toml`');
   lines.push('');
   lines.push(markerEnd);
@@ -235,26 +245,6 @@ function categorizeTools(tools: string[]): Record<string, string[]> {
   }
 
   return categories;
-}
-
-/**
- * Get enabled agents for output (formatted names)
- */
-function getEnabledAgentsForOutput(config: AgentenvConfig): string[] {
-  const agents = config.agents || DEFAULT_CONFIG.agents || {};
-  const enabled: string[] = [];
-
-  if (agents.claude_code) enabled.push('Claude Code');
-  if (agents.codex_cli) enabled.push('Codex CLI');
-  if (agents.copilot) enabled.push('GitHub Copilot');
-  if (agents.opencode) enabled.push('OpenCode');
-  if (agents.gemini_cli) enabled.push('Gemini CLI');
-  if (agents.cursor) enabled.push('Cursor');
-  if (agents.windsurf) enabled.push('Windsurf');
-  if (agents.cline) enabled.push('Cline CLI');
-  if (agents.vibe) enabled.push('Mistral Vibe');
-
-  return enabled;
 }
 
 /**

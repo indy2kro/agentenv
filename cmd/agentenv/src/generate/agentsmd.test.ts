@@ -83,6 +83,67 @@ describe('generated AGENTS.md tool listing', () => {
     assert.equal((output.match(/### Token Optimization/g) ?? []).length, 1);
     assert.equal((output.match(/--- RTK Configuration/m) ?? []).length, 0);
   });
+
+  it('never calls RTK "Red Teaming Kit" (BUG-03)', () => {
+    const config: AgentenvConfig = {
+      scope: 'project',
+      tools: { rtk: true },
+      rtk: { enabled: true },
+    };
+    const output = generateAgentsMd(config);
+    assert.doesNotMatch(output, /Red Teaming Kit/);
+    assert.match(output, /Rust Token Killer|CLI proxy that reduces LLM token consumption/);
+  });
+
+  it('points agents at the `rtk proxy` escape hatch (FEAT-04)', () => {
+    const config: AgentenvConfig = {
+      scope: 'project',
+      tools: { rtk: true },
+      rtk: { enabled: true },
+    };
+    const output = generateAgentsMd(config);
+    assert.match(output, /rtk proxy <cmd>/);
+  });
+
+  it('only recommends General Instructions tips for tools that are enabled (BUG-04)', () => {
+    const withBat = generateAgentsMd({
+      scope: 'project',
+      tools: { bat: true, eza: true },
+    });
+    assert.match(withBat, /use `bat --plain --paging=never`/);
+    assert.match(withBat, /use `eza` instead of `ls`/);
+
+    const withoutBat = generateAgentsMd({
+      scope: 'project',
+      tools: { ripgrep: true },
+    });
+    assert.doesNotMatch(withoutBat, /`bat`/);
+    assert.doesNotMatch(withoutBat, /`eza`/);
+    assert.match(withoutBat, /use `rg` \(ripgrep\) instead of `grep -r`/);
+  });
+
+  it('does not tell agents to pipe diffs through the interactive `delta` pager (UX-01)', () => {
+    const output = generateAgentsMd({ scope: 'project', tools: { git_delta: true } });
+    assert.doesNotMatch(output, /use `delta` for syntax-highlighted output/);
+    assert.match(output, /git --no-pager diff/);
+  });
+
+  it('drops the "Supported Agents" section (UX-03)', () => {
+    const output = generateAgentsMd({ scope: 'project', agents: { claude_code: true } });
+    assert.doesNotMatch(output, /## Supported Agents/);
+  });
+
+  it('uses scope-aware wording for a user-scope config instead of "this repository" (UX-02)', () => {
+    const projectOutput = generateAgentsMd({ scope: 'project' });
+    const userOutput = generateAgentsMd({ scope: 'user' });
+
+    assert.match(projectOutput, /operating in this repository/);
+    assert.match(projectOutput, /in the repo root/);
+    assert.doesNotMatch(userOutput, /this repository/);
+    assert.doesNotMatch(userOutput, /repo root/);
+    assert.match(userOutput, /configured globally by agentenv/);
+    assert.match(userOutput, /agentenv user config directory/);
+  });
 });
 
 describe('generateInstructionFiles (config.generate.files)', () => {
