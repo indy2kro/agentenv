@@ -28,10 +28,12 @@ import {
   isMiseInstalled,
   miseGlobalConfigPath,
   miseInstallInstructions,
+  PINNED_TOOL_VERSIONS,
   shimsDir,
   shimsDirOnPath,
   toolAvailabilityClassification,
 } from '../toolchain/mise.js';
+import { checkRtkInstallation } from '../toolchain/rtk.js';
 
 export type DoctorStatus = 'ok' | 'warn' | 'fail';
 
@@ -256,6 +258,42 @@ function gatherDoctor(): DoctorSection[] {
         ? toolItems
         : [{ status: 'warn', label: 'none', detail: 'no tools enabled' }],
   });
+
+  // RTK — every agent's hook depends on it, and RTK.md itself warns about a
+  // name collision with the unrelated "reachingforthejack/rtk" (Rust Type
+  // Kit), so this is worth its own check rather than folding into Tools
+  // (FEAT-02).
+  if (config.rtk?.enabled === true || tools.rtk === true) {
+    const rtkItems: DoctorItem[] = [];
+    const rtkInfo = checkRtkInstallation(path.dirname(configPath));
+    if (!rtkInfo.resolvedPath) {
+      rtkItems.push({
+        status: 'fail',
+        label: 'rtk',
+        detail: 'not found via `mise which rtk` or on PATH — run `agentenv apply`',
+      });
+    } else {
+      rtkItems.push({ status: 'ok', label: 'rtk', detail: rtkInfo.resolvedPath });
+      const pinned = PINNED_TOOL_VERSIONS.rtk;
+      if (rtkInfo.version) {
+        const detail =
+          pinned && !rtkInfo.version.includes(pinned)
+            ? `${rtkInfo.version} (agentenv pins ${pinned})`
+            : rtkInfo.version;
+        rtkItems.push({ status: 'ok', label: 'version', detail });
+      } else {
+        rtkItems.push({ status: 'warn', label: 'version', detail: '`rtk --version` failed' });
+      }
+      rtkItems.push({
+        status: rtkInfo.gainOk ? 'ok' : 'fail',
+        label: 'rtk gain',
+        detail: rtkInfo.gainOk
+          ? 'responds correctly'
+          : "failed — this may be the unrelated 'reachingforthejack/rtk' (Rust Type Kit), not agentenv's rtk; see RTK.md",
+      });
+    }
+    sections.push({ title: 'RTK', items: rtkItems });
+  }
 
   // Agents
   const agents = getEnabledAgents(config);

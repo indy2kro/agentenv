@@ -152,9 +152,11 @@ integration, validation errors) and `0` otherwise. The exact definition is in
 ### `agentenv doctor`
 
 A read-only machine sanity check: mise on PATH and the shims dir, the shell,
-then (when an `agentenv.toml` exists) the config's enabled tools and agents.
-It loads and validates the config, so a broken config also shows up as
-`[fail]` — but `doctor` never changes anything.
+then (when an `agentenv.toml` exists) the config's enabled tools, RTK (when
+enabled — resolves it the same way `apply` does, checks its version against
+the pin, and runs `rtk gain` to rule out the unrelated `reachingforthejack/rtk`
+name collision), and agents. It loads and validates the config, so a broken
+config also shows up as `[fail]` — but `doctor` never changes anything.
 
 ```sh
 agentenv doctor                 # full report

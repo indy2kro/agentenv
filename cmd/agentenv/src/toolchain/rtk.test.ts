@@ -1,6 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { RTK_INIT_FLAGS, isUnsupportedRtkAgentError, resolveRtkBinary } from './rtk.js';
+import {
+  RTK_INIT_FLAGS,
+  checkRtkInstallation,
+  isUnsupportedRtkAgentError,
+  resolveRtkBinary,
+} from './rtk.js';
 import { AGENT_KEYS } from '../config/schema.js';
 import type { runMiseCaptured } from './mise.js';
 
@@ -93,5 +98,51 @@ describe('resolveRtkBinary (BUG-05)', () => {
     });
 
     assert.equal(resolved, '/usr/local/bin/rtk');
+  });
+});
+
+describe('checkRtkInstallation (FEAT-02)', () => {
+  it('reports null everywhere when rtk cannot be resolved at all', () => {
+    const info = checkRtkInstallation('/project', {
+      resolveRtkBinary: () => null,
+      spawnSync: () => {
+        throw new Error('must not spawn anything when nothing resolved');
+      },
+    });
+    assert.deepEqual(info, { resolvedPath: null, version: null, gainOk: null });
+  });
+
+  it('reports version and a passing `rtk gain` for a healthy install', () => {
+    const calls: Array<{ cmd: string; args: string[] }> = [];
+    const info = checkRtkInstallation('/project', {
+      resolveRtkBinary: () => '/mise/shims/rtk',
+      spawnSync: ((cmd: string, args: string[]) => {
+        calls.push({ cmd, args });
+        if (args[0] === '--version') return { status: 0, stdout: 'rtk 0.49.0\n', stderr: '' };
+        return { status: 0, stdout: '', stderr: '' };
+      }) as typeof import('child_process').spawnSync,
+    });
+    assert.equal(info.resolvedPath, '/mise/shims/rtk');
+    assert.equal(info.version, 'rtk 0.49.0');
+    assert.equal(info.gainOk, true);
+    assert.deepEqual(
+      calls.map((call) => call.args[0]),
+      ['--version', 'gain'],
+    );
+  });
+
+  it('flags a failing `rtk gain` — the documented Rust Type Kit name-collision signal', () => {
+    const info = checkRtkInstallation('/project', {
+      resolveRtkBinary: () => '/usr/local/bin/rtk',
+      spawnSync: (() => ({
+        status: 1,
+        stdout: '',
+        stderr: 'error: unrecognized subcommand',
+        pid: 0,
+        output: [],
+        signal: null,
+      })) as unknown as typeof import('child_process').spawnSync,
+    });
+    assert.equal(info.gainOk, false);
   });
 });

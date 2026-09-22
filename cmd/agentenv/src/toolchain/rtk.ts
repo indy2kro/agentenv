@@ -149,3 +149,63 @@ export function rtkMessage(run: RtkInitResult): string {
   // This is a side effect that users should be aware of
   return message;
 }
+
+export interface RtkInstallationCheck {
+  /** Path resolveRtkBinary() found (mise-managed preferred, then bare PATH), or null if not found at all. */
+  resolvedPath: string | null;
+  /** `rtk --version` output, or null if it couldn't be read. */
+  version: string | null;
+  /**
+   * `rtk gain` succeeded — a read-only report command every real rtk build
+   * supports. If it exits non-zero, `resolvedPath` most likely isn't rtk at
+   * all: RTK.md itself warns about a name collision with the unrelated
+   * `reachingforthejack/rtk` ("Rust Type Kit"). null when there was no
+   * resolvedPath to check.
+   */
+  gainOk: boolean | null;
+}
+
+/**
+ * Checks rtk is actually usable: resolvable, reports a version, and responds
+ * to `rtk gain` (ruling out the Rust Type Kit name-collision case). Used by
+ * `doctor` (FEAT-02) — everything here is read-only.
+ */
+export function checkRtkInstallation(
+  cwd: string,
+  deps: {
+    resolveRtkBinary?: typeof resolveRtkBinary;
+    spawnSync?: typeof child_process.spawnSync;
+  } = {},
+): RtkInstallationCheck {
+  const resolve = deps.resolveRtkBinary ?? resolveRtkBinary;
+  const spawn = deps.spawnSync ?? child_process.spawnSync;
+  const resolvedPath = resolve(cwd);
+  if (!resolvedPath) {
+    return { resolvedPath: null, version: null, gainOk: null };
+  }
+
+  let version: string | null = null;
+  try {
+    const result = spawn(resolvedPath, ['--version'], {
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    const output = (result.stdout || result.stderr || '').trim();
+    if (result.status === 0 && output) version = output;
+  } catch {
+    // version stays null
+  }
+
+  let gainOk: boolean | null;
+  try {
+    const result = spawn(resolvedPath, ['gain'], {
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    gainOk = result.status === 0;
+  } catch {
+    gainOk = false;
+  }
+
+  return { resolvedPath, version, gainOk };
+}
