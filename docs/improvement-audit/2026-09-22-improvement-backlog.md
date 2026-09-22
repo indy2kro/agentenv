@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-09-22
 
-Target: 40 · Found: 46 deduplicated items · Completed: 10/46
+Target: 40 · Found: 46 deduplicated items · Completed: 12/46
 
 > **How to use this document — read before implementing anything.**
 > As you finish each item, change `- [ ]` to `- [x]`, append ` ✅ <commit-sha>`,
@@ -108,7 +108,7 @@ Themes this round:
   Typos like `[tool]`, `scop = "user"` or `[rtk] enable = true` are silently ignored, while typos *inside* known tables are errors.
 - [ ] **UX-05** Warn when setup flags are ignored — `src/commands/setup.ts:230-253` · effort S · impact med
   Interactive `setup --scope user` and `setup --yes --agents codex_cli` over an existing config both drop what the user typed without saying so.
-- [ ] **UX-06** Fix the doubled "Tier 0: Tier 0: checked; …" prefix in the non-TTY skip message — `src/shell/detector.ts:750`, `src/commands/apply.ts:176` · effort S · impact low
+- [x] **UX-06** ✅ 3c7aca8 Fix the doubled "Tier 0: Tier 0: checked; …" prefix in the non-TTY skip message — `src/shell/detector.ts:750`, `src/commands/apply.ts:176` · effort S · impact low
   `apply` adds `Tier 0: ` to a message that already starts with it.
 - [ ] **UX-07** `setup --yes` calls `loadConfig` without a guard in the existing/nearest-config branches — `src/commands/setup.ts:160,176` · effort S · impact low
   The `--config` branch reports parse errors with a themed message; these two fall through to the generic top-level handler.
@@ -130,7 +130,7 @@ Themes this round:
 
 ## New functionality   (FEAT-NN)
 
-- [ ] **FEAT-01** Let Tier 0 run without a TTY (`--shell-fix` flag / `tier0.mode = "auto" | "always" | "never"`) — `src/commands/apply.ts:175`, `src/shell/detector.ts:747` · effort S · impact high
+- [x] **FEAT-01** ✅ 3c7aca8 Let Tier 0 run without a TTY (`--shell-fix` flag / `tier0.mode = "auto" | "always" | "never"`) — `src/commands/apply.ts:175`, `src/shell/detector.ts:747` · effort S · impact high
   An AI agent running `agentenv apply`, the product's core audience, never has a TTY, so the Windows shell fix never happens and nothing can override that.
 - [ ] **FEAT-02** Add an rtk section to `doctor`: on PATH, version against the pin, and a check for the Rust Type Kit name collision (`rtk gain` works) — `src/commands/doctor.ts` · effort S · impact high
   Every agent hook depends on rtk, and the generated `RTK.md` itself warns about the `reachingforthejack/rtk` collision, yet `doctor` never checks rtk.
