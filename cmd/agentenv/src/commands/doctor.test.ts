@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { renderDoctor, filterDoctorSections } from './doctor.js';
+import { renderDoctor, filterDoctorSections, wantsDoctorSection } from './doctor.js';
 import type { DoctorSection } from './doctor.js';
 import { LOGO } from '../ui/output.js';
 
@@ -93,5 +93,24 @@ describe('filterDoctorSections', () => {
   it('returns undefined for an out-of-range index or unmatched prefix', () => {
     assert.equal(filterDoctorSections(sections, '9'), undefined);
     assert.equal(filterDoctorSections(sections, 'agents'), undefined);
+  });
+});
+
+describe('wantsDoctorSection', () => {
+  it('wants every section when there is no filter', () => {
+    assert.equal(wantsDoctorSection(undefined, 'Tools'), true);
+    assert.equal(wantsDoctorSection(undefined, 'RTK'), true);
+  });
+
+  it('wants every section for a numeric (index-based) filter — cannot be resolved cheaply', () => {
+    assert.equal(wantsDoctorSection('3', 'Tools'), true);
+    assert.equal(wantsDoctorSection('3', 'Agents'), true);
+  });
+
+  it('only wants the section matching a name-based filter (case-insensitive prefix)', () => {
+    assert.equal(wantsDoctorSection('rtk', 'RTK'), true);
+    assert.equal(wantsDoctorSection('RTK', 'RTK'), true);
+    assert.equal(wantsDoctorSection('rtk', 'Tools'), false);
+    assert.equal(wantsDoctorSection('rtk', 'Agents'), false);
   });
 });

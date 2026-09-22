@@ -114,8 +114,21 @@ function norm(p: string): string {
   return path.resolve(p).replace(/\\/g, '/').toLowerCase();
 }
 
-function gatherDoctor(): DoctorSection[] {
+/**
+ * Whether a section whose static title starts with `label` should be built,
+ * given the raw --section filter. Only skippable for a name-based filter — a
+ * numeric (index-based) filter can't be resolved without building the
+ * (conditionally-present-RTK-section) list first, so those still gather
+ * everything, correctly if not faster.
+ */
+export function wantsDoctorSection(sectionFilter: string | undefined, label: string): boolean {
+  if (sectionFilter === undefined || /^\d+$/.test(sectionFilter)) return true;
+  return label.toLowerCase().startsWith(sectionFilter.toLowerCase());
+}
+
+function gatherDoctor(sectionFilter?: string): DoctorSection[] {
   const sections: DoctorSection[] = [];
+  const wants = (label: string): boolean => wantsDoctorSection(sectionFilter, label);
 
   // System level
   const shell = detectShell();
@@ -227,29 +240,36 @@ function gatherDoctor(): DoctorSection[] {
   }
   sections.push({ title: 'Config', items: configItems });
 
-  // Tools
+  // Tools — the section (and its title, which needs no probing) is always
+  // present, but the actual mise probing (getInstalledToolState, one call
+  // per configured tool) only runs when this section could be selected —
+  // skipped entirely otherwise. A skipped section's items are never
+  // shown: --section always resolves by title, and a non-matching section's
+  // contents are discarded by filterDoctorSections below.
   const tools = config.tools ?? {};
   const enabledTools = TOOL_KEYS.filter((key) => tools[key] === true);
-  // Same verdict as apply's verify step: a tool apply itself skips (no mise
-  // fallback on this platform) or installs-but-needs-a-fresh-shell is never a
-  // doctor failure here, only a genuinely-missing one is.
-  const installedState = getInstalledToolState();
   const toolItems: DoctorItem[] = [];
-  for (const key of enabledTools) {
-    const binary = BINARY_MAP[key];
-    const status = toolAvailabilityClassification(key, binary, installedState);
-    const item: DoctorItem = { status: 'ok', label: `${binary} (${key})`, detail: '' };
-    if (status === 'needs-new-terminal') {
-      item.status = 'warn';
-      item.detail = 'installed via mise; open a new terminal';
-    } else if (status === 'manual') {
-      item.status = 'warn';
-      item.detail = 'not managed by mise; install manually';
-    } else if (status === 'missing') {
-      item.status = 'fail';
-      item.detail = 'not on PATH — run `mise install` in this project';
+  if (wants('Tools')) {
+    // Same verdict as apply's verify step: a tool apply itself skips (no
+    // mise fallback on this platform) or installs-but-needs-a-fresh-shell is
+    // never a doctor failure here, only a genuinely-missing one is.
+    const installedState = getInstalledToolState();
+    for (const key of enabledTools) {
+      const binary = BINARY_MAP[key];
+      const status = toolAvailabilityClassification(key, binary, installedState);
+      const item: DoctorItem = { status: 'ok', label: `${binary} (${key})`, detail: '' };
+      if (status === 'needs-new-terminal') {
+        item.status = 'warn';
+        item.detail = 'installed via mise; open a new terminal';
+      } else if (status === 'manual') {
+        item.status = 'warn';
+        item.detail = 'not managed by mise; install manually';
+      } else if (status === 'missing') {
+        item.status = 'fail';
+        item.detail = 'not on PATH — run `mise install` in this project';
+      }
+      toolItems.push(item);
     }
-    toolItems.push(item);
   }
   sections.push({
     title: `Tools (${enabledTools.length} configured)`,
@@ -261,50 +281,60 @@ function gatherDoctor(): DoctorSection[] {
 
   // RTK — every agent's hook depends on it, and RTK.md itself warns about a
   // name collision with the unrelated "reachingforthejack/rtk" (Rust Type
-  // Kit), so this is worth its own check rather than folding into Tools
-  // (FEAT-02).
+  // Kit), so this is worth its own check rather than folding into Tools.
+  // The section's presence still only depends on config, not on --section;
+  // only the rtk subprocess probing is skippable.
   if (config.rtk?.enabled === true || tools.rtk === true) {
     const rtkItems: DoctorItem[] = [];
-    const rtkInfo = checkRtkInstallation(path.dirname(configPath));
-    if (!rtkInfo.resolvedPath) {
-      rtkItems.push({
-        status: 'fail',
-        label: 'rtk',
-        detail: 'not found via `mise which rtk` or on PATH — run `agentenv apply`',
-      });
-    } else {
-      rtkItems.push({ status: 'ok', label: 'rtk', detail: rtkInfo.resolvedPath });
-      const pinned = PINNED_TOOL_VERSIONS.rtk;
-      if (rtkInfo.version) {
-        const detail =
-          pinned && !rtkInfo.version.includes(pinned)
-            ? `${rtkInfo.version} (agentenv pins ${pinned})`
-            : rtkInfo.version;
-        rtkItems.push({ status: 'ok', label: 'version', detail });
+    if (wants('RTK')) {
+      const rtkInfo = checkRtkInstallation(path.dirname(configPath));
+      if (!rtkInfo.resolvedPath) {
+        rtkItems.push({
+          status: 'fail',
+          label: 'rtk',
+          detail: 'not found via `mise which rtk` or on PATH — run `agentenv apply`',
+        });
       } else {
-        rtkItems.push({ status: 'warn', label: 'version', detail: '`rtk --version` failed' });
+        rtkItems.push({ status: 'ok', label: 'rtk', detail: rtkInfo.resolvedPath });
+        const pinned = PINNED_TOOL_VERSIONS.rtk;
+        if (rtkInfo.version) {
+          const detail =
+            pinned && !rtkInfo.version.includes(pinned)
+              ? `${rtkInfo.version} (agentenv pins ${pinned})`
+              : rtkInfo.version;
+          rtkItems.push({ status: 'ok', label: 'version', detail });
+        } else {
+          rtkItems.push({ status: 'warn', label: 'version', detail: '`rtk --version` failed' });
+        }
+        rtkItems.push({
+          status: rtkInfo.gainOk ? 'ok' : 'fail',
+          label: 'rtk gain',
+          detail: rtkInfo.gainOk
+            ? 'responds correctly'
+            : "failed — this may be the unrelated 'reachingforthejack/rtk' (Rust Type Kit), not agentenv's rtk; see RTK.md",
+        });
       }
-      rtkItems.push({
-        status: rtkInfo.gainOk ? 'ok' : 'fail',
-        label: 'rtk gain',
-        detail: rtkInfo.gainOk
-          ? 'responds correctly'
-          : "failed — this may be the unrelated 'reachingforthejack/rtk' (Rust Type Kit), not agentenv's rtk; see RTK.md",
-      });
     }
     sections.push({ title: 'RTK', items: rtkItems });
   }
 
-  // Agents
+  // Agents — the per-agent isAgentInstalled() probes (each a subprocess
+  // spawn) are skipped entirely when --section filters elsewhere;
+  // the section itself, and its cheap title (just enabled-agent count), are
+  // always present.
   const agents = getEnabledAgents(config);
   const agentItems: DoctorItem[] = [];
-  for (const agent of agents) {
-    const installed = isAgentInstalled(agent as AgentKey);
-    agentItems.push({
-      status: installed ? 'ok' : 'warn',
-      label: `${agent} (${AGENT_COMMANDS[agent as AgentKey][0]})`,
-      detail: installed ? '' : 'CLI not found on PATH — install it or disable the agent in config',
-    });
+  if (wants('Agents')) {
+    for (const agent of agents) {
+      const installed = isAgentInstalled(agent as AgentKey);
+      agentItems.push({
+        status: installed ? 'ok' : 'warn',
+        label: `${agent} (${AGENT_COMMANDS[agent as AgentKey][0]})`,
+        detail: installed
+          ? ''
+          : 'CLI not found on PATH — install it or disable the agent in config',
+      });
+    }
   }
   sections.push({
     title: `Agents (${agents.length} enabled)`,
@@ -355,12 +385,12 @@ export const doctorCommand = new Command()
     const json = options.json === true;
     if (json) setQuietEnabled(true);
 
-    const gathered = gatherDoctor();
+    const gathered = gatherDoctor(options.section);
     const sections =
       options.section === undefined ? gathered : filterDoctorSections(gathered, options.section);
     if (sections === undefined) {
       // Invalid argument, not an operational failure — docs/guides/exit-codes.md
-      // reserves exit 2 for this across every command (UX-08).
+      // reserves exit 2 for this across every command.
       command.error(
         `No doctor section matched "${options.section}". Sections: ${gathered.map((section, index) => `${index + 1}: ${section.title}`).join(', ')}`,
       );
