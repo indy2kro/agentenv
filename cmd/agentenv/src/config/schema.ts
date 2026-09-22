@@ -447,6 +447,19 @@ export function loadConfig(configPath?: string): AgentenvConfig {
   try {
     const data = fs.readFileSync(pathToLoad, 'utf-8');
     const parsed = toml.parse(data) as AgentenvConfig;
+    // Infer scope from where the file actually was, when the file itself
+    // doesn't declare one — a hand-written ~/.config/agentenv/agentenv.toml
+    // with no `scope = "user"` line otherwise defaults (via
+    // mergeWithDefaults, from DEFAULT_CONFIG) to "project", and every caller
+    // that resolves a base directory from config.scope (resolveScopeDir)
+    // then writes/reads mise.toml and generated files against cwd instead of
+    // the user config dir it was loaded from (SWEEP-01). An explicit `scope`
+    // in the file always wins over this inference.
+    if (parsed.scope === undefined) {
+      const isUserScopePath =
+        path.resolve(path.dirname(pathToLoad)) === path.resolve(userConfigDir());
+      parsed.scope = isUserScopePath ? 'user' : 'project';
+    }
     return mergeWithDefaults(normalizeConfig(parsed));
   } catch (err) {
     throw new Error(

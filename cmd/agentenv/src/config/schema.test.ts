@@ -21,6 +21,7 @@ import {
 import type { AgentenvConfig, AgentKey, CustomTool } from './schema.js';
 import { MISE_TOOL_NAMES, PINNED_TOOL_VERSIONS } from '../toolchain/mise.js';
 import { TOOL_CATEGORIES } from '../generate/agentsmd.js';
+import { resolveScopeDir } from './scopes.js';
 
 describe('configuration persistence', () => {
   it('rejects malformed TOML instead of applying defaults', () => {
@@ -703,5 +704,55 @@ describe('loadConfig user-scope resolution', () => {
       if (originalXdg === undefined) delete process.env.XDG_CONFIG_HOME;
       else process.env.XDG_CONFIG_HOME = originalXdg;
     }
+  });
+
+  it('infers scope="user" for a hand-written user-scope file that omits `scope` (SWEEP-01)', () => {
+    const originalXdg = process.env.XDG_CONFIG_HOME;
+    const xdg = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-xdg-'));
+    try {
+      const userDir = path.join(xdg, 'agentenv');
+      fs.mkdirSync(userDir, { recursive: true });
+      const configPath = path.join(userDir, 'agentenv.toml');
+      // No `scope = "..."` line at all — mergeWithDefaults would otherwise
+      // silently fall back to DEFAULT_CONFIG.scope ("project").
+      fs.writeFileSync(configPath, '[tools]\nripgrep = true\n');
+      process.env.XDG_CONFIG_HOME = xdg;
+
+      const config = loadConfig(configPath);
+      assert.equal(config.scope, 'user');
+      // The actual manifestation of the bug: every caller resolves its base
+      // directory via resolveScopeDir(config.scope).
+      assert.equal(resolveScopeDir(config.scope), userDir);
+    } finally {
+      if (originalXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = originalXdg;
+    }
+  });
+
+  it('still honors an explicit scope in a user-directory file over the inferred one', () => {
+    const originalXdg = process.env.XDG_CONFIG_HOME;
+    const xdg = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-xdg-'));
+    try {
+      const userDir = path.join(xdg, 'agentenv');
+      fs.mkdirSync(userDir, { recursive: true });
+      const configPath = path.join(userDir, 'agentenv.toml');
+      fs.writeFileSync(configPath, 'scope = "project"\n[tools]\nripgrep = true\n');
+      process.env.XDG_CONFIG_HOME = xdg;
+
+      const config = loadConfig(configPath);
+      assert.equal(config.scope, 'project');
+    } finally {
+      if (originalXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = originalXdg;
+    }
+  });
+
+  it('defaults to scope="project" for a project-directory file that omits `scope`', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-config-'));
+    const configPath = path.join(directory, 'agentenv.toml');
+    fs.writeFileSync(configPath, '[tools]\nripgrep = true\n');
+
+    const config = loadConfig(configPath);
+    assert.equal(config.scope, 'project');
   });
 });
