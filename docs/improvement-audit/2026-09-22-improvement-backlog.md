@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-09-22
 
-Target: 40 · Found: 46 deduplicated items · Completed: 15/46 (+1 partial)
+Target: 40 · Found: 46 deduplicated items · Completed: 16/46 (+1 partial)
 
 > **How to use this document — read before implementing anything.**
 > As you finish each item, change `- [ ]` to `- [x]`, append ` ✅ <commit-sha>`,
@@ -81,7 +81,7 @@ Themes this round:
   On a first `setup`, the rtk mise just installed is often not on PATH yet (`needs-new-terminal`), so every adapter fails. Otherwise an unpinned or name-colliding `rtk` earlier on PATH is used instead of the pinned 0.49.0. Use `mise which rtk` / `mise exec` in `baseDir`.
 - [x] **BUG-06** ✅ 3bedfd2 In `status`, rtk-delegated agents show drift when rtk is disabled, and one shared `RTK.md` masks per-agent failures — `src/commands/status.ts:35-56,328-339` · effort M · impact high
   For six agents, `configured` just means `baseDir/RTK.md` exists. With `rtk.enabled = false`, every installed one is flagged as drift. Meanwhile one successful `rtk init` (or a skipped vibe) marks them all configured.
-- [ ] **BUG-07** A Tier 0 failure aborts mise install/verify for the whole apply — `src/commands/apply.ts:172-184,201` · effort S · impact med
+- [x] **BUG-07** ✅ 531e3ff A Tier 0 failure aborts mise install/verify for the whole apply — `src/commands/apply.ts:172-184,201` · effort S · impact med
   Tier 0 pushes to `errors`, and step 3 is gated on `errors.length === 0`, so one unpatchable agent settings file means no tools are installed.
 - [ ] **BUG-08** The wizard swallows `agentenv.toml` parse errors and silently starts from defaults — `src/commands/wizard.ts:55-60` · effort S · impact med
   A single TOML typo makes the wizard pre-fill defaults, then overwrite the user's real config on save instead of reporting the parse error.
