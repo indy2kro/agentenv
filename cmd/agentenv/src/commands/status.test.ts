@@ -19,13 +19,20 @@ describe('status agent descriptors', () => {
     }
   });
 
-  it('points new delegation agents at RTK.md', () => {
+  it('points new delegation agents at their real (verified) artifact, not all at the same file', () => {
     assert.equal(AGENT_CONFIG_FILES.gemini_cli.label, 'Gemini CLI');
     assert.equal(AGENT_CONFIG_FILES.cursor.label, 'Cursor');
     assert.equal(AGENT_CONFIG_FILES.cline.label, 'Cline CLI');
-    assert.match(AGENT_CONFIG_FILES.gemini_cli.check('/proj'), /RTK\.md$/);
-    assert.match(AGENT_CONFIG_FILES.cursor.check('/proj'), /RTK\.md$/);
+    // cline is project-scoped (no -g) and genuinely writes RTK.md in baseDir.
     assert.match(AGENT_CONFIG_FILES.cline.check('/proj'), /RTK\.md$/);
+    // gemini_cli (`-g --gemini`) writes GEMINI.md into its own global config
+    // dir, not RTK.md in baseDir (SWEEP-04; verified live).
+    assert.match(AGENT_CONFIG_FILES.gemini_cli.check('/proj'), /GEMINI\.md$/);
+    assert.doesNotMatch(AGENT_CONFIG_FILES.gemini_cli.check('/proj'), /^\/proj/);
+    // cursor (`-g --agent cursor`) writes into the shared Claude Code
+    // anchor (~/.claude/RTK.md), not baseDir (SWEEP-04; verified live).
+    assert.match(AGENT_CONFIG_FILES.cursor.check('/proj'), /\.claude[/\\]RTK\.md$/);
+    assert.doesNotMatch(AGENT_CONFIG_FILES.cursor.check('/proj'), /^\/proj/);
   });
 });
 
@@ -313,6 +320,56 @@ describe('gatherStatus', () => {
     });
     assert.equal(report.tools[0]?.status, 'missing');
     assert.equal(report.tools[0]?.drift, true);
+    assert.equal(report.exitCode, 1);
+  });
+
+  it('does not report a missing rtk-owned file as agent drift when rtk rewriting is off (BUG-06)', async () => {
+    const report = await gatherStatus({
+      findConfigPath: () => '/tmp/agentenv.toml',
+      loadConfig: () =>
+        ({ ...noopConfig, agents: { cline: true }, rtk: { enabled: false } }) as never,
+      resolveScopeDir: () => '/tmp',
+      validateConfig: () => ({ errors: [], warnings: [] }),
+      getEnabledAgents: () => ['cline'],
+      detectShell: () =>
+        ({
+          isWindows: true,
+          isPosixCompatible: true,
+          currentShell: 'bash',
+          missingUtilities: [],
+        }) as never,
+      isAgentInstalled: () => true,
+      // Only the agent's own RTK.md is "missing" — generated files still
+      // "exist" so this test isolates agent drift from generated-file drift.
+      fileExists: (file: string) => !file.endsWith('RTK.md'),
+      hasManagedMarker: () => true,
+    });
+    assert.equal(report.agents[0]?.installed, true);
+    assert.equal(report.agents[0]?.configured, false);
+    assert.equal(report.agents[0]?.drift, false);
+    assert.equal(report.exitCode, 0);
+  });
+
+  it('does report the same missing file as agent drift when rtk rewriting is on', async () => {
+    const report = await gatherStatus({
+      findConfigPath: () => '/tmp/agentenv.toml',
+      loadConfig: () =>
+        ({ ...noopConfig, agents: { cline: true }, rtk: { enabled: true } }) as never,
+      resolveScopeDir: () => '/tmp',
+      validateConfig: () => ({ errors: [], warnings: [] }),
+      getEnabledAgents: () => ['cline'],
+      detectShell: () =>
+        ({
+          isWindows: true,
+          isPosixCompatible: true,
+          currentShell: 'bash',
+          missingUtilities: [],
+        }) as never,
+      isAgentInstalled: () => true,
+      fileExists: () => false,
+      hasManagedMarker: () => true,
+    });
+    assert.equal(report.agents[0]?.drift, true);
     assert.equal(report.exitCode, 1);
   });
 

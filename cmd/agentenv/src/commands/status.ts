@@ -38,7 +38,7 @@ const AGENT_CONFIG_FILES: Record<AgentKey, { label: string; check: (baseDir: str
       label: 'Claude Code',
       check: () => path.join(homeDir(), '.claude', 'settings.json'),
     },
-    // These are written by `rtk init` in the project dir / global plugin dir.
+    // Written by `rtk init --codex` in the project dir (project-scoped; not -g).
     codex_cli: { label: 'Codex CLI', check: (baseDir) => path.join(baseDir, 'RTK.md') },
     copilot: {
       label: 'GitHub Copilot',
@@ -48,9 +48,21 @@ const AGENT_CONFIG_FILES: Record<AgentKey, { label: string; check: (baseDir: str
       label: 'OpenCode',
       check: () => path.join(homeDir(), '.config', 'opencode', 'plugins', 'rtk.ts'),
     },
-    gemini_cli: { label: 'Gemini CLI', check: (baseDir) => path.join(baseDir, 'RTK.md') },
-    cursor: { label: 'Cursor', check: (baseDir) => path.join(baseDir, 'RTK.md') },
+    // `-g --gemini` (verified live against a real rtk install): writes
+    // GEMINI.md — not RTK.md — into Gemini's own global config dir.
+    gemini_cli: { label: 'Gemini CLI', check: () => path.join(homeDir(), '.gemini', 'GEMINI.md') },
+    // `-g --agent cursor` writes into the shared Claude Code anchor, not
+    // Cursor's own config dir or baseDir — see adapters/cursor.ts's
+    // extraGlobalDirs comment (SWEEP-04); confirmed live.
+    cursor: { label: 'Cursor', check: () => path.join(homeDir(), '.claude', 'RTK.md') },
+    // TODO(SWEEP-04 follow-up): windsurf/vibe are still checked against
+    // baseDir/RTK.md, which a live probe against an older rtk build suggests
+    // is also wrong (windsurf wrote a cwd-relative .windsurfrules; vibe isn't
+    // supported by that build at all) — but that couldn't be confirmed
+    // against the pinned rtk 0.49.0 from this environment, so left as-is
+    // rather than guessing. Re-verify against smoke:real before changing.
     windsurf: { label: 'Windsurf', check: (baseDir) => path.join(baseDir, 'RTK.md') },
+    // `--agent cline` (project-scoped; not -g) writes RTK.md in baseDir.
     cline: { label: 'Cline CLI', check: (baseDir) => path.join(baseDir, 'RTK.md') },
     vibe: { label: 'Mistral Vibe', check: (baseDir) => path.join(baseDir, 'RTK.md') },
   };
@@ -335,7 +347,10 @@ export async function gatherStatus(deps: StatusDeps = {}): Promise<StatusReport>
       label: meta.label,
       installed,
       configured,
-      drift: installed && !configured,
+      // With rtk rewriting off, apply() never writes any of these
+      // rtk-owned files for this agent by design — a missing one isn't
+      // drift, it's the intended state (BUG-06).
+      drift: installed && !configured && rtkEnabled,
     };
   });
 
