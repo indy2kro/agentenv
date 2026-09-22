@@ -117,7 +117,7 @@ describe('Codex CLI adapter', () => {
     });
   });
 
-  it('reports failure (not fake success) when config.toml cannot be created (BUG-11)', async () => {
+  it('reports failure (not fake success) when config.toml cannot be created', async () => {
     await withHome(tempHome(), async () => {
       const home = process.env.HOME as string;
       // .codex already exists as a *file*, so config.toml can't be written

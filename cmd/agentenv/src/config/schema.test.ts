@@ -112,7 +112,7 @@ describe('configuration persistence', () => {
     assert.equal(config.tool_versions?.jq, '1.7.1');
   });
 
-  it('serializes tier0.mode and round-trips it through loadConfig (FEAT-01)', () => {
+  it('serializes tier0.mode and round-trips it through loadConfig', () => {
     const content = configToToml({ tier0: { mode: 'always' } });
     assert.match(content, /mode = "always"/);
 
@@ -225,7 +225,7 @@ describe('configuration validation', () => {
     );
   });
 
-  it('accepts a well-formed tier0.mode and rejects an invalid one (FEAT-01)', () => {
+  it('accepts a well-formed tier0.mode and rejects an invalid one', () => {
     assert.deepEqual(validateConfig({ tier0: { mode: 'always' } }), { errors: [], warnings: [] });
     assert.deepEqual(validateConfig({ tier0: { mode: 'never' } }), { errors: [], warnings: [] });
     const report = validateConfig({ tier0: { mode: 'sometimes' as never } });
@@ -706,7 +706,7 @@ describe('loadConfig user-scope resolution', () => {
     }
   });
 
-  it('infers scope="user" for a hand-written user-scope file that omits `scope` (SWEEP-01)', () => {
+  it('infers scope="user" for a hand-written user-scope file that omits `scope`', () => {
     const originalXdg = process.env.XDG_CONFIG_HOME;
     const xdg = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-xdg-'));
     try {

@@ -65,7 +65,7 @@ export interface ShellInfo {
  *
  * `spawnSync` is injectable (defaults to the real `child_process.spawnSync`)
  * purely so tests can observe — and assert nothing installs anything through
- * — the one remaining subprocess call this function makes directly (BUG-02).
+ * — the one remaining subprocess call this function makes directly.
  */
 export function detectShell(
   spawnSync: typeof child_process.spawnSync = child_process.spawnSync,
@@ -750,7 +750,7 @@ export function fixShellConfiguration(
 
     // Non-TTY/test shell, or tier0.mode = "never": skip file writes, just
     // report the state. (Callers already prefix messages with "Tier 0: "
-    // themselves — UX-06 — so this string must not repeat it.)
+    // themselves, so this string must not repeat it.)
     if (!complex) {
       return {
         success: true,

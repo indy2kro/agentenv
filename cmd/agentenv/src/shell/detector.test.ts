@@ -497,7 +497,7 @@ describe('Tier 0 shell fix', () => {
   });
 });
 
-describe('detectShell (BUG-02)', () => {
+describe('detectShell', () => {
   it('never runs `brew install` (or any brew subcommand other than --prefix) on macOS', () => {
     const originalPlatform = process.platform;
     Object.defineProperty(process, 'platform', { value: 'darwin' });

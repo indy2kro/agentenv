@@ -158,8 +158,8 @@ interface UninstallCommandOptions {
   /**
    * The commander Command instance, when called from the real CLI action —
    * used so an unknown tool argument goes through the same command.error()
-   * usage-error path (exit 2) as --scope, instead of exit 1 (UX-08). Tests
-   * calling doUninstall() directly may omit it and still get exit 2.
+   * usage-error path (exit 2) as --scope, instead of exit 1. Tests calling
+   * doUninstall() directly may omit it and still get exit 2.
    */
   command?: Command;
 }
@@ -212,7 +212,7 @@ export async function doUninstall(options: UninstallCommandOptions): Promise<voi
   if (unknown.length > 0) {
     const message = `Unknown tool(s) to uninstall: ${unknown.join(', ')}`;
     if (options.command) {
-      // Usage error, not an operational failure (UX-08) — exit 2, matching
+      // Usage error, not an operational failure — exit 2, matching
       // docs/guides/exit-codes.md.
       options.command.error(message);
     } else {

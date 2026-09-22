@@ -48,7 +48,7 @@ describe('isUnsupportedRtkAgentError', () => {
   });
 });
 
-describe('resolveRtkBinary (BUG-05)', () => {
+describe('resolveRtkBinary', () => {
   it('prefers the mise-managed rtk over a bare PATH lookup', () => {
     const calls: Array<{ args: string[]; cwd?: string }> = [];
     const fakeRunMiseCaptured: typeof runMiseCaptured = (args, opts) => {
@@ -101,7 +101,7 @@ describe('resolveRtkBinary (BUG-05)', () => {
   });
 });
 
-describe('checkRtkInstallation (FEAT-02)', () => {
+describe('checkRtkInstallation', () => {
   it('reports null everywhere when rtk cannot be resolved at all', () => {
     const info = checkRtkInstallation('/project', {
       resolveRtkBinary: () => null,

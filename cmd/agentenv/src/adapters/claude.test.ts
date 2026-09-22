@@ -81,7 +81,7 @@ describe('Claude Code adapter', () => {
     }
   });
 
-  it('initialize reports a corrupt settings.json as an error and leaves it untouched (BUG-01)', async () => {
+  it('initialize reports a corrupt settings.json as an error and leaves it untouched', async () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-claude-'));
     const priorHome = process.env.HOME;
     process.env.HOME = home;
@@ -103,7 +103,7 @@ describe('Claude Code adapter', () => {
     }
   });
 
-  it('initialize does not rewrite settings.json when the RTK hook already exists (UX-11)', async () => {
+  it('initialize does not rewrite settings.json when the RTK hook already exists', async () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-claude-'));
     const priorHome = process.env.HOME;
     process.env.HOME = home;

@@ -41,7 +41,7 @@ export const RTK_INIT_FLAGS: Record<string, string[]> = {
 /**
  * Resolve the rtk binary to run: prefer the mise-managed rtk pinned in this
  * scope's mise.toml (`mise which rtk`, run in `cwd`) over a bare PATH lookup.
- * This matters two ways (BUG-05): a bare `where`/`which` can resolve to a
+ * This matters two ways: a bare `where`/`which` can resolve to a
  * stale rtk, or to an unrelated same-named binary earlier on PATH (the
  * "Rust Type Kit" name collision RTK.md warns about); and right after
  * `mise install` puts a new rtk in the mise shims dir, that dir is not
@@ -168,7 +168,7 @@ export interface RtkInstallationCheck {
 /**
  * Checks rtk is actually usable: resolvable, reports a version, and responds
  * to `rtk gain` (ruling out the Rust Type Kit name-collision case). Used by
- * `doctor` (FEAT-02) — everything here is read-only.
+ * `doctor` — everything here is read-only.
  */
 export function checkRtkInstallation(
   cwd: string,

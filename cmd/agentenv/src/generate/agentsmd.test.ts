@@ -84,7 +84,7 @@ describe('generated AGENTS.md tool listing', () => {
     assert.equal((output.match(/--- RTK Configuration/m) ?? []).length, 0);
   });
 
-  it('never calls RTK "Red Teaming Kit" (BUG-03)', () => {
+  it('never calls RTK "Red Teaming Kit"', () => {
     const config: AgentenvConfig = {
       scope: 'project',
       tools: { rtk: true },
@@ -95,7 +95,7 @@ describe('generated AGENTS.md tool listing', () => {
     assert.match(output, /Rust Token Killer|CLI proxy that reduces LLM token consumption/);
   });
 
-  it('points agents at the `rtk proxy` escape hatch (FEAT-04)', () => {
+  it('points agents at the `rtk proxy` escape hatch', () => {
     const config: AgentenvConfig = {
       scope: 'project',
       tools: { rtk: true },
@@ -105,7 +105,7 @@ describe('generated AGENTS.md tool listing', () => {
     assert.match(output, /rtk proxy <cmd>/);
   });
 
-  it('only recommends General Instructions tips for tools that are enabled (BUG-04)', () => {
+  it('only recommends General Instructions tips for tools that are enabled', () => {
     const withBat = generateAgentsMd({
       scope: 'project',
       tools: { bat: true, eza: true },
@@ -122,18 +122,18 @@ describe('generated AGENTS.md tool listing', () => {
     assert.match(withoutBat, /use `rg` \(ripgrep\) instead of `grep -r`/);
   });
 
-  it('does not tell agents to pipe diffs through the interactive `delta` pager (UX-01)', () => {
+  it('does not tell agents to pipe diffs through the interactive `delta` pager', () => {
     const output = generateAgentsMd({ scope: 'project', tools: { git_delta: true } });
     assert.doesNotMatch(output, /use `delta` for syntax-highlighted output/);
     assert.match(output, /git --no-pager diff/);
   });
 
-  it('drops the "Supported Agents" section (UX-03)', () => {
+  it('drops the "Supported Agents" section', () => {
     const output = generateAgentsMd({ scope: 'project', agents: { claude_code: true } });
     assert.doesNotMatch(output, /## Supported Agents/);
   });
 
-  it('uses scope-aware wording for a user-scope config instead of "this repository" (UX-02)', () => {
+  it('uses scope-aware wording for a user-scope config instead of "this repository"', () => {
     const projectOutput = generateAgentsMd({ scope: 'project' });
     const userOutput = generateAgentsMd({ scope: 'user' });
 
@@ -157,7 +157,7 @@ describe('generateInstructionFiles (config.generate.files)', () => {
     );
   });
 
-  it('honors a requested subset of files (FEAT-01)', () => {
+  it('honors a requested subset of files', () => {
     const files = generateInstructionFiles(
       { ...metaConfig, generate: { files: ['AGENTS.md'] } },
       '/base',

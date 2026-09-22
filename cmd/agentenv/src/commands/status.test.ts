@@ -26,11 +26,11 @@ describe('status agent descriptors', () => {
     // cline is project-scoped (no -g) and genuinely writes RTK.md in baseDir.
     assert.match(AGENT_CONFIG_FILES.cline.check('/proj'), /RTK\.md$/);
     // gemini_cli (`-g --gemini`) writes GEMINI.md into its own global config
-    // dir, not RTK.md in baseDir (SWEEP-04; verified live).
+    // dir, not RTK.md in baseDir (verified live).
     assert.match(AGENT_CONFIG_FILES.gemini_cli.check('/proj'), /GEMINI\.md$/);
     assert.doesNotMatch(AGENT_CONFIG_FILES.gemini_cli.check('/proj'), /^\/proj/);
     // cursor (`-g --agent cursor`) writes into the shared Claude Code
-    // anchor (~/.claude/RTK.md), not baseDir (SWEEP-04; verified live).
+    // anchor (~/.claude/RTK.md), not baseDir (verified live).
     assert.match(AGENT_CONFIG_FILES.cursor.check('/proj'), /\.claude[/\\]RTK\.md$/);
     assert.doesNotMatch(AGENT_CONFIG_FILES.cursor.check('/proj'), /^\/proj/);
   });
@@ -323,7 +323,7 @@ describe('gatherStatus', () => {
     assert.equal(report.exitCode, 1);
   });
 
-  it('does not report a missing rtk-owned file as agent drift when rtk rewriting is off (BUG-06)', async () => {
+  it('does not report a missing rtk-owned file as agent drift when rtk rewriting is off', async () => {
     const report = await gatherStatus({
       findConfigPath: () => '/tmp/agentenv.toml',
       loadConfig: () =>
@@ -469,7 +469,7 @@ describe('renderStatus agent lines', () => {
     integrationDetails: [],
   });
 
-  it('aligns the configured column for installed yes/no (UX-06)', () => {
+  it('aligns the configured column for installed yes/no', () => {
     const out = renderStatus(
       report([
         {

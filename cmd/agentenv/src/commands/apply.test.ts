@@ -528,7 +528,7 @@ describe('apply pipeline', () => {
   });
 });
 
-describe('resolveTier0WriteFiles (FEAT-01)', () => {
+describe('resolveTier0WriteFiles', () => {
   it('"auto" only writes with a TTY', () => {
     assert.equal(resolveTier0WriteFiles('auto', true), true);
     assert.equal(resolveTier0WriteFiles('auto', false), false);
@@ -545,7 +545,7 @@ describe('resolveTier0WriteFiles (FEAT-01)', () => {
   });
 });
 
-describe('shouldRunMiseInstall (BUG-07)', () => {
+describe('shouldRunMiseInstall', () => {
   it('runs once mise.toml was written, regardless of unrelated earlier errors (e.g. Tier 0)', () => {
     // The old logic gated this on `errors.length === 0`, so a Tier 0 failure
     // (pushed to `errors` before mise.toml is even written) used to skip

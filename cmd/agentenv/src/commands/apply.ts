@@ -98,7 +98,7 @@ export interface ApplyOptions {
 
 /**
  * Whether the Tier 0 Windows shell fix should actually write files this run,
- * given its resolved mode and whether stdin is a TTY (FEAT-01):
+ * given its resolved mode and whether stdin is a TTY:
  *  - "auto" (the long-standing default): only with a TTY.
  *  - "always": always — this is what lets an AI agent (which never has a
  *    TTY) running `apply`/`setup --yes` still get the fix applied.
@@ -115,7 +115,7 @@ export function resolveTier0WriteFiles(mode: 'auto' | 'always' | 'never', isTTY:
  * actually written (there'd be nothing to install otherwise) and
  * --skip-mise-install wasn't passed. Deliberately NOT gated on the
  * cumulative error count — a Tier 0 failure (step 1) is unrelated and must
- * not also skip installing every configured tool (BUG-07); before this fix,
+ * not also skip installing every configured tool: gating this on
  * `errors.length === 0` meant one broken agent shell-fix write silently
  * skipped tool installation entirely.
  */

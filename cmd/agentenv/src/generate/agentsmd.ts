@@ -68,8 +68,8 @@ export interface GeneratedFile {
 /**
  * Per-tool tips for the "General Instructions" section. Only tools that are
  * actually enabled get a tip, so agents are never told to use a binary that
- * isn't installed (BUG-04). `bat`/`git_delta` point agents at non-interactive
- * flags/commands instead of a pager, since agents run without a TTY (UX-01).
+ * isn't installed. `bat`/`git_delta` point agents at non-interactive
+ * flags/commands instead of a pager, since agents run without a TTY.
  */
 const GENERAL_INSTRUCTION_TIPS: Record<string, string> = {
   ripgrep: 'For file search, use `rg` (ripgrep) instead of `grep -r`',
@@ -136,7 +136,7 @@ export function generateAgentsMd(config: AgentenvConfig): string {
 
   // A single rtk section (catalog entry + usage notes combined, rather than
   // repeating the same "rewrites commands to save tokens" claim twice under
-  // two separate headings — UX-03).
+  // two separate headings).
   if (config.rtk?.enabled) {
     lines.push('### Token Optimization');
     lines.push('');

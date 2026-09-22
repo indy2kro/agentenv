@@ -45,7 +45,7 @@ export interface Tier0Config {
    *    (the long-standing behavior).
    *  - "always": write every time, TTY or not — needed for an AI agent
    *    running `agentenv apply`/`setup --yes`, which never has a TTY but is
-   *    exactly who Tier 0 exists for (FEAT-01).
+   *    exactly who Tier 0 exists for.
    *  - "never": never write; always just report, even with a TTY.
    */
   mode?: 'auto' | 'always' | 'never';
@@ -453,8 +453,8 @@ export function loadConfig(configPath?: string): AgentenvConfig {
     // mergeWithDefaults, from DEFAULT_CONFIG) to "project", and every caller
     // that resolves a base directory from config.scope (resolveScopeDir)
     // then writes/reads mise.toml and generated files against cwd instead of
-    // the user config dir it was loaded from (SWEEP-01). An explicit `scope`
-    // in the file always wins over this inference.
+    // the user config dir it was loaded from. An explicit `scope` in the
+    // file always wins over this inference.
     if (parsed.scope === undefined) {
       const isUserScopePath =
         path.resolve(path.dirname(pathToLoad)) === path.resolve(userConfigDir());

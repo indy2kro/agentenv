@@ -55,8 +55,7 @@ export async function runConfigWizard(): Promise<void> {
   // loadConfig() only throws when a config file exists but fails to parse
   // (no file at all returns DEFAULT_CONFIG directly) — so a catch here means
   // a real TOML error, which must be reported, not silently replaced with
-  // defaults that the wizard would then save over the user's real config
-  // (BUG-08).
+  // defaults that the wizard would then save over the user's real config.
   let existing: AgentenvConfig;
   try {
     existing = loadConfig();

@@ -227,7 +227,7 @@ direnv = false
     assert.equal(doctor.stderr, '', `doctor --json should be silent on stderr: ${doctor.stderr}`);
   });
 
-  it('exits 2 for a doctor --section that matches no section (usage error, UX-08)', () => {
+  it('exits 2 for a doctor --section that matches no section', () => {
     const result = run(['doctor', '--section', 'not-a-real-section'], clean);
     assert.equal(result.status, 2);
     assert.match(result.stderr, /No doctor section matched "not-a-real-section"/);
@@ -303,7 +303,7 @@ direnv = false
     assert.match(missing.stderr, /No agentenv\.toml found/);
   });
 
-  it('exits 2 for an unknown tool arg on uninstall (usage error, UX-08)', () => {
+  it('exits 2 for an unknown tool arg on uninstall', () => {
     const unknown = run(['uninstall', 'totally-not-a-tool'], wipe, shellEnv);
     assert.equal(unknown.status, 2);
     assert.match(unknown.stderr, /Unknown tool\(s\) to uninstall: totally-not-a-tool/);
