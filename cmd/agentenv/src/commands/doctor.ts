@@ -351,7 +351,7 @@ export const doctorCommand = new Command()
     '--section <index|name>',
     'only run one report section (1-based section index or title prefix)',
   )
-  .action((options: { json?: boolean; section?: string }) => {
+  .action((options: { json?: boolean; section?: string }, command: Command) => {
     const json = options.json === true;
     if (json) setQuietEnabled(true);
 
@@ -359,12 +359,11 @@ export const doctorCommand = new Command()
     const sections =
       options.section === undefined ? gathered : filterDoctorSections(gathered, options.section);
     if (sections === undefined) {
-      console.error(
-        theme.fail(
-          `No doctor section matched "${options.section}". Sections: ${gathered.map((section, index) => `${index + 1}: ${section.title}`).join(', ')}`,
-        ),
+      // Invalid argument, not an operational failure — docs/guides/exit-codes.md
+      // reserves exit 2 for this across every command (UX-08).
+      command.error(
+        `No doctor section matched "${options.section}". Sections: ${gathered.map((section, index) => `${index + 1}: ${section.title}`).join(', ')}`,
       );
-      process.exitCode = 1;
       return;
     }
     const payload = doctorToJson(sections);
