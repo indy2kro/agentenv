@@ -84,6 +84,9 @@ sd          = false
 tealdeer    = false
 duckdb      = false
 qsv         = false
+taplo       = false
+hadolint    = false
+trivy       = false
 
 # Optional per-tool version pins. A pinned tool installs at exactly that
 # version and is excluded from `agentenv update`; unpinned tools resolve to
@@ -212,6 +215,9 @@ agentenv only writes the `mise.toml`.
 | 3 | `tealdeer` | `tldr` | off | Fast, community-driven man pages (tldr) |
 | 3 | `duckdb` | `duckdb` | off | Embeddable analytical SQL database |
 | 3 | `qsv` | `qsv` | off | Ultra-fast CSV data processing toolkit |
+| 3 | `taplo` | `taplo` | off | TOML linter/formatter (complements yq) |
+| 3 | `hadolint` | `hadolint` | off | Dockerfile linter |
+| 3 | `trivy` | `trivy` | off | Vulnerability, secret, and IaC scanner |
 
 ### Tools mise cannot install everywhere
 

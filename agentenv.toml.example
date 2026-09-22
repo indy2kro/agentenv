@@ -90,6 +90,9 @@ sd = false
 tealdeer = false     # Binary: tldr
 duckdb = false
 qsv = false
+taplo = false      # Binary: taplo (TOML linter/formatter)
+hadolint = false   # Binary: hadolint (Dockerfile linter)
+trivy = false      # Binary: trivy (vulnerability, secret, and IaC scanner)
 
 # =============================================================================
 # CUSTOM TOOLS

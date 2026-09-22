@@ -112,6 +112,9 @@ export interface AgentenvConfig {
     tealdeer?: boolean;
     duckdb?: boolean;
     qsv?: boolean;
+    taplo?: boolean;
+    hadolint?: boolean;
+    trivy?: boolean;
   };
   custom_tools?: CustomTool[];
   /**
@@ -178,6 +181,9 @@ export const DEFAULT_CONFIG: AgentenvConfig = {
     tealdeer: false,
     duckdb: false,
     qsv: false,
+    taplo: false,
+    hadolint: false,
+    trivy: false,
   },
   rtk: {
     enabled: true,
@@ -265,6 +271,9 @@ export const TOOL_KEYS: Array<keyof NonNullable<AgentenvConfig['tools']>> = [
   'tealdeer',
   'duckdb',
   'qsv',
+  'taplo',
+  'hadolint',
+  'trivy',
 ];
 
 // Tool tiers for categorization
@@ -305,6 +314,9 @@ export const TOOL_TIERS: Record<string, number> = {
   tealdeer: 3,
   duckdb: 3,
   qsv: 3,
+  taplo: 3,
+  hadolint: 3,
+  trivy: 3,
 };
 
 // Binary name mappings (TOML key -> binary name)
@@ -342,6 +354,9 @@ export const BINARY_MAP: Record<string, string> = {
   tealdeer: 'tldr',
   duckdb: 'duckdb',
   qsv: 'qsv',
+  taplo: 'taplo',
+  hadolint: 'hadolint',
+  trivy: 'trivy',
 };
 
 // Tool descriptions
@@ -379,6 +394,9 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   tealdeer: 'Fast, community-driven man pages (tldr)',
   duckdb: 'Embeddable analytical SQL database',
   qsv: 'Ultra-fast CSV data processing toolkit',
+  taplo: 'TOML linter/formatter (complements yq)',
+  hadolint: 'Dockerfile linter',
+  trivy: 'Vulnerability, secret, and IaC scanner',
 };
 
 /**

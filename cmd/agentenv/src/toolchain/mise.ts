@@ -52,6 +52,9 @@ export const MISE_TOOL_NAMES: Record<string, string> = {
   tealdeer: 'tealdeer',
   duckdb: 'duckdb',
   qsv: 'qsv',
+  taplo: 'taplo',
+  hadolint: 'hadolint',
+  trivy: 'trivy',
 };
 
 // Tools that cannot be installed via mise and require fallback

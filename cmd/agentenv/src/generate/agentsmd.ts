@@ -47,6 +47,9 @@ export const TOOL_CATEGORIES: Record<string, string> = {
   shellcheck: 'Linting & Security',
   actionlint: 'Linting & Security',
   gitleaks: 'Linting & Security',
+  taplo: 'Linting & Security',
+  hadolint: 'Linting & Security',
+  trivy: 'Linting & Security',
 
   // Data & Analysis
   duckdb: 'Data & Analysis',

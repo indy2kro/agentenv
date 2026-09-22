@@ -91,6 +91,9 @@ sd = false
 tealdeer = false
 duckdb = false
 qsv = false
+taplo = false
+hadolint = false
+trivy = false
 [rtk]
 enabled = false
 `,

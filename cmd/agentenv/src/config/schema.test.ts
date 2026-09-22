@@ -488,6 +488,9 @@ const NEW_TOOLS: Array<{ key: string; binary: string; description: string }> = [
   { key: 'tealdeer', binary: 'tldr', description: 'Fast, community-driven man pages (tldr)' },
   { key: 'duckdb', binary: 'duckdb', description: 'Embeddable analytical SQL database' },
   { key: 'qsv', binary: 'qsv', description: 'Ultra-fast CSV data processing toolkit' },
+  { key: 'taplo', binary: 'taplo', description: 'TOML linter/formatter (complements yq)' },
+  { key: 'hadolint', binary: 'hadolint', description: 'Dockerfile linter' },
+  { key: 'trivy', binary: 'trivy', description: 'Vulnerability, secret, and IaC scanner' },
 ];
 
 describe('tool catalog: new tier-3 tools', () => {
