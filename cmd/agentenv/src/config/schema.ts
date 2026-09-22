@@ -481,43 +481,9 @@ export function configToToml(config: AgentenvConfig): string {
   // Tools
   if (config.tools) {
     lines.push('\n[tools]');
-    const toolKeys = [
-      'ripgrep',
-      'fd',
-      'jq',
-      'rtk',
-      'ast_grep',
-      'git_delta',
-      'gh',
-      'difftastic',
-      'yq',
-      'bat',
-      'eza',
-      'miller',
-      'tokei',
-      'hyperfine',
-      'fzf',
-      'just',
-      'watchexec',
-      'direnv',
-      'ripgrep_all',
-      'zoxide',
-      'shellcheck',
-      'uv',
-      'xh',
-      'actionlint',
-      'gitleaks',
-      'gum',
-      'glow',
-      'jless',
-      'sd',
-      'tealdeer',
-      'duckdb',
-      'qsv',
-    ] as const;
-    for (const key of toolKeys) {
-      if (config.tools[key as keyof AgentenvConfig['tools']] !== undefined) {
-        lines.push(`${key} = ${config.tools[key as keyof AgentenvConfig['tools']]}`);
+    for (const key of TOOL_KEYS) {
+      if (config.tools[key] !== undefined) {
+        lines.push(`${key} = ${config.tools[key]}`);
       }
     }
   }
@@ -620,42 +586,12 @@ function mergeWithDefaults(config: AgentenvConfig): AgentenvConfig {
     result.agents = { ...DEFAULT_CONFIG.agents, ...config.agents };
   }
 
-  // Merge tools
+  // Merge tools (data-driven over TOOL_KEYS so a new catalog tool can never
+  // be silently dropped here the way a hand-maintained per-key list would)
   if (config.tools) {
-    result.tools = {
-      ripgrep: config.tools.ripgrep ?? DEFAULT_CONFIG.tools?.ripgrep,
-      fd: config.tools.fd ?? DEFAULT_CONFIG.tools?.fd,
-      jq: config.tools.jq ?? DEFAULT_CONFIG.tools?.jq,
-      rtk: config.tools.rtk ?? DEFAULT_CONFIG.tools?.rtk,
-      ast_grep: config.tools.ast_grep ?? DEFAULT_CONFIG.tools?.ast_grep,
-      git_delta: config.tools.git_delta ?? DEFAULT_CONFIG.tools?.git_delta,
-      gh: config.tools.gh ?? DEFAULT_CONFIG.tools?.gh,
-      difftastic: config.tools.difftastic ?? DEFAULT_CONFIG.tools?.difftastic,
-      yq: config.tools.yq ?? DEFAULT_CONFIG.tools?.yq,
-      bat: config.tools.bat ?? DEFAULT_CONFIG.tools?.bat,
-      eza: config.tools.eza ?? DEFAULT_CONFIG.tools?.eza,
-      miller: config.tools.miller ?? DEFAULT_CONFIG.tools?.miller,
-      tokei: config.tools.tokei ?? DEFAULT_CONFIG.tools?.tokei,
-      hyperfine: config.tools.hyperfine ?? DEFAULT_CONFIG.tools?.hyperfine,
-      fzf: config.tools.fzf ?? DEFAULT_CONFIG.tools?.fzf,
-      just: config.tools.just ?? DEFAULT_CONFIG.tools?.just,
-      watchexec: config.tools.watchexec ?? DEFAULT_CONFIG.tools?.watchexec,
-      direnv: config.tools.direnv ?? DEFAULT_CONFIG.tools?.direnv,
-      ripgrep_all: config.tools.ripgrep_all ?? DEFAULT_CONFIG.tools?.ripgrep_all,
-      zoxide: config.tools.zoxide ?? DEFAULT_CONFIG.tools?.zoxide,
-      shellcheck: config.tools.shellcheck ?? DEFAULT_CONFIG.tools?.shellcheck,
-      uv: config.tools.uv ?? DEFAULT_CONFIG.tools?.uv,
-      xh: config.tools.xh ?? DEFAULT_CONFIG.tools?.xh,
-      actionlint: config.tools.actionlint ?? DEFAULT_CONFIG.tools?.actionlint,
-      gitleaks: config.tools.gitleaks ?? DEFAULT_CONFIG.tools?.gitleaks,
-      gum: config.tools.gum ?? DEFAULT_CONFIG.tools?.gum,
-      glow: config.tools.glow ?? DEFAULT_CONFIG.tools?.glow,
-      jless: config.tools.jless ?? DEFAULT_CONFIG.tools?.jless,
-      sd: config.tools.sd ?? DEFAULT_CONFIG.tools?.sd,
-      tealdeer: config.tools.tealdeer ?? DEFAULT_CONFIG.tools?.tealdeer,
-      duckdb: config.tools.duckdb ?? DEFAULT_CONFIG.tools?.duckdb,
-      qsv: config.tools.qsv ?? DEFAULT_CONFIG.tools?.qsv,
-    };
+    result.tools = Object.fromEntries(
+      TOOL_KEYS.map((key) => [key, config.tools?.[key] ?? DEFAULT_CONFIG.tools?.[key]]),
+    ) as NonNullable<AgentenvConfig['tools']>;
   }
 
   // Merge custom_tools

@@ -542,6 +542,20 @@ describe('tool catalog: new tier-3 tools', () => {
     assert.ok(tomlContent.includes('uv = true'));
     assert.ok(tomlContent.includes('zoxide = true'));
   });
+
+  it('every TOOL_KEYS entry survives configToToml -> loadConfig (guards mergeWithDefaults allowlist drift)', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-catalog-allkeys-'));
+    const configPath = path.join(dir, 'agentenv.toml');
+    const tools = Object.fromEntries(TOOL_KEYS.map((key) => [key, true])) as Record<
+      string,
+      boolean
+    >;
+    fs.writeFileSync(configPath, configToToml({ scope: 'project', tools }));
+    const loaded = loadConfig(configPath);
+    for (const key of TOOL_KEYS) {
+      assert.equal(loaded.tools?.[key], true, `${key} was dropped by loadConfig/mergeWithDefaults`);
+    }
+  });
 });
 
 describe('agent catalog: five new agents', () => {
