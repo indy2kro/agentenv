@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-09-22
 
-Target: 40 · Found: 46 deduplicated items · Completed: 0/46
+Target: 40 · Found: 46 deduplicated items · Completed: 2/46
 
 > **How to use this document — read before implementing anything.**
 > As you finish each item, change `- [ ]` to `- [x]`, append ` ✅ <commit-sha>`,
@@ -69,7 +69,7 @@ Themes this round:
 
 ## Correctness bugs   (BUG-NN)
 
-- [ ] **BUG-01** The Claude adapter overwrites an unparseable `~/.claude/settings.json` with only the rtk hook — `src/adapters/claude.ts:116-123` · effort S · impact high
+- [x] **BUG-01** ✅ ee486a7 The Claude adapter overwrites an unparseable `~/.claude/settings.json` with only the rtk hook — `src/adapters/claude.ts:116-123` · effort S · impact high
   A trailing comma or comment makes `apply` silently wipe the user's permissions/env/model settings. The Tier 0 writers (`detector.ts:529`) already do the right thing: leave the file untouched and report it.
 - [ ] **BUG-02** `detectShell()` silently runs `brew install coreutils gnu-sed grep findutils gawk` on macOS, including from the read-only `status`/`doctor` — `src/shell/detector.ts:100-107,265-300`, `commands/doctor.ts:119`, `commands/status.ts:323` · effort M · impact high
   A "read-only" diagnostic installs five formulae with `stdio: 'ignore'` and no consent, bypassing the "mise does all installs" principle. Detection must be pure; installing should be an explicit, reported `apply` step.
@@ -118,7 +118,7 @@ Themes this round:
   The flag is described as "only run one report section", but `gatherDoctor()` still spawns every mise/agent probe, so it is no faster.
 - [ ] **UX-10** Add `--scope` to `apply` to match `update`/`uninstall`/`setup` — `src/commands/apply.ts:291-295` · effort S · impact low
   `apply` is the only command that reads the config but can't target the user config when a project config exists.
-- [ ] **UX-11** The Claude adapter rewrites `settings.json` even when the hook already exists — `src/adapters/claude.ts:135-136` · effort S · impact low
+- [x] **UX-11** ✅ ee486a7 The Claude adapter rewrites `settings.json` even when the hook already exists — `src/adapters/claude.ts:135-136` · effort S · impact low
   Every `apply` reformats the user's settings file (and bumps its mtime) for no change, which creates spurious diffs in version-controlled dotfiles.
 
 ## Accessibility   (A11Y-NN)
