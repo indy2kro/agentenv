@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-09-22
 
-Target: 40 · Found: 46 deduplicated items · Completed: 9/46
+Target: 40 · Found: 46 deduplicated items · Completed: 10/46
 
 > **How to use this document — read before implementing anything.**
 > As you finish each item, change `- [ ]` to `- [x]`, append ` ✅ <commit-sha>`,
@@ -77,7 +77,7 @@ Themes this round:
   The misnomer lands in every generated `AGENTS.md`/`CLAUDE.md` and can make agents treat the hook as a security tool.
 - [x] **BUG-04** ✅ 1b58b11 "General Instructions" is a hardcoded rg/fd/jq/bat/eza/delta list regardless of which tools are enabled — `src/generate/agentsmd.ts:147-155` · effort S · impact high
   With `bat`/`eza`/`delta` disabled (or skipped on the platform), agents are still told to use binaries that aren't installed. Generate the list from the enabled tools.
-- [ ] **BUG-05** `rtk` is resolved by a bare PATH lookup instead of through mise — `src/toolchain/rtk.ts:40-56`, `src/adapters/detect.ts:64-90` · effort S · impact high
+- [x] **BUG-05** ✅ 34259b9 `rtk` is resolved by a bare PATH lookup instead of through mise — `src/toolchain/rtk.ts:40-56`, `src/adapters/detect.ts:64-90` · effort S · impact high
   On a first `setup`, the rtk mise just installed is often not on PATH yet (`needs-new-terminal`), so every adapter fails. Otherwise an unpinned or name-colliding `rtk` earlier on PATH is used instead of the pinned 0.49.0. Use `mise which rtk` / `mise exec` in `baseDir`.
 - [ ] **BUG-06** In `status`, rtk-delegated agents show drift when rtk is disabled, and one shared `RTK.md` masks per-agent failures — `src/commands/status.ts:35-56,328-339` · effort M · impact high
   For six agents, `configured` just means `baseDir/RTK.md` exists. With `rtk.enabled = false`, every installed one is flagged as drift. Meanwhile one successful `rtk init` (or a skipped vibe) marks them all configured.
