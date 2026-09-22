@@ -156,9 +156,12 @@ Themes this round:
    test first (`superpowers:test-driven-development`), then fix. `SWEEP-*` items touch several
    modules: list every site first, fix them all in one commit, then grep again to confirm none
    were missed.
-2. **One item = one commit.** Reference the item ID, e.g. `fix(BUG-01): ...`. Tick the
-   item in a separate `docs: tick BUG-01 in improvement backlog` commit, matching the
-   previous round.
+2. **One item = one commit.** Reference the item ID in the commit subject, e.g.
+   `fix(BUG-01): ...`. Tick the item in a separate `docs: tick BUG-01 in improvement
+   backlog` commit, matching the previous round. Keep the ID out of the actual source
+   diff (code comments, test names) — this file is deleted once the round is done, so an
+   ID left behind in a comment becomes a dangling reference; the commit message is where
+   that traceability belongs, since git history outlives this file.
 3. **Mark progress here.** Flip `- [ ]` → `- [x]`, append ` ✅ <sha>`, and update the Completed counter.
 4. **Fan out** (`superpowers:subagent-driven-development`) only for items that touch different
    files. BUG-03/BUG-04/UX-01/UX-02/UX-03/FEAT-04 all edit `generate/agentsmd.ts`: do them
