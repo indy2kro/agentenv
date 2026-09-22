@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-09-22
 
-Target: 40 · Found: 46 deduplicated items · Completed: 12/46
+Target: 40 · Found: 46 deduplicated items · Completed: 13/46
 
 > **How to use this document — read before implementing anything.**
 > As you finish each item, change `- [ ]` to `- [x]`, append ` ✅ <commit-sha>`,
@@ -132,7 +132,7 @@ Themes this round:
 
 - [x] **FEAT-01** ✅ 3c7aca8 Let Tier 0 run without a TTY (`--shell-fix` flag / `tier0.mode = "auto" | "always" | "never"`) — `src/commands/apply.ts:175`, `src/shell/detector.ts:747` · effort S · impact high
   An AI agent running `agentenv apply`, the product's core audience, never has a TTY, so the Windows shell fix never happens and nothing can override that.
-- [ ] **FEAT-02** Add an rtk section to `doctor`: on PATH, version against the pin, and a check for the Rust Type Kit name collision (`rtk gain` works) — `src/commands/doctor.ts` · effort S · impact high
+- [x] **FEAT-02** ✅ ded7738 Add an rtk section to `doctor`: on PATH, version against the pin, and a check for the Rust Type Kit name collision (`rtk gain` works) — `src/commands/doctor.ts` · effort S · impact high
   Every agent hook depends on rtk, and the generated `RTK.md` itself warns about the `reachingforthejack/rtk` collision, yet `doctor` never checks rtk.
 - [ ] **FEAT-03** Add an "unwire agents" path: call the unused `BaseAdapter.cleanup()`, remove the marker blocks, and optionally delete the generated `mise.toml` — `src/adapters/base.ts`, `src/commands/uninstall.ts`, `src/generate/agentsmd.ts` · effort L · impact high
   `uninstall` only removes mise tools. Nothing removes the Claude hook, the codex config or the instruction blocks, and every adapter's `cleanup()` is dead code.
