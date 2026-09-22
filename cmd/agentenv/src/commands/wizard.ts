@@ -52,11 +52,18 @@ export async function runConfigWizard(): Promise<void> {
   }
   console.log(`${prereqLine(getMiseVersion())}\n`);
 
+  // loadConfig() only throws when a config file exists but fails to parse
+  // (no file at all returns DEFAULT_CONFIG directly) — so a catch here means
+  // a real TOML error, which must be reported, not silently replaced with
+  // defaults that the wizard would then save over the user's real config
+  // (BUG-08).
   let existing: AgentenvConfig;
   try {
     existing = loadConfig();
-  } catch {
-    existing = DEFAULT_CONFIG;
+  } catch (error) {
+    console.error(theme.fail(error instanceof Error ? error.message : String(error)));
+    process.exitCode = 1;
+    return;
   }
   const hasExistingConfig = findConfigPath() !== undefined;
   const detected = detectInstalledAgents();
