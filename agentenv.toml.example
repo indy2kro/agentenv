@@ -162,6 +162,12 @@ init.vibe = true
 # On Linux: detects and recommends distro packages
 check_enabled = true
 
+# Whether the fix actually writes files: "auto" (default) only does so when
+# stdin is a TTY; an AI agent running `apply`/`setup --yes` never has one, so
+# set "always" (or pass `apply --shell-fix always`) to have it apply for
+# agents too. "never" always just checks and reports.
+# mode = "auto"
+
 # Windows-specific: path to Git Bash (auto-detected if not set)
 # git_bash_path = "C:\\Program Files\\Git\\usr\\bin\\bash.exe"
 

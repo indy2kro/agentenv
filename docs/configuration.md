@@ -293,6 +293,7 @@ utilities. Every change `apply` makes here is recorded so
 |---|---|---|---|
 | `check_enabled` | boolean | `true` | Set `false` to skip the Tier 0 check/fix on Windows. |
 | `git_bash_path` | string | autodetected | Override the Git Bash `bin` path when detection fails. |
+| `mode` | `"auto"` \| `"always"` \| `"never"` | `"auto"` | Whether the fix actually writes files. `"auto"` only does so with a TTY; an AI agent running `apply`/`setup --yes` never has one, so set `"always"` (or pass `apply --shell-fix always`) to have Tier 0 apply for it too. `"never"` always just checks and reports. |
 
 On non-Windows platforms this section has no effect (`status` reports it as
 N/A).

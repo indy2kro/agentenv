@@ -748,11 +748,13 @@ export function fixShellConfiguration(
       };
     }
 
-    // Non-TTY/test shell: skip file writes, just report the state
+    // Non-TTY/test shell, or tier0.mode = "never": skip file writes, just
+    // report the state. (Callers already prefix messages with "Tier 0: "
+    // themselves — UX-06 — so this string must not repeat it.)
     if (!complex) {
       return {
         success: true,
-        message: `Tier 0: checked; would fix ${agents.length} agent shell(s) in an interactive terminal — skipped (non-TTY)`,
+        message: `checked; would fix ${agents.length} agent shell(s) — skipped (pass --shell-fix always, or run interactively, to apply)`,
         gitBashPath: shellInfo.gitBashPath,
       };
     }

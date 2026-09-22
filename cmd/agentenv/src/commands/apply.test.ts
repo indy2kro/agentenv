@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { applyConfiguration, userScopeInstructionFiles } from './apply.js';
+import { applyConfiguration, resolveTier0WriteFiles, userScopeInstructionFiles } from './apply.js';
 import type { AgentenvConfig } from '../config/schema.js';
 import type { ClaudeCliRunner } from '../integrations/superpowers.js';
 import type { RtkInitFn } from '../toolchain/rtk.js';
@@ -520,5 +520,22 @@ describe('apply pipeline', () => {
       const files = userScopeInstructionFiles(CONFIG, base, {});
       assert.deepEqual(files, []);
     });
+  });
+});
+
+describe('resolveTier0WriteFiles (FEAT-01)', () => {
+  it('"auto" only writes with a TTY', () => {
+    assert.equal(resolveTier0WriteFiles('auto', true), true);
+    assert.equal(resolveTier0WriteFiles('auto', false), false);
+  });
+
+  it('"always" writes regardless of TTY — this is what lets an agent (no TTY) get the fix', () => {
+    assert.equal(resolveTier0WriteFiles('always', false), true);
+    assert.equal(resolveTier0WriteFiles('always', true), true);
+  });
+
+  it('"never" never writes, even with a TTY', () => {
+    assert.equal(resolveTier0WriteFiles('never', true), false);
+    assert.equal(resolveTier0WriteFiles('never', false), false);
   });
 });

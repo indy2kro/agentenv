@@ -110,6 +110,17 @@ describe('configuration persistence', () => {
     const config = loadConfig(configPath);
     assert.equal(config.tool_versions?.jq, '1.7.1');
   });
+
+  it('serializes tier0.mode and round-trips it through loadConfig (FEAT-01)', () => {
+    const content = configToToml({ tier0: { mode: 'always' } });
+    assert.match(content, /mode = "always"/);
+
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-config-'));
+    const configPath = path.join(directory, 'agentenv.toml');
+    fs.writeFileSync(configPath, content);
+    const config = loadConfig(configPath);
+    assert.equal(config.tier0?.mode, 'always');
+  });
 });
 
 describe('configuration validation', () => {
@@ -210,6 +221,17 @@ describe('configuration validation', () => {
     );
     assert.ok(
       report.errors.some((error) => error.includes('custom tool "dup" is defined more than once')),
+    );
+  });
+
+  it('accepts a well-formed tier0.mode and rejects an invalid one (FEAT-01)', () => {
+    assert.deepEqual(validateConfig({ tier0: { mode: 'always' } }), { errors: [], warnings: [] });
+    assert.deepEqual(validateConfig({ tier0: { mode: 'never' } }), { errors: [], warnings: [] });
+    const report = validateConfig({ tier0: { mode: 'sometimes' as never } });
+    assert.ok(
+      report.errors.some((error) =>
+        error.includes('tier0.mode must be "auto", "always", or "never"'),
+      ),
     );
   });
 });

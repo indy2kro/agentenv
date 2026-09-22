@@ -238,7 +238,7 @@ describe('Tier 0 shell fix', () => {
       const result = fixShellConfiguration('.', ['claude_code'], false);
       assert.equal(result.success, true);
       if (process.platform === 'win32') {
-        assert.match(result.message, /non-TTY|POSIX-compatible|Git Bash not found/i);
+        assert.match(result.message, /skipped|POSIX-compatible|Git Bash not found/i);
       }
     });
   });

@@ -38,6 +38,17 @@ export interface RtkConfig {
 export interface Tier0Config {
   check_enabled?: boolean;
   git_bash_path?: string;
+  /**
+   * Whether the Tier 0 Windows shell fix actually writes files, or only
+   * checks and reports:
+   *  - "auto" (default): write when stdin is a TTY, otherwise just report
+   *    (the long-standing behavior).
+   *  - "always": write every time, TTY or not — needed for an AI agent
+   *    running `agentenv apply`/`setup --yes`, which never has a TTY but is
+   *    exactly who Tier 0 exists for (FEAT-01).
+   *  - "never": never write; always just report, even with a TTY.
+   */
+  mode?: 'auto' | 'always' | 'never';
 }
 
 export interface GenerateConfig {
@@ -534,6 +545,7 @@ export function configToToml(config: AgentenvConfig): string {
       lines.push(`check_enabled = ${config.tier0.check_enabled}`);
     if (config.tier0.git_bash_path)
       lines.push(`git_bash_path = ${tomlString(config.tier0.git_bash_path)}`);
+    if (config.tier0.mode !== undefined) lines.push(`mode = ${tomlString(config.tier0.mode)}`);
   }
 
   // Generate
@@ -620,6 +632,7 @@ function mergeWithDefaults(config: AgentenvConfig): AgentenvConfig {
     result.tier0 = {
       check_enabled: config.tier0.check_enabled ?? DEFAULT_CONFIG.tier0?.check_enabled,
       git_bash_path: config.tier0.git_bash_path ?? DEFAULT_CONFIG.tier0?.git_bash_path,
+      mode: config.tier0.mode ?? DEFAULT_CONFIG.tier0?.mode,
     };
   }
 
@@ -779,6 +792,17 @@ export function validateConfig(config: AgentenvConfig): {
         errors.push(`rtk.init.${key} must be a boolean, got ${JSON.stringify(value)}`);
       }
     }
+  }
+
+  if (
+    config.tier0?.mode !== undefined &&
+    config.tier0.mode !== 'auto' &&
+    config.tier0.mode !== 'always' &&
+    config.tier0.mode !== 'never'
+  ) {
+    errors.push(
+      `tier0.mode must be "auto", "always", or "never", got "${String(config.tier0.mode)}"`,
+    );
   }
 
   const toolVersions = config.tool_versions ?? {};
@@ -983,6 +1007,7 @@ export function diffConfigs(
       ['rtk.init.opencode', oldConfig.rtk?.init?.opencode, newConfig.rtk?.init?.opencode],
       ['tier0.check_enabled', oldConfig.tier0?.check_enabled, newConfig.tier0?.check_enabled],
       ['tier0.git_bash_path', oldConfig.tier0?.git_bash_path, newConfig.tier0?.git_bash_path],
+      ['tier0.mode', oldConfig.tier0?.mode, newConfig.tier0?.mode],
       ['generate.marker_start', oldConfig.generate?.marker_start, newConfig.generate?.marker_start],
       ['generate.marker_end', oldConfig.generate?.marker_end, newConfig.generate?.marker_end],
       ['generate.files', jsonOr(oldConfig.generate?.files), jsonOr(newConfig.generate?.files)],

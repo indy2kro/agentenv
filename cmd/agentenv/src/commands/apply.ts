@@ -76,6 +76,11 @@ export interface ApplyOptions {
   skipPrereqMessage?: boolean;
   /** Injectable `rtk init` runner (tests pass a stub). */
   rtkInit?: RtkInitFn;
+  /**
+   * Overrides config.tier0.mode for this run (e.g. the `--shell-fix` CLI
+   * flag). Takes precedence over the config file when set.
+   */
+  tier0Mode?: 'auto' | 'always' | 'never';
   /** Injectable Superpowers adapter dependencies (tests pass a claude stub). */
   superpowersDeps?: SuperpowersAdapterDeps;
   /**
@@ -89,6 +94,20 @@ export interface ApplyOptions {
     onOutput?: (chunk: string, stream: 'stdout' | 'stderr') => void;
     onEnd?: () => void;
   };
+}
+
+/**
+ * Whether the Tier 0 Windows shell fix should actually write files this run,
+ * given its resolved mode and whether stdin is a TTY (FEAT-01):
+ *  - "auto" (the long-standing default): only with a TTY.
+ *  - "always": always — this is what lets an AI agent (which never has a
+ *    TTY) running `apply`/`setup --yes` still get the fix applied.
+ *  - "never": never, even with a TTY.
+ */
+export function resolveTier0WriteFiles(mode: 'auto' | 'always' | 'never', isTTY: boolean): boolean {
+  if (mode === 'always') return true;
+  if (mode === 'never') return false;
+  return isTTY;
 }
 
 function adaptersFor(
@@ -171,8 +190,10 @@ export async function applyConfiguration(
   // Step 1 — Tier 0 shell compatibility fix.
   if (config.tier0?.check_enabled !== false) {
     const enabledAgents = getEnabledAgents(config) as AgentKey[];
+    const tier0Mode = options.tier0Mode ?? config.tier0?.mode ?? 'auto';
+    const writeShellFixFiles = resolveTier0WriteFiles(tier0Mode, process.stdin.isTTY === true);
     try {
-      const tier0 = fixShellConfiguration(baseDir, enabledAgents, process.stdin.isTTY === true);
+      const tier0 = fixShellConfiguration(baseDir, enabledAgents, writeShellFixFiles);
       (tier0.success ? messages : errors).push(`Tier 0: ${tier0.message}`);
       if (tier0.results) {
         for (const result of tier0.results) {
@@ -285,78 +306,108 @@ export const applyCommand = new Command()
   .description('Non-interactive: read config and generate everything')
   .option('--skip-mise-install', 'skip mise install (files only; for CI/dry-run)')
   .option('--dry-run', 'show what would be written without changing anything')
-  .action(async (options: { skipMiseInstall?: boolean; dryRun?: boolean }) => {
-    const startedAt = Date.now();
-    renderLogo();
-    const dryRun = options.dryRun === true;
-    let config: AgentenvConfig;
-    const configPath = findConfigPath();
-    if (!configPath) {
-      console.error('No agentenv.toml found. Run `agentenv setup` first.');
-      process.exitCode = 1;
-      return;
-    }
-    try {
-      config = loadConfig(configPath);
-    } catch (error) {
-      console.error(theme.fail(error instanceof Error ? error.message : String(error)));
-      process.exitCode = 1;
-      return;
-    }
-    printConfigPath(configPath);
+  .option(
+    '--shell-fix <mode>',
+    'Tier 0 Windows shell fix: auto (default; only writes files with a TTY) | always (write even without a TTY — for an agent running apply) | never',
+  )
+  .action(
+    async (
+      options: { skipMiseInstall?: boolean; dryRun?: boolean; shellFix?: string },
+      command: Command,
+    ) => {
+      const startedAt = Date.now();
+      renderLogo();
+      const dryRun = options.dryRun === true;
 
-    const report = validateConfig(config);
-    if (!reportValidation(report, 'Configuration invalid — not applying.')) {
-      process.exitCode = 1;
-      return;
-    }
+      let tier0Mode: 'auto' | 'always' | 'never' | undefined;
+      if (options.shellFix !== undefined) {
+        if (['auto', 'always', 'never'].includes(options.shellFix)) {
+          tier0Mode = options.shellFix as 'auto' | 'always' | 'never';
+        } else {
+          command.error(
+            `invalid --shell-fix "${options.shellFix}" (expected "auto", "always", or "never")`,
+          );
+          return;
+        }
+      }
 
-    const baseDir = resolveScopeDir(config.scope);
-    if (dryRun) {
-      const enabledToolCount = Object.values(config.tools ?? {}).filter((on) => on === true).length;
-      const files = [
-        ...generateInstructionFiles(config, baseDir),
-        ...userScopeInstructionFiles(config, baseDir, options),
-      ];
-      const agents = [...getEnabledAgents(config)];
-      const integrations = enabledIntegrations(config, options);
-      console.log(
-        `  Tools:          ${enabledToolCount} enabled -> ${path.join(baseDir, 'mise.toml')}`,
-      );
-      console.log(`  Generated files: ${files.map((file) => file.path).join(', ') || '(none)'}`);
-      console.log(
-        `  Agents:         ${agents.join(', ') || '(none)'}${config.rtk?.enabled === true ? ' (rtk rewriting on)' : ''}`,
-      );
-      console.log(
-        `  Integrations:   ${integrations.length > 0 ? integrations.map((i) => i.getName()).join(', ') : '(none)'}`,
-      );
-      printResult('ok', 'Dry run complete', 'no changes were made', Date.now() - startedAt);
-      return;
-    }
+      let config: AgentenvConfig;
+      const configPath = findConfigPath();
+      if (!configPath) {
+        console.error('No agentenv.toml found. Run `agentenv setup` first.');
+        process.exitCode = 1;
+        return;
+      }
+      try {
+        config = loadConfig(configPath);
+      } catch (error) {
+        console.error(theme.fail(error instanceof Error ? error.message : String(error)));
+        process.exitCode = 1;
+        return;
+      }
+      printConfigPath(configPath);
 
-    const result = await withSpinner('Applying configuration...', (spinner: Spinner) =>
-      applyConfiguration(config, baseDir, {
-        skipMiseInstall: options.skipMiseInstall === true,
-        onMiseInstall: {
-          onStart: () => {
-            spinner.stop();
-            console.log(colorizeLine('Installing tools via mise...'));
+      const report = validateConfig(config);
+      if (!reportValidation(report, 'Configuration invalid — not applying.')) {
+        process.exitCode = 1;
+        return;
+      }
+
+      const baseDir = resolveScopeDir(config.scope);
+      if (dryRun) {
+        const enabledToolCount = Object.values(config.tools ?? {}).filter(
+          (on) => on === true,
+        ).length;
+        const files = [
+          ...generateInstructionFiles(config, baseDir),
+          ...userScopeInstructionFiles(config, baseDir, options),
+        ];
+        const agents = [...getEnabledAgents(config)];
+        const integrations = enabledIntegrations(config, options);
+        console.log(
+          `  Tools:          ${enabledToolCount} enabled -> ${path.join(baseDir, 'mise.toml')}`,
+        );
+        console.log(`  Generated files: ${files.map((file) => file.path).join(', ') || '(none)'}`);
+        console.log(
+          `  Agents:         ${agents.join(', ') || '(none)'}${config.rtk?.enabled === true ? ' (rtk rewriting on)' : ''}`,
+        );
+        console.log(
+          `  Integrations:   ${integrations.length > 0 ? integrations.map((i) => i.getName()).join(', ') : '(none)'}`,
+        );
+        printResult('ok', 'Dry run complete', 'no changes were made', Date.now() - startedAt);
+        return;
+      }
+
+      const result = await withSpinner('Applying configuration...', (spinner: Spinner) =>
+        applyConfiguration(config, baseDir, {
+          skipMiseInstall: options.skipMiseInstall === true,
+          tier0Mode,
+          onMiseInstall: {
+            onStart: () => {
+              spinner.stop();
+              console.log(colorizeLine('Installing tools via mise...'));
+            },
+            onOutput: (chunk) => process.stdout.write(chunk),
+            onEnd: () => spinner.start(),
           },
-          onOutput: (chunk) => process.stdout.write(chunk),
-          onEnd: () => spinner.start(),
-        },
-      }),
-    );
-    printMessages(result.messages, result.errors);
-    if (!result.success) {
-      process.exitCode = 1;
+        }),
+      );
+      printMessages(result.messages, result.errors);
+      if (!result.success) {
+        process.exitCode = 1;
+        printResult(
+          'fail',
+          'Apply failed',
+          'fix the errors above and re-run `agentenv apply`',
+          result.elapsedMs,
+        );
+        return;
+      }
       printResult(
-        'fail',
-        'Apply failed',
-        'fix the errors above and re-run `agentenv apply`',
+        'ok',
+        'Apply complete!',
+        'everything is configured and verified',
         result.elapsedMs,
       );
-      return;
-    }
-    printResult('ok', 'Apply complete!', 'everything is configured and verified', result.elapsedMs);
-  });
+    },
+  );
