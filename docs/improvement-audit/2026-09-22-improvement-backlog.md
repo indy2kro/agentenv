@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-09-22
 
-Target: 40 · Found: 46 deduplicated items · Completed: 13/46
+Target: 40 · Found: 46 deduplicated items · Completed: 14/46
 
 > **How to use this document — read before implementing anything.**
 > As you finish each item, change `- [ ]` to `- [x]`, append ` ✅ <commit-sha>`,
@@ -44,7 +44,7 @@ Themes this round:
 
 ## Cross-cutting sweeps   (SWEEP-NN)
 
-- [ ] **SWEEP-01** [bug] Derive the base dir from the path the config was *found* at, not from `config.scope` (which `mergeWithDefaults` fills with `'project'`) — `src/commands/apply.ts:314`, `update.ts:137,207`, `status.ts:322`, `uninstall.ts:218`, `setup.ts:81`, `config/scopes.ts:36` · effort M · impact high
+- [x] **SWEEP-01** ✅ a1933fb [bug] Derive the base dir from the path the config was *found* at, not from `config.scope` (which `mergeWithDefaults` fills with `'project'`) — `src/commands/apply.ts:314`, `update.ts:137,207`, `status.ts:322`, `uninstall.ts:218`, `setup.ts:81`, `config/scopes.ts:36` · effort M · impact high
   A user-scope `~/.config/agentenv/agentenv.toml` without an explicit `scope = "user"` (or `update --scope user`) is loaded from there but applied/upgraded/uninstalled against `process.cwd()`.
 - [ ] **SWEEP-02** [bug] Add timeouts to every external `spawnSync` (mise self-update/up/captured, `rtk init`, `claude plugin`, `gh auth status`, `brew`, `where`/`which`) — `src/toolchain/mise.ts:468,497,597`, `toolchain/rtk.ts:60`, `integrations/superpowers.ts:46`, `toolchain/gh.ts:48`, `shell/detector.ts` · effort M · impact med
   None has a timeout, so a hung network call freezes `status`/`doctor`/`apply` indefinitely.
