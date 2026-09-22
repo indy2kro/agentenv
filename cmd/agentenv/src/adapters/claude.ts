@@ -103,14 +103,21 @@ export class ClaudeCodeAdapter extends BaseAdapter {
     try {
       let settings: any = {};
 
-      // Load existing settings if they exist
+      // Load existing settings if they exist. Unlike a missing file, invalid
+      // JSON means the file is the user's and we can't safely parse it —
+      // overwriting it with a fresh object would silently discard whatever
+      // permissions/env/model config it held. Fail loudly instead, matching
+      // cleanup()'s handling of the same file below.
       if (fs.existsSync(settingsPath)) {
         const content = fs.readFileSync(settingsPath, 'utf-8');
         try {
           settings = JSON.parse(content);
         } catch {
-          // Invalid JSON, start fresh
-          settings = {};
+          result.success = false;
+          result.errors.push(
+            `Failed to configure Claude Code hooks: settings.json is not valid JSON at ${settingsPath}; leaving it untouched`,
+          );
+          return result;
         }
       }
 
@@ -126,12 +133,10 @@ export class ClaudeCodeAdapter extends BaseAdapter {
 
       if (!hasRtkHook) {
         settings.hooks.PreToolUse.push(rtkHook);
-      }
-
-      // Save settings
-      writeFileWithRetry(settingsPath, JSON.stringify(settings, null, 2));
-
-      if (!hasRtkHook) {
+        // Only write when the hook was actually missing — re-running apply
+        // on an already-configured settings.json must not churn the file
+        // (bump its mtime / reformat it) for a no-op.
+        writeFileWithRetry(settingsPath, JSON.stringify(settings, null, 2));
         result.filesModified.push(settingsPath);
         result.message = `Added RTK PreToolUse hook to Claude Code settings at ${settingsPath}`;
       } else {

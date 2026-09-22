@@ -80,4 +80,50 @@ describe('Claude Code adapter', () => {
       else process.env.HOME = priorHome;
     }
   });
+
+  it('initialize reports a corrupt settings.json as an error and leaves it untouched (BUG-01)', async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-claude-'));
+    const priorHome = process.env.HOME;
+    process.env.HOME = home;
+    const settingsPath = path.join(home, '.claude', 'settings.json');
+    fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+    const original = '{not json, but has "real": "permissions"';
+    fs.writeFileSync(settingsPath, original);
+
+    try {
+      const adapter = new ClaudeCodeAdapter({ enabled: true, baseDir: home, rtkEnabled: true });
+      const result = await adapter.initialize();
+
+      assert.equal(result.success, false);
+      assert.ok(result.errors.some((error) => /not valid JSON/.test(error)));
+      assert.equal(fs.readFileSync(settingsPath, 'utf8'), original);
+    } finally {
+      if (priorHome === undefined) delete process.env.HOME;
+      else process.env.HOME = priorHome;
+    }
+  });
+
+  it('initialize does not rewrite settings.json when the RTK hook already exists (UX-11)', async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-claude-'));
+    const priorHome = process.env.HOME;
+    process.env.HOME = home;
+    const settingsPath = path.join(home, '.claude', 'settings.json');
+    fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+
+    try {
+      const adapter = new ClaudeCodeAdapter({ enabled: true, baseDir: home, rtkEnabled: true });
+      await adapter.initialize();
+      const contentAfterFirst = fs.readFileSync(settingsPath, 'utf8');
+
+      // A second initialize with the hook already present must be a true no-op.
+      const result = await adapter.initialize();
+
+      assert.equal(result.success, true);
+      assert.deepEqual(result.filesModified, []);
+      assert.equal(fs.readFileSync(settingsPath, 'utf8'), contentAfterFirst);
+    } finally {
+      if (priorHome === undefined) delete process.env.HOME;
+      else process.env.HOME = priorHome;
+    }
+  });
 });
