@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-09-22
 
-Target: 40 · Found: 46 deduplicated items · Completed: 8/46
+Target: 40 · Found: 46 deduplicated items · Completed: 9/46
 
 > **How to use this document — read before implementing anything.**
 > As you finish each item, change `- [ ]` to `- [x]`, append ` ✅ <commit-sha>`,
@@ -71,7 +71,7 @@ Themes this round:
 
 - [x] **BUG-01** ✅ ee486a7 The Claude adapter overwrites an unparseable `~/.claude/settings.json` with only the rtk hook — `src/adapters/claude.ts:116-123` · effort S · impact high
   A trailing comma or comment makes `apply` silently wipe the user's permissions/env/model settings. The Tier 0 writers (`detector.ts:529`) already do the right thing: leave the file untouched and report it.
-- [ ] **BUG-02** `detectShell()` silently runs `brew install coreutils gnu-sed grep findutils gawk` on macOS, including from the read-only `status`/`doctor` — `src/shell/detector.ts:100-107,265-300`, `commands/doctor.ts:119`, `commands/status.ts:323` · effort M · impact high
+- [x] **BUG-02** ✅ b118bad `detectShell()` silently runs `brew install coreutils gnu-sed grep findutils gawk` on macOS, including from the read-only `status`/`doctor` — `src/shell/detector.ts:100-107,265-300`, `commands/doctor.ts:119`, `commands/status.ts:323` · effort M · impact high
   A "read-only" diagnostic installs five formulae with `stdio: 'ignore'` and no consent, bypassing the "mise does all installs" principle. Detection must be pure; installing should be an explicit, reported `apply` step.
 - [x] **BUG-03** ✅ 1b58b11 Generated instructions call RTK "Red Teaming Kit" (it is Rust Token Killer) — `src/generate/agentsmd.ts:162` · effort S · impact high
   The misnomer lands in every generated `AGENTS.md`/`CLAUDE.md` and can make agents treat the hook as a security tool.
