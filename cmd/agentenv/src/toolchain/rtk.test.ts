@@ -1,7 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { RTK_INIT_FLAGS, isUnsupportedRtkAgentError } from './rtk.js';
+import { RTK_INIT_FLAGS, isUnsupportedRtkAgentError, resolveRtkBinary } from './rtk.js';
 import { AGENT_KEYS } from '../config/schema.js';
+import type { runMiseCaptured } from './mise.js';
 
 describe('RTK_INIT_FLAGS', () => {
   it('covers every agent key', () => {
@@ -39,5 +40,58 @@ describe('isUnsupportedRtkAgentError', () => {
       isUnsupportedRtkAgentError(["invalid value 'cline' for '--agent <AGENT>'"], 'vibe'),
       false,
     );
+  });
+});
+
+describe('resolveRtkBinary (BUG-05)', () => {
+  it('prefers the mise-managed rtk over a bare PATH lookup', () => {
+    const calls: Array<{ args: string[]; cwd?: string }> = [];
+    const fakeRunMiseCaptured: typeof runMiseCaptured = (args, opts) => {
+      calls.push({ args, cwd: opts?.cwd });
+      return { status: 0, stdout: '/mise/shims/rtk\n', stderr: '' };
+    };
+    const fakeResolveBinary = () => {
+      throw new Error('must not fall back to a bare PATH lookup when mise resolves rtk');
+    };
+
+    const resolved = resolveRtkBinary('/project', {
+      runMiseCaptured: fakeRunMiseCaptured,
+      resolveBinary: fakeResolveBinary,
+    });
+
+    assert.equal(resolved, '/mise/shims/rtk');
+    assert.deepEqual(calls, [{ args: ['which', 'rtk'], cwd: '/project' }]);
+  });
+
+  it('falls back to a bare PATH lookup when `mise which rtk` fails', () => {
+    const fakeRunMiseCaptured: typeof runMiseCaptured = () => ({
+      status: 1,
+      stdout: '',
+      stderr: 'rtk is not installed',
+    });
+    const fakeResolveBinary = () => '/usr/local/bin/rtk';
+
+    const resolved = resolveRtkBinary('/project', {
+      runMiseCaptured: fakeRunMiseCaptured,
+      resolveBinary: fakeResolveBinary,
+    });
+
+    assert.equal(resolved, '/usr/local/bin/rtk');
+  });
+
+  it('falls back to a bare PATH lookup when `mise which rtk` prints nothing', () => {
+    const fakeRunMiseCaptured: typeof runMiseCaptured = () => ({
+      status: 0,
+      stdout: '   \n',
+      stderr: '',
+    });
+    const fakeResolveBinary = () => '/usr/local/bin/rtk';
+
+    const resolved = resolveRtkBinary('/project', {
+      runMiseCaptured: fakeRunMiseCaptured,
+      resolveBinary: fakeResolveBinary,
+    });
+
+    assert.equal(resolved, '/usr/local/bin/rtk');
   });
 });

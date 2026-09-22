@@ -6,6 +6,7 @@
 
 import * as child_process from 'child_process';
 import { resolveBinary } from '../adapters/detect.js';
+import { runMiseCaptured } from './mise.js';
 
 export interface RtkInitResult {
   success: boolean;
@@ -37,17 +38,44 @@ export const RTK_INIT_FLAGS: Record<string, string[]> = {
   vibe: ['-g', '--agent', 'vibe'],
 };
 
+/**
+ * Resolve the rtk binary to run: prefer the mise-managed rtk pinned in this
+ * scope's mise.toml (`mise which rtk`, run in `cwd`) over a bare PATH lookup.
+ * This matters two ways (BUG-05): a bare `where`/`which` can resolve to a
+ * stale rtk, or to an unrelated same-named binary earlier on PATH (the
+ * "Rust Type Kit" name collision RTK.md warns about); and right after
+ * `mise install` puts a new rtk in the mise shims dir, that dir is not
+ * necessarily on PATH yet in the current terminal ("needs-new-terminal") even
+ * though `mise which`/`mise exec` can already resolve it.
+ */
+export function resolveRtkBinary(
+  cwd: string,
+  deps: {
+    runMiseCaptured?: typeof runMiseCaptured;
+    resolveBinary?: typeof resolveBinary;
+  } = {},
+): string | null {
+  const miseCapture = deps.runMiseCaptured ?? runMiseCaptured;
+  const pathLookup = deps.resolveBinary ?? resolveBinary;
+  const mise = miseCapture(['which', 'rtk'], { cwd });
+  if (mise.status === 0) {
+    const resolved = mise.stdout.trim();
+    if (resolved) return resolved;
+  }
+  return pathLookup('rtk');
+}
+
 const defaultRtkInit: RtkInitFn = (args, cwd) => {
   // Testing escape hatch: point at a stub `rtk` program (run via node) that
   // writes the files a real `rtk init` would, so the full CLI pipeline can be
   // exercised in CI without installing rtk.
   const stub = process.env.AGENTENV_RTK_BIN;
-  const rtkPath = stub ? process.execPath : resolveBinary('rtk');
+  const rtkPath = stub ? process.execPath : resolveRtkBinary(cwd);
   if (!stub && !rtkPath) {
     return {
       success: false,
       message:
-        'rtk binary not found on PATH — is rtk in mise.toml (Tier 1) and did `mise install` run?',
+        'rtk binary not found via `mise which rtk` or on PATH — is rtk in mise.toml (Tier 1) and did `mise install` run?',
       stdout: '',
       stderr: '',
     };
