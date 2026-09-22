@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-09-22
 
-Target: 40 · Found: 46 deduplicated items · Completed: 2/46
+Target: 40 · Found: 46 deduplicated items · Completed: 8/46
 
 > **How to use this document — read before implementing anything.**
 > As you finish each item, change `- [ ]` to `- [x]`, append ` ✅ <commit-sha>`,
@@ -73,9 +73,9 @@ Themes this round:
   A trailing comma or comment makes `apply` silently wipe the user's permissions/env/model settings. The Tier 0 writers (`detector.ts:529`) already do the right thing: leave the file untouched and report it.
 - [ ] **BUG-02** `detectShell()` silently runs `brew install coreutils gnu-sed grep findutils gawk` on macOS, including from the read-only `status`/`doctor` — `src/shell/detector.ts:100-107,265-300`, `commands/doctor.ts:119`, `commands/status.ts:323` · effort M · impact high
   A "read-only" diagnostic installs five formulae with `stdio: 'ignore'` and no consent, bypassing the "mise does all installs" principle. Detection must be pure; installing should be an explicit, reported `apply` step.
-- [ ] **BUG-03** Generated instructions call RTK "Red Teaming Kit" (it is Rust Token Killer) — `src/generate/agentsmd.ts:162` · effort S · impact high
+- [x] **BUG-03** ✅ 1b58b11 Generated instructions call RTK "Red Teaming Kit" (it is Rust Token Killer) — `src/generate/agentsmd.ts:162` · effort S · impact high
   The misnomer lands in every generated `AGENTS.md`/`CLAUDE.md` and can make agents treat the hook as a security tool.
-- [ ] **BUG-04** "General Instructions" is a hardcoded rg/fd/jq/bat/eza/delta list regardless of which tools are enabled — `src/generate/agentsmd.ts:147-155` · effort S · impact high
+- [x] **BUG-04** ✅ 1b58b11 "General Instructions" is a hardcoded rg/fd/jq/bat/eza/delta list regardless of which tools are enabled — `src/generate/agentsmd.ts:147-155` · effort S · impact high
   With `bat`/`eza`/`delta` disabled (or skipped on the platform), agents are still told to use binaries that aren't installed. Generate the list from the enabled tools.
 - [ ] **BUG-05** `rtk` is resolved by a bare PATH lookup instead of through mise — `src/toolchain/rtk.ts:40-56`, `src/adapters/detect.ts:64-90` · effort S · impact high
   On a first `setup`, the rtk mise just installed is often not on PATH yet (`needs-new-terminal`), so every adapter fails. Otherwise an unpinned or name-colliding `rtk` earlier on PATH is used instead of the pinned 0.49.0. Use `mise which rtk` / `mise exec` in `baseDir`.
@@ -98,11 +98,11 @@ Themes this round:
 
 ## UX & affordances   (UX-NN)
 
-- [ ] **UX-01** Make the advice for pager-prone tools safe for agents (`bat --plain --paging=never`; `git --no-pager`; `delta` for humans only) — `src/generate/agentsmd.ts:153-155` · effort S · impact med
+- [x] **UX-01** ✅ 1b58b11 Make the advice for pager-prone tools safe for agents (`bat --plain --paging=never`; `git --no-pager`; `delta` for humans only) — `src/generate/agentsmd.ts:153-155` · effort S · impact med
   Agents run non-interactively, so "use bat instead of cat" and "use delta for diffs" give decorated or paged output that wastes tokens or blocks. Do this together with BUG-04.
-- [ ] **UX-02** Scope-aware wording in user-scope instruction files (no "This repository" / "in the repo root") — `src/generate/agentsmd.ts:89,172-178`, `src/commands/apply.ts` (`userScopeInstructionFiles`) · effort S · impact med
+- [x] **UX-02** ✅ 1b58b11 Scope-aware wording in user-scope instruction files (no "This repository" / "in the repo root") — `src/generate/agentsmd.ts:89,172-178`, `src/commands/apply.ts` (`userScopeInstructionFiles`) · effort S · impact med
   The same text is written to `~/.claude/CLAUDE.md` etc., where "run `mise install` in the repo root" is wrong advice.
-- [ ] **UX-03** Trim the generated block: merge the duplicate "Token Optimization" and "RTK Configuration" sections and drop "Supported Agents" — `src/generate/agentsmd.ts:92-106,131-168` · effort S · impact med
+- [x] **UX-03** ✅ 1b58b11 Trim the generated block: merge the duplicate "Token Optimization" and "RTK Configuration" sections and drop "Supported Agents" — `src/generate/agentsmd.ts:92-106,131-168` · effort S · impact med
   This block is loaded into every agent session, so each redundant section costs tokens every session and changes nothing about how the agent behaves.
 - [ ] **UX-04** Warn on unknown top-level keys/tables in `agentenv.toml`, with did-you-mean suggestions — `src/config/schema.ts:734-760` · effort S · impact med
   Typos like `[tool]`, `scop = "user"` or `[rtk] enable = true` are silently ignored, while typos *inside* known tables are errors.
@@ -136,7 +136,7 @@ Themes this round:
   Every agent hook depends on rtk, and the generated `RTK.md` itself warns about the `reachingforthejack/rtk` collision, yet `doctor` never checks rtk.
 - [ ] **FEAT-03** Add an "unwire agents" path: call the unused `BaseAdapter.cleanup()`, remove the marker blocks, and optionally delete the generated `mise.toml` — `src/adapters/base.ts`, `src/commands/uninstall.ts`, `src/generate/agentsmd.ts` · effort L · impact high
   `uninstall` only removes mise tools. Nothing removes the Claude hook, the codex config or the instruction blocks, and every adapter's `cleanup()` is dead code.
-- [ ] **FEAT-04** Tell agents about the `rtk proxy <cmd>` escape hatch in the generated RTK section — `src/generate/agentsmd.ts:158-168` · effort S · impact med
+- [x] **FEAT-04** ✅ 1b58b11 Tell agents about the `rtk proxy <cmd>` escape hatch in the generated RTK section — `src/generate/agentsmd.ts:158-168` · effort S · impact med
   Seen during this audit: the rtk hook rewrote `rg -g …` / `rg --type …` into GNU `grep` and failed ("grep: unknown option -- g"), and agents have no hint on how to bypass the rewrite. Also worth reporting upstream to rtk.
 - [ ] **FEAT-05** Search parent directories for the project `agentenv.toml` — `src/config/scopes.ts:48-54` · effort S · impact med
   Running `agentenv status` from `repo/src` silently falls through to the user config (or "no config"). git and mise search upward.
