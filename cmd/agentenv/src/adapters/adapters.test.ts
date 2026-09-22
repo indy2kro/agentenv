@@ -116,6 +116,28 @@ describe('Codex CLI adapter', () => {
       assert.equal(rtk.calls.length, 0);
     });
   });
+
+  it('reports failure (not fake success) when config.toml cannot be created (BUG-11)', async () => {
+    await withHome(tempHome(), async () => {
+      const home = process.env.HOME as string;
+      // .codex already exists as a *file*, so config.toml can't be written
+      // under it — a real, if unusual, failure mode (permissions would look
+      // the same to the adapter: writeFileWithRetry throws).
+      fs.writeFileSync(path.join(home, '.codex'), 'not a directory');
+      const rtk = fakeRtkInit();
+      const adapter = new CodexCliAdapter({
+        enabled: true,
+        baseDir: home,
+        rtkEnabled: true,
+        rtkInit: rtk.fn,
+      });
+
+      const result = await adapter.initialize();
+
+      assert.equal(result.success, false);
+      assert.ok(result.errors.some((error) => /Failed to create config\.toml/.test(error)));
+    });
+  });
 });
 
 describe('GitHub Copilot adapter', () => {

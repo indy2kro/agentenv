@@ -68,6 +68,7 @@ export class CodexCliAdapter extends BaseAdapter {
         result.filesCreated.push(configPath);
       }
     } catch (err) {
+      result.success = false;
       result.errors.push(
         `Failed to create config.toml: ${err instanceof Error ? err.message : String(err)}`,
       );
