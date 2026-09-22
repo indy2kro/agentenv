@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-09-22
 
-Target: 40 · Found: 46 deduplicated items · Completed: 19/46 (+1 partial)
+Target: 40 · Found: 46 deduplicated items · Completed: 21/46 (+1 partial)
 
 > **How to use this document — read before implementing anything.**
 > As you finish each item, change `- [ ]` to `- [x]`, append ` ✅ <commit-sha>`,
@@ -114,9 +114,9 @@ Themes this round:
   The `--config` branch reports parse errors with a themed message; these two fall through to the generic top-level handler.
 - [x] **UX-08** ✅ 64de45d Usage errors exit 1 instead of 2 (`doctor --section` with no match; unknown tool names given to `uninstall`) — `src/commands/doctor.ts:325-333`, `src/commands/uninstall.ts:204-208` · effort S · impact low
   `docs/guides/exit-codes.md` promises exit 2 for invalid arguments on every command. Use `command.error()` as `parseScopeFlag` callers do.
-- [ ] **UX-09** `doctor --section` still runs every check before filtering — `src/commands/doctor.ts:320-323` · effort S · impact low
+- [x] **UX-09** ✅ ea15612 `doctor --section` still runs every check before filtering — `src/commands/doctor.ts:320-323` · effort S · impact low
   The flag is described as "only run one report section", but `gatherDoctor()` still spawns every mise/agent probe, so it is no faster.
-- [ ] **UX-10** Add `--scope` to `apply` to match `update`/`uninstall`/`setup` — `src/commands/apply.ts:291-295` · effort S · impact low
+- [x] **UX-10** ✅ 416d30f Add `--scope` to `apply` to match `update`/`uninstall`/`setup` — `src/commands/apply.ts:291-295` · effort S · impact low
   `apply` is the only command that reads the config but can't target the user config when a project config exists.
 - [x] **UX-11** ✅ ee486a7 The Claude adapter rewrites `settings.json` even when the hook already exists — `src/adapters/claude.ts:135-136` · effort S · impact low
   Every `apply` reformats the user's settings file (and bumps its mtime) for no change, which creates spurious diffs in version-controlled dotfiles.
