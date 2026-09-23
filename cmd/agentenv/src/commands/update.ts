@@ -42,10 +42,42 @@ interface UpdateCommandOptions {
   json?: boolean;
 }
 
-async function doUpdate(options: UpdateCommandOptions): Promise<void> {
+/**
+ * Every mise-touching call `doUpdate` makes, injectable so tests can stub
+ * them the same way `apply.test.ts` stubs `rtkInit`/`superpowersDeps` —
+ * without this, exercising update.ts meant actually installing/upgrading
+ * mise tools, which is why it sat at 13% line coverage.
+ */
+export interface UpdateDeps {
+  isMiseInstalled?: typeof isMiseInstalled;
+  getMiseVersion?: typeof getMiseVersion;
+  ensureGlobalShimsDir?: typeof ensureGlobalShimsDir;
+  runMiseSelfUpdate?: typeof runMiseSelfUpdate;
+  trustMiseToml?: typeof trustMiseToml;
+  runMiseUpgrade?: typeof runMiseUpgrade;
+  verifyToolAvailability?: typeof verifyToolAvailability;
+  loadConfig?: typeof loadConfig;
+  /** Skips the real `watchMiseToml` call entirely (tests never want a live fs.watch). */
+  watchMiseToml?: typeof watchMiseToml;
+}
+
+export async function doUpdate(
+  options: UpdateCommandOptions,
+  deps: UpdateDeps = {},
+): Promise<void> {
   const startedAt = Date.now();
   const json = options.json === true;
   if (json) setQuietEnabled(true);
+
+  const isMiseInstalledFn = deps.isMiseInstalled ?? isMiseInstalled;
+  const getMiseVersionFn = deps.getMiseVersion ?? getMiseVersion;
+  const ensureGlobalShimsDirFn = deps.ensureGlobalShimsDir ?? ensureGlobalShimsDir;
+  const runMiseSelfUpdateFn = deps.runMiseSelfUpdate ?? runMiseSelfUpdate;
+  const trustMiseTomlFn = deps.trustMiseToml ?? trustMiseToml;
+  const runMiseUpgradeFn = deps.runMiseUpgrade ?? runMiseUpgrade;
+  const verifyToolAvailabilityFn = deps.verifyToolAvailability ?? verifyToolAvailability;
+  const loadConfigFn = deps.loadConfig ?? loadConfig;
+  const watchMiseTomlFn = deps.watchMiseToml ?? watchMiseToml;
 
   // In --json mode every line that would otherwise print live is collected
   // instead, so the command emits exactly one JSON document at the end —
@@ -64,7 +96,7 @@ async function doUpdate(options: UpdateCommandOptions): Promise<void> {
     if (json) console.log(JSON.stringify({ success, messages, errors, elapsedMs }, null, 2));
   };
 
-  if (!isMiseInstalled()) {
+  if (!isMiseInstalledFn()) {
     logErr('agentenv update requires mise, but mise was not found.');
     for (const line of miseInstallInstructions()) logErr(`  ${line}`);
     finish(false);
@@ -73,7 +105,7 @@ async function doUpdate(options: UpdateCommandOptions): Promise<void> {
   }
 
   renderLogo();
-  log(`Mise: ${getMiseVersion()}\n`);
+  log(`Mise: ${getMiseVersionFn()}\n`);
 
   let configPath: string | null;
   if (options.scope) {
@@ -97,7 +129,7 @@ async function doUpdate(options: UpdateCommandOptions): Promise<void> {
 
   let config: AgentenvConfig;
   try {
-    config = loadConfig(configPath);
+    config = loadConfigFn(configPath);
   } catch (error) {
     logErr(error instanceof Error ? error.message : String(error));
     finish(false);
@@ -131,7 +163,7 @@ async function doUpdate(options: UpdateCommandOptions): Promise<void> {
       : `would add ${dir} to the global mise config PATH`;
     log(`Shims: ${pathLine}`);
   } else {
-    const shims = ensureGlobalShimsDir(shellFixStatePath());
+    const shims = ensureGlobalShimsDirFn(shellFixStatePath());
     if (shims.success) {
       log(`Shims: ${shims.message}`);
     } else {
@@ -145,7 +177,7 @@ async function doUpdate(options: UpdateCommandOptions): Promise<void> {
       log('\nWould run `mise self-update`.');
     } else {
       log('\nUpdating mise itself...');
-      const result = await runMiseSelfUpdate();
+      const result = await runMiseSelfUpdateFn();
       if (result.success) {
         log(`  mise self-update: ${result.output || 'already up to date'}`);
       } else {
@@ -172,7 +204,7 @@ async function doUpdate(options: UpdateCommandOptions): Promise<void> {
       if (dryRun) {
         log(`  would trust ${miseTomlPath}`);
       } else {
-        const trust = trustMiseToml(miseTomlPath, scopeDir);
+        const trust = trustMiseTomlFn(miseTomlPath, scopeDir);
         if (trust.success) log(`  ${trust.message}`);
         else logErr(`  ${trust.message}`);
         if (!trust.success) failed = true;
@@ -184,7 +216,7 @@ async function doUpdate(options: UpdateCommandOptions): Promise<void> {
       } else {
         log(`  mise up ${targets.join(' ')}${dryRun ? ' (would run)' : ''}`);
         if (!dryRun) {
-          const upgrade = await runMiseUpgrade(targets, scopeDir);
+          const upgrade = await runMiseUpgradeFn(targets, scopeDir);
           if (upgrade.success) {
             log(`  ${(upgrade.stdout || upgrade.stderr || '').trim() || 'all tools up to date'}`);
           } else {
@@ -195,7 +227,7 @@ async function doUpdate(options: UpdateCommandOptions): Promise<void> {
           }
         }
 
-        const availability = verifyToolAvailability(config, {
+        const availability = verifyToolAvailabilityFn(config, {
           cwd: scopeDir,
           miseTomlPath: path.join(scopeDir, 'mise.toml'),
         });
@@ -241,7 +273,7 @@ async function doUpdate(options: UpdateCommandOptions): Promise<void> {
       console.log('\nWatching mise.toml for changes (Ctrl+C to stop)...');
       const scopeDir = resolveScopeDir(config.scope ?? 'project');
       const miseTomlPath = path.join(scopeDir, 'mise.toml');
-      watchMiseToml(miseTomlPath, scopeDir, configPath);
+      watchMiseTomlFn(miseTomlPath, scopeDir, configPath);
     }
   }
 }
