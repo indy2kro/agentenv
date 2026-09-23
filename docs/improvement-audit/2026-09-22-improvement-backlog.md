@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-09-22
 
-Target: 40 · Found: 46 deduplicated items · Completed: 21/46 (+1 partial)
+Target: 40 · Found: 46 deduplicated items · Completed: 29/46 (+1 partial)
 
 > **How to use this document — read before implementing anything.**
 > As you finish each item, change `- [ ]` to `- [x]`, append ` ✅ <commit-sha>`,
@@ -56,7 +56,7 @@ Themes this round:
   Only the read-only commands emit JSON. `ApplyResult` is already structured, yet CI has to scrape colored text.
 - [ ] **SWEEP-06** [feature] Back up user-global files before agentenv first edits them (`~/.claude/settings.json`, `~/.codex/config.toml`, user-scope `CLAUDE.md`/`AGENTS.md`) — `src/adapters/claude.ts`, `codex.ts`, `utils/fs-retry.ts` · effort M · impact med
   Tier 0 edits are recorded for `shell-fix --revert`, but the adapters' writes to the *same* files have no backup or undo.
-- [ ] **SWEEP-07** [bug] Add the minimum supported Node (22.13) to the CI matrix next to 24 — `.github/workflows/ci.yml:32,91`, `cmd/agentenv/package.json` `engines` · effort S · impact med
+- [x] **SWEEP-07** ✅ d5ee770 Add the minimum supported Node (22) to the CI matrix next to 24 — `.github/workflows/ci.yml:32,91`, `cmd/agentenv/package.json` `engines` · effort S · impact med
   `engines` promises `>=22.13.0`, but CI only runs Node 24 with `@types/node` 26, so a Node 23+-only API would ship unnoticed.
 - [ ] **SWEEP-08** [ci] Lint this repo with the tools it ships: add `actionlint`, `shellcheck` (smoke/stub scripts) and `gitleaks` steps to CI, and dogfood an `agentenv.toml` here — `.github/workflows/ci.yml` · effort M · impact med
   None of them run on this repo's own workflows or source today, and locally `actionlint`/`gitleaks` shims aren't even pinned (`mise ERROR No version is set for shim`).
@@ -87,11 +87,11 @@ Themes this round:
   A single TOML typo makes the wizard pre-fill defaults, then overwrite the user's real config on save instead of reporting the parse error.
 - [ ] **BUG-09** Re-saving `agentenv.toml` in setup strips the user's comments and formatting — `src/commands/setup.ts` (`saveAndApply`), `src/config/schema.ts:451` (`saveConfig`) · effort M · impact med
   `setup --yes` re-applying an existing hand-commented config (which `agentenv.toml.example` encourages) re-serializes it from scratch. At minimum, skip the save when the config is unchanged.
-- [ ] **BUG-10** Git Bash is only looked for in four hardcoded `C:\Program Files` paths — `src/shell/detector.ts:44-49,89-99,742` · effort S · impact med
+- [x] **BUG-10** ✅ 094de76 Git Bash is only looked for in four hardcoded `C:\Program Files` paths — `src/shell/detector.ts:44-49,89-99,742` · effort S · impact med
   Per-user (`%LOCALAPPDATA%\Programs\Git`), scoop and non-C: installs are missed. The fallback message says "not found on PATH", but PATH is never searched (`where git`).
 - [x] **BUG-11** ✅ 18d9c98 The Codex adapter reports success when creating `config.toml` fails — `src/adapters/codex.ts:64-74` · effort S · impact low
   The error is pushed but `success` stays true, and `apply` only shows adapter errors when `success` is false, so the failure is invisible.
-- [ ] **BUG-12** The managed block ignores the target file's line endings — `src/generate/agentsmd.ts:361-478` (`updateWithMarkers`) · effort S · impact low
+- [x] **BUG-12** ✅ df725fe The managed block ignores the target file's line endings — `src/generate/agentsmd.ts:361-478` (`updateWithMarkers`) · effort S · impact low
   On Windows, a CRLF `AGENTS.md` gets an LF block appended, which mixes line endings and makes diffs noisy.
 - [ ] **BUG-13** `update --watch` watches the generated `mise.toml` with a config captured at startup, and dies on an editor's atomic-rename save — `src/commands/update.ts:218-268` · effort M · impact low
   It ignores `rename` events and never re-reads `agentenv.toml`, so it stops after the first save in most editors and misses the edits users actually make.
@@ -104,13 +104,13 @@ Themes this round:
   The same text is written to `~/.claude/CLAUDE.md` etc., where "run `mise install` in the repo root" is wrong advice.
 - [x] **UX-03** ✅ 1b58b11 Trim the generated block: merge the duplicate "Token Optimization" and "RTK Configuration" sections and drop "Supported Agents" — `src/generate/agentsmd.ts:92-106,131-168` · effort S · impact med
   This block is loaded into every agent session, so each redundant section costs tokens every session and changes nothing about how the agent behaves.
-- [ ] **UX-04** Warn on unknown top-level keys/tables in `agentenv.toml`, with did-you-mean suggestions — `src/config/schema.ts:734-760` · effort S · impact med
+- [x] **UX-04** ✅ 07f436a Warn on unknown top-level keys/tables in `agentenv.toml`, with did-you-mean suggestions — `src/config/schema.ts:734-760` · effort S · impact med
   Typos like `[tool]`, `scop = "user"` or `[rtk] enable = true` are silently ignored, while typos *inside* known tables are errors.
-- [ ] **UX-05** Warn when setup flags are ignored — `src/commands/setup.ts:230-253` · effort S · impact med
+- [x] **UX-05** ✅ e2ebd9a Warn when setup flags are ignored — `src/commands/setup.ts:230-253` · effort S · impact med
   Interactive `setup --scope user` and `setup --yes --agents codex_cli` over an existing config both drop what the user typed without saying so.
 - [x] **UX-06** ✅ 3c7aca8 Fix the doubled "Tier 0: Tier 0: checked; …" prefix in the non-TTY skip message — `src/shell/detector.ts:750`, `src/commands/apply.ts:176` · effort S · impact low
   `apply` adds `Tier 0: ` to a message that already starts with it.
-- [ ] **UX-07** `setup --yes` calls `loadConfig` without a guard in the existing/nearest-config branches — `src/commands/setup.ts:160,176` · effort S · impact low
+- [x] **UX-07** ✅ e2ebd9a `setup --yes` calls `loadConfig` without a guard in the existing/nearest-config branches — `src/commands/setup.ts:160,176` · effort S · impact low
   The `--config` branch reports parse errors with a themed message; these two fall through to the generic top-level handler.
 - [x] **UX-08** ✅ 64de45d Usage errors exit 1 instead of 2 (`doctor --section` with no match; unknown tool names given to `uninstall`) — `src/commands/doctor.ts:325-333`, `src/commands/uninstall.ts:204-208` · effort S · impact low
   `docs/guides/exit-codes.md` promises exit 2 for invalid arguments on every command. Use `command.error()` as `parseScopeFlag` callers do.
@@ -123,9 +123,9 @@ Themes this round:
 
 ## Accessibility   (A11Y-NN)
 
-- [ ] **A11Y-01** ASCII fallback for status/result glyphs (✓ ✗ ✅ ⚠️ ❌) on non-UTF-8 consoles and `TERM=dumb` — `src/ui/theme.ts:22-23`, `src/ui/output.ts:45-50` · effort S · impact low
+- [x] **A11Y-01** ✅ 776b5f1 ASCII fallback for status/result glyphs (✓ ✗ ✅ ⚠️ ❌) on non-UTF-8 consoles and `TERM=dumb` — `src/ui/theme.ts:22-23`, `src/ui/output.ts:45-50` · effort S · impact low
   Legacy Windows consoles (code page other than 65001) and some screen readers show these as mojibake or long spoken names. `[ok]/[FAIL]/[warn]` keeps the text signal.
-- [ ] **A11Y-02** A way to turn off the animated spinner but keep the output (`--no-spinner`, or honor `TERM=dumb`/`CI`) — `src/ui/spinner.ts` · effort S · impact low
+- [x] **A11Y-02** ✅ 8ecc585 A way to turn off the animated spinner but keep the output (`--no-spinner`, or honor `TERM=dumb`/`CI`) — `src/ui/spinner.ts` · effort S · impact low
   During the tens of seconds `apply` takes, a redrawing spinner floods screen readers. `--no-color` and `-q` exist, but nothing drops only the animation.
 
 ## New functionality   (FEAT-NN)
@@ -138,7 +138,7 @@ Themes this round:
   `uninstall` only removes mise tools. Nothing removes the Claude hook, the codex config or the instruction blocks, and every adapter's `cleanup()` is dead code.
 - [x] **FEAT-04** ✅ 1b58b11 Tell agents about the `rtk proxy <cmd>` escape hatch in the generated RTK section — `src/generate/agentsmd.ts:158-168` · effort S · impact med
   Seen during this audit: the rtk hook rewrote `rg -g …` / `rg --type …` into GNU `grep` and failed ("grep: unknown option -- g"), and agents have no hint on how to bypass the rewrite. Also worth reporting upstream to rtk.
-- [ ] **FEAT-05** Search parent directories for the project `agentenv.toml` — `src/config/scopes.ts:48-54` · effort S · impact med
+- [x] **FEAT-05** ✅ 180c799 Search parent directories for the project `agentenv.toml` — `src/config/scopes.ts:48-54` · effort S · impact med
   Running `agentenv status` from `repo/src` silently falls through to the user config (or "no config"). git and mise search upward.
 - [ ] **FEAT-06** Show a diff, or changed/unchanged per file, in `apply --dry-run`, including the Tier 0 plan — `src/commands/apply.ts:315-335` · effort M · impact med
   Dry-run only lists target paths, so users can't see what would change in the marker block, `mise.toml` or the user-global Tier 0 edits.
