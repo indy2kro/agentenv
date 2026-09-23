@@ -17,6 +17,7 @@ import { completionCommand } from './commands/completion.js';
 import { shellFixCommand } from './commands/shell-fix.js';
 import { setColorEnabled } from './ui/theme.js';
 import { setQuietEnabled } from './ui/output.js';
+import { setSpinnerEnabled } from './ui/spinner.js';
 import { installExitOverride } from './cli/exit.js';
 
 const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8'));
@@ -31,14 +32,23 @@ program
   .showSuggestionAfterError()
   .option('--no-color', 'disable colored output (also honors the NO_COLOR env var)')
   .option('-q, --quiet', 'suppress banner/footer chrome (data lines are kept)')
+  .option(
+    '--no-spinner',
+    'disable the animated spinner, keeping the label/succeed/fail lines (also auto-off under TERM=dumb or CI)',
+  )
   .option('--debug', 'print the failing command and stack trace for unhandled errors');
 
 // Color auto-detects from TTY + NO_COLOR/FORCE_COLOR by default (chalk);
-// --no-color and -q are explicit overrides, applied before any command runs.
+// --no-color, -q and --no-spinner are explicit overrides, applied before any command runs.
 program.hook('preAction', (_thisCommand, actionCommand) => {
-  const { color, quiet } = actionCommand.optsWithGlobals<{ color?: boolean; quiet?: boolean }>();
+  const { color, quiet, spinner } = actionCommand.optsWithGlobals<{
+    color?: boolean;
+    quiet?: boolean;
+    spinner?: boolean;
+  }>();
   if (color === false) setColorEnabled(false);
   setQuietEnabled(quiet === true);
+  if (spinner === false) setSpinnerEnabled(false);
 });
 
 // Add commands
