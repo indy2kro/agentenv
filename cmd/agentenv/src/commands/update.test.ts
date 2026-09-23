@@ -36,7 +36,10 @@ describe('update verify rendering', () => {
 });
 
 /** Poll `check` until it returns true or `timeoutMs` elapses. */
-async function waitFor(check: () => boolean, timeoutMs = 3000): Promise<void> {
+// macOS's FSEvents-backed fs.watch() can take noticeably longer than
+// inotify/ReadDirectoryChangesW to report a change, especially on a loaded
+// CI runner — 3000ms cut it close enough to time out there.
+async function waitFor(check: () => boolean, timeoutMs = 8000): Promise<void> {
   const start = Date.now();
   while (!check()) {
     if (Date.now() - start > timeoutMs) throw new Error('waitFor: timed out');
@@ -286,7 +289,14 @@ describe('doUpdate (SWEEP-09)', () => {
 
 describe('watchMiseToml (BUG-13)', () => {
   it('detects an atomic-rename save (editor-style) and re-reads agentenv.toml fresh each time', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-watch-'));
+    // realpathSync: watchMiseToml() itself canonicalizes the directory it
+    // hands to fs.watch() (fixes a Windows libuv crash on a short-name
+    // path). If this test then wrote through the original, non-canonical
+    // form, the watch and the writes would target the same file by two
+    // different path strings — on macOS, FSEvents has been observed to miss
+    // correlating those. Canonicalizing here too keeps test and production
+    // code on the exact same path form.
+    const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-watch-')));
     const configPath = path.join(dir, 'agentenv.toml');
     const miseTomlPath = path.join(dir, 'mise.toml');
     // loadConfig() now layers a user-scope config beneath this project one
