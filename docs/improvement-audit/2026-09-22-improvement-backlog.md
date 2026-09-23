@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-09-22
 
-Target: 40 · Found: 46 deduplicated items · Completed: 33/46 (+1 partial)
+Target: 40 · Found: 46 deduplicated items · Completed: 34/46 (+1 partial)
 
 > **How to use this document — read before implementing anything.**
 > As you finish each item, change `- [ ]` to `- [x]`, append ` ✅ <commit-sha>`,
@@ -58,7 +58,7 @@ Themes this round:
   Tier 0 edits are recorded for `shell-fix --revert`, but the adapters' writes to the *same* files have no backup or undo.
 - [x] **SWEEP-07** ✅ d5ee770 Add the minimum supported Node (22) to the CI matrix next to 24 — `.github/workflows/ci.yml:32,91`, `cmd/agentenv/package.json` `engines` · effort S · impact med
   `engines` promises `>=22.13.0`, but CI only runs Node 24 with `@types/node` 26, so a Node 23+-only API would ship unnoticed.
-- [ ] **SWEEP-08** [ci] Lint this repo with the tools it ships: add `actionlint`, `shellcheck` (smoke/stub scripts) and `gitleaks` steps to CI, and dogfood an `agentenv.toml` here — `.github/workflows/ci.yml` · effort M · impact med
+- [x] **SWEEP-08** ✅ 2cb00a9 [ci] Lint this repo with the tools it ships: add `actionlint`, `shellcheck` (smoke/stub scripts) and `gitleaks` steps to CI, and dogfood an `agentenv.toml` here — `.github/workflows/ci.yml` · effort M · impact med
   None of them run on this repo's own workflows or source today, and locally `actionlint`/`gitleaks` shims aren't even pinned (`mise ERROR No version is set for shim`).
 - [ ] **SWEEP-09** [test] Unit-test `update` (13% line coverage) via injectable mise runners, the same way `apply.test.ts` stubs rtk/claude — `src/commands/update.ts` · effort M · impact med
   `update` rewrites the global shims config and runs `mise self-update`/`mise up`, yet almost none of it is exercised.
