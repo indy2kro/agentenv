@@ -1,13 +1,21 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   RTK_INIT_FLAGS,
   checkRtkInstallation,
   isUnsupportedRtkAgentError,
   resolveRtkBinary,
+  resolveRtkInit,
+  rtkMessage,
 } from './rtk.js';
 import { AGENT_KEYS } from '../config/schema.js';
 import type { runMiseCaptured } from './mise.js';
+
+const rtkStub = fileURLToPath(new URL('../../test/fixtures/rtk-stub.mjs', import.meta.url));
 
 describe('RTK_INIT_FLAGS', () => {
   it('covers every agent key', () => {
@@ -144,5 +152,101 @@ describe('checkRtkInstallation', () => {
       })) as unknown as typeof import('child_process').spawnSync,
     });
     assert.equal(info.gainOk, false);
+  });
+
+  it('leaves version null when `rtk --version` exits non-zero with no output', () => {
+    const info = checkRtkInstallation('/project', {
+      resolveRtkBinary: () => '/usr/local/bin/rtk',
+      spawnSync: ((cmd: string, args: string[]) => {
+        if (args[0] === '--version') return { status: 1, stdout: '', stderr: '' };
+        return { status: 0, stdout: '', stderr: '' };
+      }) as typeof import('child_process').spawnSync,
+    });
+    assert.equal(info.version, null);
+    assert.equal(info.gainOk, true);
+  });
+
+  it('leaves version null and gainOk false when spawnSync throws for either probe', () => {
+    const info = checkRtkInstallation('/project', {
+      resolveRtkBinary: () => '/usr/local/bin/rtk',
+      spawnSync: (() => {
+        throw new Error('ENOENT');
+      }) as unknown as typeof import('child_process').spawnSync,
+    });
+    assert.equal(info.version, null);
+    assert.equal(info.gainOk, false);
+  });
+});
+
+describe('rtkMessage', () => {
+  it('returns the bare message when rtk produced no stdout', () => {
+    assert.equal(
+      rtkMessage({ success: true, message: 'rtk init --codex succeeded', stdout: '', stderr: '' }),
+      'rtk init --codex succeeded',
+    );
+  });
+
+  it('appends a whitespace-collapsed summary of stdout when present', () => {
+    const message = rtkMessage({
+      success: true,
+      message: 'rtk init --codex succeeded',
+      stdout: 'wrote  RTK.md\n  and   one more file\n',
+      stderr: '',
+    });
+    assert.equal(message, 'rtk init --codex succeeded: wrote RTK.md and one more file');
+  });
+
+  it('truncates a long stdout summary to 400 chars with an ellipsis', () => {
+    const longStdout = 'x'.repeat(500);
+    const message = rtkMessage({
+      success: true,
+      message: 'rtk init --codex succeeded',
+      stdout: longStdout,
+      stderr: '',
+    });
+    const summary = message.slice('rtk init --codex succeeded: '.length);
+    assert.equal(summary.length, 403); // 400 chars + '...'
+    assert.ok(summary.endsWith('...'));
+  });
+});
+
+describe('resolveRtkInit', () => {
+  it('returns the given function unchanged when one is injected', () => {
+    const fake = (() => ({
+      success: true,
+      message: 'stub',
+      stdout: '',
+      stderr: '',
+    })) as unknown as ReturnType<typeof resolveRtkInit>;
+    assert.equal(resolveRtkInit(fake), fake);
+  });
+
+  it('defaults to a real rtk-init function that succeeds via the AGENTENV_RTK_BIN stub', () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-rtk-init-'));
+    const prior = process.env.AGENTENV_RTK_BIN;
+    process.env.AGENTENV_RTK_BIN = rtkStub;
+    try {
+      const result = resolveRtkInit()(['--codex'], cwd);
+      assert.equal(result.success, true);
+      assert.match(result.stdout, /rtk init --codex succeeded/);
+      assert.equal(fs.existsSync(path.join(cwd, 'RTK.md')), true);
+    } finally {
+      if (prior === undefined) delete process.env.AGENTENV_RTK_BIN;
+      else process.env.AGENTENV_RTK_BIN = prior;
+    }
+  });
+
+  it('reports failure via the stub for an unrecognized flag combination', () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-rtk-init-'));
+    const prior = process.env.AGENTENV_RTK_BIN;
+    process.env.AGENTENV_RTK_BIN = rtkStub;
+    try {
+      const result = resolveRtkInit()(['--not-a-real-flag'], cwd);
+      assert.equal(result.success, false);
+      assert.match(result.message, /failed \(exit 1\)/);
+    } finally {
+      if (prior === undefined) delete process.env.AGENTENV_RTK_BIN;
+      else process.env.AGENTENV_RTK_BIN = prior;
+    }
   });
 });

@@ -126,18 +126,61 @@ export function wantsDoctorSection(sectionFilter: string | undefined, label: str
   return label.toLowerCase().startsWith(sectionFilter.toLowerCase());
 }
 
-function gatherDoctor(sectionFilter?: string): DoctorSection[] {
+/**
+ * Injectable seams for gatherDoctor(), every one of which touches this real
+ * machine (mise, git bash, config files, agent binaries) when left at its
+ * default — the reason this function had close to no direct test coverage.
+ * Tests override just enough of these to force each section down a specific
+ * branch deterministically, independent of what happens to be installed on
+ * whichever machine runs the suite.
+ */
+export interface GatherDoctorDeps {
+  detectShell?: typeof detectShell;
+  existsSync?: typeof fs.existsSync;
+  readFileSync?: typeof fs.readFileSync;
+  isMiseInstalled?: typeof isMiseInstalled;
+  getMiseVersion?: typeof getMiseVersion;
+  miseGlobalConfigPath?: typeof miseGlobalConfigPath;
+  shimsDir?: typeof shimsDir;
+  shimsDirOnPath?: typeof shimsDirOnPath;
+  findConfigPath?: typeof findConfigPath;
+  userConfigDir?: typeof userConfigDir;
+  loadConfig?: typeof loadConfig;
+  getInstalledToolState?: typeof getInstalledToolState;
+  toolAvailabilityClassification?: typeof toolAvailabilityClassification;
+  checkRtkInstallation?: typeof checkRtkInstallation;
+  isAgentInstalled?: typeof isAgentInstalled;
+}
+
+export function gatherDoctor(sectionFilter?: string, deps: GatherDoctorDeps = {}): DoctorSection[] {
+  const detectShellFn = deps.detectShell ?? detectShell;
+  const existsSync = deps.existsSync ?? fs.existsSync;
+  const readFileSync = deps.readFileSync ?? fs.readFileSync;
+  const isMiseInstalledFn = deps.isMiseInstalled ?? isMiseInstalled;
+  const getMiseVersionFn = deps.getMiseVersion ?? getMiseVersion;
+  const miseGlobalConfigPathFn = deps.miseGlobalConfigPath ?? miseGlobalConfigPath;
+  const shimsDirFn = deps.shimsDir ?? shimsDir;
+  const shimsDirOnPathFn = deps.shimsDirOnPath ?? shimsDirOnPath;
+  const findConfigPathFn = deps.findConfigPath ?? findConfigPath;
+  const userConfigDirFn = deps.userConfigDir ?? userConfigDir;
+  const loadConfigFn = deps.loadConfig ?? loadConfig;
+  const getInstalledToolStateFn = deps.getInstalledToolState ?? getInstalledToolState;
+  const toolAvailabilityClassificationFn =
+    deps.toolAvailabilityClassification ?? toolAvailabilityClassification;
+  const checkRtkInstallationFn = deps.checkRtkInstallation ?? checkRtkInstallation;
+  const isAgentInstalledFn = deps.isAgentInstalled ?? isAgentInstalled;
+
   const sections: DoctorSection[] = [];
   const wants = (label: string): boolean => wantsDoctorSection(sectionFilter, label);
 
   // System level
-  const shell = detectShell();
+  const shell = detectShellFn();
   const system: DoctorItem[] = [
     { status: 'ok', label: 'OS', detail: `${process.platform} (${process.arch})` },
   ];
   system.push({ status: 'ok', label: 'Shell', detail: shell.currentShell });
   if (process.platform === 'win32') {
-    if (shell.gitBashPath && fs.existsSync(bashExecutable(shell.gitBashPath))) {
+    if (shell.gitBashPath && existsSync(bashExecutable(shell.gitBashPath))) {
       system.push({
         status: 'ok',
         label: 'Git Bash',
@@ -155,8 +198,8 @@ function gatherDoctor(sectionFilter?: string): DoctorSection[] {
 
   // Mise + shims
   const miseItems: DoctorItem[] = [];
-  if (isMiseInstalled()) {
-    miseItems.push({ status: 'ok', label: 'mise', detail: getMiseVersion() });
+  if (isMiseInstalledFn()) {
+    miseItems.push({ status: 'ok', label: 'mise', detail: getMiseVersionFn() });
   } else {
     miseItems.push({
       status: 'fail',
@@ -172,31 +215,31 @@ function gatherDoctor(sectionFilter?: string): DoctorSection[] {
     return sections;
   }
 
-  const globalConfigPath = miseGlobalConfigPath();
+  const globalConfigPath = miseGlobalConfigPathFn();
   let globalConfig: string | null = null;
-  if (fs.existsSync(globalConfigPath)) globalConfig = fs.readFileSync(globalConfigPath, 'utf-8');
+  if (existsSync(globalConfigPath)) globalConfig = readFileSync(globalConfigPath, 'utf-8');
   const shimsValue = globalConfig === null ? null : getShimsDirValue(globalConfig);
-  const expected = norm(shimsDir());
+  const expected = norm(shimsDirFn());
   if (shimsValue && norm(shimsValue) === expected) {
-    miseItems.push({ status: 'ok', label: 'shims_dir', detail: shimsDir() });
+    miseItems.push({ status: 'ok', label: 'shims_dir', detail: shimsDirFn() });
   } else {
     miseItems.push({
       status: 'fail',
       label: 'shims_dir',
-      detail: `not set to ${shimsDir()} in ${globalConfigPath} — run \`agentenv apply\``,
+      detail: `not set to ${shimsDirFn()} in ${globalConfigPath} — run \`agentenv apply\``,
     });
   }
   miseItems.push({
-    status: shimsDirOnPath() ? 'ok' : 'warn',
+    status: shimsDirOnPathFn() ? 'ok' : 'warn',
     label: 'shims on PATH',
-    detail: shimsDirOnPath()
-      ? shimsDir()
-      : `${shimsDir()} is not on PATH — add it so the shims resolve`,
+    detail: shimsDirOnPathFn()
+      ? shimsDirFn()
+      : `${shimsDirFn()} is not on PATH — add it so the shims resolve`,
   });
   sections.push({ title: 'Mise', items: miseItems });
 
   // Config
-  const configPath = findConfigPath();
+  const configPath = findConfigPathFn();
   if (!configPath) {
     sections.push({
       title: 'Config',
@@ -212,14 +255,14 @@ function gatherDoctor(sectionFilter?: string): DoctorSection[] {
   }
 
   const scope =
-    norm(configPath) === norm(path.join(userConfigDir(), 'agentenv.toml')) ? 'user' : 'project';
+    norm(configPath) === norm(path.join(userConfigDirFn(), 'agentenv.toml')) ? 'user' : 'project';
   const configItems: DoctorItem[] = [
     { status: 'ok', label: 'file', detail: `${configPath} (${scope} scope)` },
   ];
 
   let config;
   try {
-    config = loadConfig(configPath);
+    config = loadConfigFn(configPath);
   } catch (error) {
     configItems.push({
       status: 'fail',
@@ -253,10 +296,10 @@ function gatherDoctor(sectionFilter?: string): DoctorSection[] {
     // Same verdict as apply's verify step: a tool apply itself skips (no
     // mise fallback on this platform) or installs-but-needs-a-fresh-shell is
     // never a doctor failure here, only a genuinely-missing one is.
-    const installedState = getInstalledToolState();
+    const installedState = getInstalledToolStateFn();
     for (const key of enabledTools) {
       const binary = BINARY_MAP[key];
-      const status = toolAvailabilityClassification(key, binary, installedState);
+      const status = toolAvailabilityClassificationFn(key, binary, installedState);
       const item: DoctorItem = { status: 'ok', label: `${binary} (${key})`, detail: '' };
       if (status === 'needs-new-terminal') {
         item.status = 'warn';
@@ -287,7 +330,7 @@ function gatherDoctor(sectionFilter?: string): DoctorSection[] {
   if (config.rtk?.enabled === true || tools.rtk === true) {
     const rtkItems: DoctorItem[] = [];
     if (wants('RTK')) {
-      const rtkInfo = checkRtkInstallation(path.dirname(configPath));
+      const rtkInfo = checkRtkInstallationFn(path.dirname(configPath));
       if (!rtkInfo.resolvedPath) {
         rtkItems.push({
           status: 'fail',
@@ -326,7 +369,7 @@ function gatherDoctor(sectionFilter?: string): DoctorSection[] {
   const agentItems: DoctorItem[] = [];
   if (wants('Agents')) {
     for (const agent of agents) {
-      const installed = isAgentInstalled(agent as AgentKey);
+      const installed = isAgentInstalledFn(agent as AgentKey);
       agentItems.push({
         status: installed ? 'ok' : 'warn',
         label: `${agent} (${AGENT_COMMANDS[agent as AgentKey][0]})`,

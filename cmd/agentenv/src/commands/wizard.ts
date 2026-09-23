@@ -23,15 +23,48 @@ import { theme } from '../ui/theme.js';
 import { renderLogo, resolveResultLine } from '../ui/output.js';
 
 /**
+ * Injectable seams for `runConfigWizard()`. Every field defaults to the real
+ * implementation; tests override just the prompt functions (with canned
+ * answers driven off the prompt `message`) and the mise/config probes, so
+ * the full 7-step flow can run without a TTY or a real mise install.
+ */
+export interface WizardDeps {
+  checkbox?: typeof checkbox;
+  confirm?: typeof confirm;
+  input?: typeof input;
+  select?: typeof select;
+  isMiseInstalled?: typeof isMiseInstalled;
+  getMiseVersion?: typeof getMiseVersion;
+  loadConfig?: typeof loadConfig;
+  findConfigPath?: typeof findConfigPath;
+  detectInstalledAgents?: typeof detectInstalledAgents;
+  saveAndApply?: typeof saveAndApply;
+  /** Overrides the stdin/stdout TTY check (real process streams by default). */
+  isTTY?: () => boolean;
+}
+
+/**
  * Shared interactive setup wizard — the single flow behind `agentenv setup`
  * and the `configure` alias:
  *   1. agents -> 2. tools (all tiers, one page, no wrap) -> 3. custom binaries
  *   -> 4. scope -> 5. rtk -> 6. Superpowers -> 7. diff review -> apply
  */
-export async function runConfigWizard(): Promise<void> {
+export async function runConfigWizard(deps: WizardDeps = {}): Promise<void> {
+  const checkboxFn = deps.checkbox ?? checkbox;
+  const confirmFn = deps.confirm ?? confirm;
+  const inputFn = deps.input ?? input;
+  const selectFn = deps.select ?? select;
+  const isMiseInstalledFn = deps.isMiseInstalled ?? isMiseInstalled;
+  const getMiseVersionFn = deps.getMiseVersion ?? getMiseVersion;
+  const loadConfigFn = deps.loadConfig ?? loadConfig;
+  const findConfigPathFn = deps.findConfigPath ?? findConfigPath;
+  const detectInstalledAgentsFn = deps.detectInstalledAgents ?? detectInstalledAgents;
+  const saveAndApplyFn = deps.saveAndApply ?? saveAndApply;
+  const isTTY = deps.isTTY ?? (() => process.stdin.isTTY === true && process.stdout.isTTY === true);
+
   renderLogo();
 
-  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+  if (!isTTY()) {
     console.error(
       theme.fail(
         'Setup is interactive; in a non-TTY run `agentenv setup --yes` or `agentenv apply`.',
@@ -41,7 +74,7 @@ export async function runConfigWizard(): Promise<void> {
     return;
   }
 
-  if (!isMiseInstalled()) {
+  if (!isMiseInstalledFn()) {
     console.error(
       theme.fail('agentenv requires mise to install and manage tools, but mise was not found.'),
     );
@@ -50,7 +83,7 @@ export async function runConfigWizard(): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  console.log(`${prereqLine(getMiseVersion())}\n`);
+  console.log(`${prereqLine(getMiseVersionFn())}\n`);
 
   // loadConfig() only throws when a config file exists but fails to parse
   // (no file at all returns DEFAULT_CONFIG directly) — so a catch here means
@@ -58,18 +91,18 @@ export async function runConfigWizard(): Promise<void> {
   // defaults that the wizard would then save over the user's real config.
   let existing: AgentenvConfig;
   try {
-    existing = loadConfig();
+    existing = loadConfigFn();
   } catch (error) {
     console.error(theme.fail(error instanceof Error ? error.message : String(error)));
     process.exitCode = 1;
     return;
   }
-  const hasExistingConfig = findConfigPath() !== undefined;
-  const detected = detectInstalledAgents();
+  const hasExistingConfig = findConfigPathFn() !== undefined;
+  const detected = detectInstalledAgentsFn();
 
   // Step 1: Select agents (pre-checked = already enabled or detected; one page; no wrap).
   console.log('Step 1/7: Select agents to configure');
-  const agents = (await checkbox({
+  const agents = (await checkboxFn({
     message: 'Select agents:',
     pageSize: promptPageSize(AGENT_OPTIONS.length, process.stdout.rows),
     loop: false,
@@ -84,7 +117,7 @@ export async function runConfigWizard(): Promise<void> {
   // the terminal allows, and navigation that stops instead of wrapping.
   console.log('\nStep 2/7: Select tools to install');
   const toolEntries = toolChoices(existing);
-  const tools = (await checkbox({
+  const tools = (await checkboxFn({
     message: 'Select tools (Tiers 1-3):',
     pageSize: promptPageSize(toolEntries.length, process.stdout.rows),
     loop: false,
@@ -96,23 +129,23 @@ export async function runConfigWizard(): Promise<void> {
   // Step 3: Add custom binaries
   console.log('\nStep 3/7: Add custom binaries');
   const customTools: CustomTool[] = [];
-  let addCustom = await confirm({ message: 'Add a custom binary?', default: false });
+  let addCustom = await confirmFn({ message: 'Add a custom binary?', default: false });
   while (addCustom) {
-    const name = await input({ message: 'Tool name (e.g. "my-tool"):' });
-    const description = await input({ message: 'Description (optional):', default: '' });
-    const alreadyInstalled = await confirm({ message: 'Already installed?', default: true });
+    const name = await inputFn({ message: 'Tool name (e.g. "my-tool"):' });
+    const description = await inputFn({ message: 'Description (optional):', default: '' });
+    const alreadyInstalled = await confirmFn({ message: 'Already installed?', default: true });
 
     if (alreadyInstalled) {
       for (;;) {
-        const pathWindows = await input({
+        const pathWindows = await inputFn({
           message: 'Windows path (e.g. C:\\tools\\my-tool.exe):',
           default: '',
         });
-        const pathMacOS = await input({
+        const pathMacOS = await inputFn({
           message: 'macOS path (e.g. /usr/local/bin/my-tool):',
           default: '',
         });
-        const pathLinux = await input({
+        const pathLinux = await inputFn({
           message: 'Linux path (e.g. /usr/bin/my-tool):',
           default: '',
         });
@@ -133,7 +166,7 @@ export async function runConfigWizard(): Promise<void> {
           break;
         }
         console.log(theme.warn(`  Path(s) not found on this machine: ${missing.join(', ')}`));
-        const retry = await confirm({
+        const retry = await confirmFn({
           message: 'Re-enter the paths, or keep them anyway? (they may exist on the target OS)',
           default: true,
         });
@@ -150,8 +183,8 @@ export async function runConfigWizard(): Promise<void> {
         }
       }
     } else {
-      const miseSource = await input({ message: 'mise source (e.g. github:owner/repo):' });
-      const version = await input({ message: 'Version (default: latest):', default: 'latest' });
+      const miseSource = await inputFn({ message: 'mise source (e.g. github:owner/repo):' });
+      const version = await inputFn({ message: 'Version (default: latest):', default: 'latest' });
       customTools.push({
         name,
         description,
@@ -161,12 +194,12 @@ export async function runConfigWizard(): Promise<void> {
       });
     }
 
-    addCustom = await confirm({ message: 'Add another custom binary?', default: false });
+    addCustom = await confirmFn({ message: 'Add another custom binary?', default: false });
   }
 
   // Step 4: Choose scope
   console.log('\nStep 4/7: Choose configuration scope');
-  const scope = (await select({
+  const scope = (await selectFn({
     message: 'Scope:',
     choices: [
       { name: `Project-level (this repo: ${process.cwd()})`, value: 'project' },
@@ -176,7 +209,7 @@ export async function runConfigWizard(): Promise<void> {
 
   // Step 5: Enable rtk
   console.log('\nStep 5/7: Token optimization');
-  const rtkEnabled = await confirm({
+  const rtkEnabled = await confirmFn({
     message: 'Enable rtk command rewriting?',
     default: existing.rtk?.enabled !== false,
   });
@@ -189,7 +222,7 @@ export async function runConfigWizard(): Promise<void> {
       existingSuperpowers?.enabled ? 'enabled' : 'disabled'
     }`,
   );
-  const wantsSuperpowers = await confirm({
+  const wantsSuperpowers = await confirmFn({
     message:
       'Enable the optional Superpowers integration for Claude Code? (installs a third-party plugin via `claude plugin install`)',
     default: existingSuperpowers?.enabled === true,
@@ -204,23 +237,23 @@ export async function runConfigWizard(): Promise<void> {
     console.log('    - it can register a SessionStart hook in the Claude Code setup');
     console.log('    - the optional visual companion can make external requests');
     console.log('  The next prompts pin the ref and the two permissions below.\n');
-    const ref = await input({
+    const ref = await inputFn({
       message: 'Superpowers ref to pin (tag/branch/commit):',
       default:
         existingSuperpowers?.ref ?? DEFAULT_CONFIG.integrations?.superpowers?.ref ?? 'v6.3.0',
     });
-    const allowHooks = await confirm({
+    const allowHooks = await confirmFn({
       message: 'Allow Superpowers to register its SessionStart hook for Claude Code?',
       default: existingSuperpowers?.allow_hooks === true,
     });
-    const allowExternalRequests = await confirm({
+    const allowExternalRequests = await confirmFn({
       message: 'Allow the optional Superpowers visual companion to make external requests?',
       default: existingSuperpowers?.allow_external_requests === true,
     });
     console.log(
       `  Review: source=github:obra/superpowers, ref=${ref}, scope=${scope}, agents=claude_code, hooks=${allowHooks}, external_requests=${allowExternalRequests}`,
     );
-    const confirmIntegration = await confirm({
+    const confirmIntegration = await confirmFn({
       message: 'Confirm enabling Superpowers with these settings?',
       default: true,
     });
@@ -268,7 +301,7 @@ export async function runConfigWizard(): Promise<void> {
     for (const line of formatDiffLines(diff)) console.log(`  ${line}`);
   }
 
-  const proceed = await confirm({ message: 'Apply this configuration?', default: true });
+  const proceed = await confirmFn({ message: 'Apply this configuration?', default: true });
   if (!proceed) {
     console.log(
       `\n${resolveResultLine({ severity: 'warn', headline: 'Cancelled', summary: 'No changes were made' })}\n`,
@@ -277,5 +310,5 @@ export async function runConfigWizard(): Promise<void> {
   }
 
   const file = configFilePath(scope);
-  await saveAndApply(config, file, { successMessage: 'Configuration applied successfully!' });
+  await saveAndApplyFn(config, file, { successMessage: 'Configuration applied successfully!' });
 }

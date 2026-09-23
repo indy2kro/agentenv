@@ -150,6 +150,17 @@ describe('Tier 0 shell fix', () => {
       const second = applyAgentShellFix('opencode', bashExe, home);
       assert.equal(second.action, 'unchanged');
     });
+
+    it('skips unparseable user config instead of clobbering it', () => {
+      const home = tempHome();
+      const file = path.join(home, '.config', 'opencode', 'opencode.json');
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, '{"broken":');
+
+      const result = applyAgentShellFix('opencode', bashExe, home);
+      assert.equal(result.action, 'skipped');
+      assert.equal(fs.readFileSync(file, 'utf8'), '{"broken":');
+    });
   });
 
   describe('GitHub Copilot', () => {
