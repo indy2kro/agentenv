@@ -129,7 +129,7 @@ export async function doUpdate(
 
   let config: AgentenvConfig;
   try {
-    config = loadConfigFn(configPath);
+    config = loadConfigFn(configPath, { layerUserConfig: true });
   } catch (error) {
     logErr(error instanceof Error ? error.message : String(error));
     finish(false);
@@ -323,7 +323,7 @@ export function watchMiseToml(
         console.log(`\nDetected change in ${resolvedPath}, running mise up...`);
         let config: AgentenvConfig;
         try {
-          config = loadConfig(configPath);
+          config = loadConfig(configPath, { layerUserConfig: true });
         } catch (error) {
           console.error(
             `  Could not re-read ${configPath}: ${error instanceof Error ? error.message : String(error)}`,

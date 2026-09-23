@@ -854,3 +854,106 @@ describe('loadConfig user-scope resolution', () => {
     assert.equal(config.scope, 'project');
   });
 });
+
+describe('loadConfig layerUserConfig (FEAT-08)', () => {
+  function withUserConfig(userToml: string, fn: (userConfigDir: string) => void): void {
+    const originalXdg = process.env.XDG_CONFIG_HOME;
+    const xdg = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-xdg-'));
+    try {
+      const userDir = path.join(xdg, 'agentenv');
+      fs.mkdirSync(userDir, { recursive: true });
+      fs.writeFileSync(path.join(userDir, 'agentenv.toml'), userToml);
+      process.env.XDG_CONFIG_HOME = xdg;
+      fn(userDir);
+    } finally {
+      if (originalXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = originalXdg;
+    }
+  }
+
+  it('is off by default: a sparse project config does not inherit user-scope values', () => {
+    withUserConfig('scope = "user"\n[agents]\ncopilot = true\n[tools]\nyq = true\n', () => {
+      const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-layer-'));
+      const configPath = path.join(directory, 'agentenv.toml');
+      fs.writeFileSync(configPath, 'scope = "project"\n[agents]\nclaude_code = true\n');
+
+      const config = loadConfig(configPath);
+
+      assert.equal(config.agents?.claude_code, true);
+      assert.equal(config.agents?.copilot, false); // DEFAULT_CONFIG, not the user config's true.
+      assert.equal(config.tools?.yq, false);
+    });
+  });
+
+  it('fills gaps in a sparse project config from the user config when enabled', () => {
+    withUserConfig('scope = "user"\n[agents]\ncopilot = true\n[tools]\nyq = true\n', () => {
+      const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-layer-'));
+      const configPath = path.join(directory, 'agentenv.toml');
+      fs.writeFileSync(configPath, 'scope = "project"\n[agents]\nclaude_code = true\n');
+
+      const config = loadConfig(configPath, { layerUserConfig: true });
+
+      assert.equal(config.agents?.claude_code, true); // project's own value
+      assert.equal(config.agents?.copilot, true); // inherited from user config
+      assert.equal(config.tools?.yq, true); // inherited from user config
+      assert.equal(config.scope, 'project'); // never inherited — intrinsic to the file loaded
+    });
+  });
+
+  it('lets a project value win over the same key in the user config', () => {
+    withUserConfig('scope = "user"\n[agents]\ncopilot = true\n', () => {
+      const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-layer-'));
+      const configPath = path.join(directory, 'agentenv.toml');
+      fs.writeFileSync(configPath, 'scope = "project"\n[agents]\ncopilot = false\n');
+
+      const config = loadConfig(configPath, { layerUserConfig: true });
+
+      assert.equal(config.agents?.copilot, false);
+    });
+  });
+
+  it('falls back to DEFAULT_CONFIG when the user config exists but fails to parse', () => {
+    withUserConfig('[agents\nbroken', () => {
+      const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-layer-'));
+      const configPath = path.join(directory, 'agentenv.toml');
+      fs.writeFileSync(configPath, 'scope = "project"\n[agents]\nclaude_code = true\n');
+
+      const config = loadConfig(configPath, { layerUserConfig: true });
+
+      assert.equal(config.agents?.claude_code, true);
+      assert.equal(config.agents?.copilot, false); // DEFAULT_CONFIG fallback, not a thrown error.
+    });
+  });
+
+  it('does not layer when loading the user-scope file itself', () => {
+    withUserConfig('scope = "user"\n[agents]\ncopilot = true\n', (userDir) => {
+      const configPath = path.join(userDir, 'agentenv.toml');
+
+      // Loading the user file itself must not try to layer it beneath
+      // itself; layerUserConfig only ever applies to a project-scope load.
+      const config = loadConfig(configPath, { layerUserConfig: true });
+
+      assert.equal(config.scope, 'user');
+      assert.equal(config.agents?.copilot, true);
+    });
+  });
+
+  it('is a no-op when no project config was actually resolved (DEFAULT_CONFIG returned directly)', () => {
+    const originalXdg = process.env.XDG_CONFIG_HOME;
+    const emptyXdg = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-xdg-empty-'));
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-layer-nocfg-'));
+    const originalCwd = process.cwd();
+    try {
+      process.env.XDG_CONFIG_HOME = emptyXdg;
+      process.chdir(cwd);
+
+      const config = loadConfig(undefined, { layerUserConfig: true });
+
+      assert.deepEqual(config, DEFAULT_CONFIG);
+    } finally {
+      process.chdir(originalCwd);
+      if (originalXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = originalXdg;
+    }
+  });
+});

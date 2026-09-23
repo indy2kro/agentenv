@@ -514,7 +514,7 @@ export const applyCommand = new Command()
         }
       }
       try {
-        config = loadConfig(configPath);
+        config = loadConfig(configPath, { layerUserConfig: true });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         if (json) jsonFail(message);

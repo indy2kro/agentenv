@@ -316,7 +316,7 @@ export async function gatherStatus(deps: StatusDeps = {}): Promise<StatusReport>
 
   let config: AgentenvConfig;
   try {
-    config = (deps.loadConfig ?? loadConfig)(configPath);
+    config = (deps.loadConfig ?? loadConfig)(configPath, { layerUserConfig: true });
   } catch (error) {
     const scope = scopeFromConfigPath(configPath);
     const report: StatusReport = {

@@ -24,6 +24,14 @@ overrides it per project, and commands run from a subdirectory (e.g.
 `repo/src`) still find `repo/agentenv.toml` and apply against `repo/`, not
 the subdirectory.
 
+**Layering**: a project file only needs to state what it wants to override.
+Any key it leaves out — a whole table like `[agents]`, or one entry inside
+one — falls through to your user-scope config first, and only then to
+agentenv's own defaults. `custom_tools` is the one exception: a project file
+that declares `[[custom_tools]]` at all replaces the user config's list
+entirely, rather than merging entry-by-entry. `scope` itself is never
+inherited — it's intrinsic to whichever file was actually loaded.
+
 ## Getting started
 
 Run the wizard to build the file interactively, or read this reference and

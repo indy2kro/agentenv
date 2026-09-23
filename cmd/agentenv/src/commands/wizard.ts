@@ -91,7 +91,7 @@ export async function runConfigWizard(deps: WizardDeps = {}): Promise<void> {
   // defaults that the wizard would then save over the user's real config.
   let existing: AgentenvConfig;
   try {
-    existing = loadConfigFn();
+    existing = loadConfigFn(undefined, { layerUserConfig: true });
   } catch (error) {
     console.error(theme.fail(error instanceof Error ? error.message : String(error)));
     process.exitCode = 1;

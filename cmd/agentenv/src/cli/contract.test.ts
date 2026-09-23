@@ -599,6 +599,39 @@ direnv = false
     assert.match(missing.stderr, /No agentenv\.toml found/);
   });
 
+  it('status --json layers a sparse project config over the user config (FEAT-08)', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-layer-home-'));
+    const userDir = path.join(home, '.config', 'agentenv');
+    fs.mkdirSync(userDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(userDir, 'agentenv.toml'),
+      'scope = "user"\n[agents]\ncopilot = true\n[tools]\nyq = true\n',
+    );
+    const layerEnv: NodeJS.ProcessEnv = { ...process.env, HOME: home, USERPROFILE: home };
+    delete layerEnv.XDG_CONFIG_HOME;
+
+    const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-layer-project-'));
+    // Sparse on purpose: says nothing about copilot or yq at all.
+    fs.writeFileSync(
+      path.join(projectDir, 'agentenv.toml'),
+      'scope = "project"\n[agents]\nclaude_code = true\n',
+    );
+
+    // Status's exit code reflects drift against real machine state (nothing
+    // was actually `apply`'d here) — irrelevant to this test, which only
+    // checks that the *resolved config* layered correctly. Both `agents`
+    // and `tools` list only config-enabled entries (status.ts's `configured`
+    // field means "generated file present on disk", not "enabled" — a
+    // present array entry is what "enabled" means here).
+    const result = run(['status', '--json'], projectDir, layerEnv);
+    const json = JSON.parse(result.stdout);
+    const agent = (key: string) => json.agents.find((a: { key: string }) => a.key === key);
+    const tool = (key: string) => json.tools.find((t: { key: string }) => t.key === key);
+    assert.ok(agent('claude_code'), "claude_code should be enabled — the project file's own value");
+    assert.ok(agent('copilot'), 'copilot should be enabled — inherited from the user config');
+    assert.ok(tool('yq'), 'yq should be enabled — inherited from the user config');
+  });
+
   it('exits 1 for uninstall with no config (operational failure)', () => {
     const missing = run(['uninstall'], empty, shellEnv);
     assert.equal(missing.status, 1);

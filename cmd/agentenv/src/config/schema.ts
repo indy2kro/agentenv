@@ -8,7 +8,7 @@ import * as path from 'path';
 import { isDeepStrictEqual } from 'util';
 import toml from 'toml';
 import { writeFileWithVerify } from '../utils/fs-retry.js';
-import { userConfigDir } from './scopes.js';
+import { findConfigPath, userConfigDir } from './scopes.js';
 
 export interface CustomTool {
   name: string;
@@ -411,43 +411,39 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   trivy: 'Vulnerability, secret, and IaC scanner',
 };
 
+export interface LoadConfigOptions {
+  /**
+   * Merge a discovered user-scope config in beneath a project-scope one,
+   * instead of the project file shadowing it completely (FEAT-08) — a
+   * project config only needs to state what it wants to override; anything
+   * it leaves out falls through to the user config, then to DEFAULT_CONFIG.
+   * Off by default, so every existing single-file caller — including the
+   * whole test suite — keeps today's exact behavior regardless of what user
+   * config a given machine happens to have; real command entry points that
+   * want layering opt in explicitly.
+   */
+  layerUserConfig?: boolean;
+}
+
+function readAndParseToml(filePath: string): AgentenvConfig {
+  const data = fs.readFileSync(filePath, 'utf-8');
+  return toml.parse(data) as AgentenvConfig;
+}
+
 /**
- * Load configuration from agentenv.toml file
- * Searches in current directory, then user config directory
+ * Load configuration from agentenv.toml file.
+ * With no explicit `configPath`, searches upward from cwd (matching git/mise
+ * and findConfigPath()), then the user config directory.
  */
-export function loadConfig(configPath?: string): AgentenvConfig {
-  let pathToLoad = configPath;
-
-  if (!pathToLoad) {
-    // Try current directory
-    try {
-      if (fs.existsSync('agentenv.toml')) {
-        pathToLoad = 'agentenv.toml';
-      }
-    } catch {
-      // Ignore
-    }
-
-    // Try user config directory
-    if (!pathToLoad) {
-      const userConfigPath = path.join(userConfigDir(), 'agentenv.toml');
-      try {
-        if (fs.existsSync(userConfigPath)) {
-          pathToLoad = userConfigPath;
-        }
-      } catch {
-        // Ignore
-      }
-    }
-  }
+export function loadConfig(configPath?: string, options: LoadConfigOptions = {}): AgentenvConfig {
+  const pathToLoad = configPath ?? findConfigPath();
 
   if (!pathToLoad) {
     return { ...DEFAULT_CONFIG };
   }
 
   try {
-    const data = fs.readFileSync(pathToLoad, 'utf-8');
-    const parsed = toml.parse(data) as AgentenvConfig;
+    const parsed = readAndParseToml(pathToLoad);
     // Infer scope from where the file actually was, when the file itself
     // doesn't declare one — a hand-written ~/.config/agentenv/agentenv.toml
     // with no `scope = "user"` line otherwise defaults (via
@@ -461,7 +457,25 @@ export function loadConfig(configPath?: string): AgentenvConfig {
         path.resolve(path.dirname(pathToLoad)) === path.resolve(userConfigDir());
       parsed.scope = isUserScopePath ? 'user' : 'project';
     }
-    return mergeWithDefaults(normalizeConfig(parsed));
+
+    let base = DEFAULT_CONFIG;
+    if (options.layerUserConfig && parsed.scope === 'project') {
+      const userConfigPath = path.join(userConfigDir(), 'agentenv.toml');
+      if (
+        path.resolve(userConfigPath) !== path.resolve(pathToLoad) &&
+        fs.existsSync(userConfigPath)
+      ) {
+        try {
+          base = mergeWithDefaults(normalizeConfig(readAndParseToml(userConfigPath)));
+        } catch {
+          // A broken/unreadable user config must not block a valid project
+          // config from loading — fall back to DEFAULT_CONFIG, same as if
+          // no user config existed at all.
+        }
+      }
+    }
+
+    return mergeWithDefaults(normalizeConfig(parsed), base);
   } catch (err) {
     throw new Error(
       `Invalid agentenv configuration at ${pathToLoad}: ${err instanceof Error ? err.message : String(err)}`,
@@ -650,8 +664,19 @@ function copyUnknownKeys(
 /**
  * Merge provided config with defaults (missing properties get default values)
  */
-function mergeWithDefaults(config: AgentenvConfig): AgentenvConfig {
-  const result: AgentenvConfig = { ...DEFAULT_CONFIG };
+/**
+ * Merge a parsed config over `base` (defaulting to DEFAULT_CONFIG): every
+ * field `config` sets wins, everything it leaves unset falls through to
+ * `base`'s value. Passing a config already merged with DEFAULT_CONFIG as
+ * `base` (rather than DEFAULT_CONFIG itself) is what layers a project
+ * config over a user config instead of over hardcoded defaults (FEAT-09 —
+ * loadConfig()'s `layerUserConfig` option).
+ */
+function mergeWithDefaults(
+  config: AgentenvConfig,
+  base: AgentenvConfig = DEFAULT_CONFIG,
+): AgentenvConfig {
+  const result: AgentenvConfig = { ...base };
   copyUnknownKeys(config, result as unknown as Record<string, unknown>, TOP_LEVEL_CONFIG_KEYS);
 
   // Merge scope
@@ -661,14 +686,14 @@ function mergeWithDefaults(config: AgentenvConfig): AgentenvConfig {
 
   // Merge agents
   if (config.agents) {
-    result.agents = { ...DEFAULT_CONFIG.agents, ...config.agents };
+    result.agents = { ...base.agents, ...config.agents };
   }
 
   // Merge tools (data-driven over TOOL_KEYS so a new catalog tool can never
   // be silently dropped here the way a hand-maintained per-key list would)
   if (config.tools) {
     result.tools = Object.fromEntries(
-      TOOL_KEYS.map((key) => [key, config.tools?.[key] ?? DEFAULT_CONFIG.tools?.[key]]),
+      TOOL_KEYS.map((key) => [key, config.tools?.[key] ?? base.tools?.[key]]),
     ) as NonNullable<AgentenvConfig['tools']>;
   }
 
@@ -686,9 +711,9 @@ function mergeWithDefaults(config: AgentenvConfig): AgentenvConfig {
   // Merge rtk
   if (config.rtk) {
     result.rtk = {
-      enabled: config.rtk.enabled ?? DEFAULT_CONFIG.rtk?.enabled,
+      enabled: config.rtk.enabled ?? base.rtk?.enabled,
       init: Object.fromEntries(
-        AGENT_KEYS.map((key) => [key, config.rtk?.init?.[key] ?? DEFAULT_CONFIG.rtk?.init?.[key]]),
+        AGENT_KEYS.map((key) => [key, config.rtk?.init?.[key] ?? base.rtk?.init?.[key]]),
       ) as NonNullable<RtkConfig['init']>,
     };
     copyUnknownKeys(config.rtk, result.rtk as unknown as Record<string, unknown>, [
@@ -707,9 +732,9 @@ function mergeWithDefaults(config: AgentenvConfig): AgentenvConfig {
   // Merge tier0
   if (config.tier0) {
     result.tier0 = {
-      check_enabled: config.tier0.check_enabled ?? DEFAULT_CONFIG.tier0?.check_enabled,
-      git_bash_path: config.tier0.git_bash_path ?? DEFAULT_CONFIG.tier0?.git_bash_path,
-      mode: config.tier0.mode ?? DEFAULT_CONFIG.tier0?.mode,
+      check_enabled: config.tier0.check_enabled ?? base.tier0?.check_enabled,
+      git_bash_path: config.tier0.git_bash_path ?? base.tier0?.git_bash_path,
+      mode: config.tier0.mode ?? base.tier0?.mode,
     };
     copyUnknownKeys(config.tier0, result.tier0 as unknown as Record<string, unknown>, [
       'check_enabled',
@@ -721,9 +746,9 @@ function mergeWithDefaults(config: AgentenvConfig): AgentenvConfig {
   // Merge generate
   if (config.generate) {
     result.generate = {
-      marker_start: config.generate.marker_start ?? DEFAULT_CONFIG.generate?.marker_start,
-      marker_end: config.generate.marker_end ?? DEFAULT_CONFIG.generate?.marker_end,
-      files: config.generate.files ?? DEFAULT_CONFIG.generate?.files,
+      marker_start: config.generate.marker_start ?? base.generate?.marker_start,
+      marker_end: config.generate.marker_end ?? base.generate?.marker_end,
+      files: config.generate.files ?? base.generate?.files,
     };
     copyUnknownKeys(config.generate, result.generate as unknown as Record<string, unknown>, [
       'marker_start',
@@ -738,27 +763,21 @@ function mergeWithDefaults(config: AgentenvConfig): AgentenvConfig {
       superpowers: config.integrations.superpowers
         ? {
             enabled:
-              config.integrations.superpowers.enabled ??
-              DEFAULT_CONFIG.integrations?.superpowers?.enabled,
+              config.integrations.superpowers.enabled ?? base.integrations?.superpowers?.enabled,
             source:
-              config.integrations.superpowers.source ??
-              DEFAULT_CONFIG.integrations?.superpowers?.source,
-            ref:
-              config.integrations.superpowers.ref ?? DEFAULT_CONFIG.integrations?.superpowers?.ref,
-            scope:
-              config.integrations.superpowers.scope ??
-              DEFAULT_CONFIG.integrations?.superpowers?.scope,
+              config.integrations.superpowers.source ?? base.integrations?.superpowers?.source,
+            ref: config.integrations.superpowers.ref ?? base.integrations?.superpowers?.ref,
+            scope: config.integrations.superpowers.scope ?? base.integrations?.superpowers?.scope,
             agents:
-              config.integrations.superpowers.agents ??
-              DEFAULT_CONFIG.integrations?.superpowers?.agents,
+              config.integrations.superpowers.agents ?? base.integrations?.superpowers?.agents,
             allow_hooks:
               config.integrations.superpowers.allow_hooks ??
-              DEFAULT_CONFIG.integrations?.superpowers?.allow_hooks,
+              base.integrations?.superpowers?.allow_hooks,
             allow_external_requests:
               config.integrations.superpowers.allow_external_requests ??
-              DEFAULT_CONFIG.integrations?.superpowers?.allow_external_requests,
+              base.integrations?.superpowers?.allow_external_requests,
           }
-        : DEFAULT_CONFIG.integrations?.superpowers,
+        : base.integrations?.superpowers,
     };
     copyUnknownKeys(
       config.integrations,
@@ -777,9 +796,8 @@ function mergeWithDefaults(config: AgentenvConfig): AgentenvConfig {
   // Merge advanced
   if (config.advanced) {
     result.advanced = {
-      default_mode: config.advanced.default_mode ?? DEFAULT_CONFIG.advanced?.default_mode,
-      show_diff_preview:
-        config.advanced.show_diff_preview ?? DEFAULT_CONFIG.advanced?.show_diff_preview,
+      default_mode: config.advanced.default_mode ?? base.advanced?.default_mode,
+      show_diff_preview: config.advanced.show_diff_preview ?? base.advanced?.show_diff_preview,
     };
     copyUnknownKeys(config.advanced, result.advanced as unknown as Record<string, unknown>, [
       'default_mode',

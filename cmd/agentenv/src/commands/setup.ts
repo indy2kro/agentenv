@@ -176,7 +176,7 @@ export async function unattendedSetup(
 
   if (options.config) {
     try {
-      config = loadConfig(options.config);
+      config = loadConfig(options.config, { layerUserConfig: true });
     } catch (error) {
       console.error(theme.fail(error instanceof Error ? error.message : String(error)));
       process.exitCode = 1;
@@ -196,7 +196,7 @@ export async function unattendedSetup(
     if (fs.existsSync(file)) {
       printConfigPath(file);
       try {
-        config = loadConfig(file);
+        config = loadConfig(file, { layerUserConfig: true });
       } catch (error) {
         console.error(theme.fail(error instanceof Error ? error.message : String(error)));
         process.exitCode = 1;
@@ -217,7 +217,7 @@ export async function unattendedSetup(
         printConfigPath(nearest);
         file = nearest;
         try {
-          config = loadConfig(nearest);
+          config = loadConfig(nearest, { layerUserConfig: true });
         } catch (error) {
           console.error(theme.fail(error instanceof Error ? error.message : String(error)));
           process.exitCode = 1;

@@ -517,7 +517,7 @@ export async function doUninstall(options: UninstallCommandOptions): Promise<voi
 
   let config: AgentenvConfig;
   try {
-    config = loadConfig(configPath);
+    config = loadConfig(configPath, { layerUserConfig: true });
   } catch (error) {
     fail(error instanceof Error ? error.message : String(error));
     return;

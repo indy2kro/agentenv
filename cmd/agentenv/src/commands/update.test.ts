@@ -289,6 +289,17 @@ describe('watchMiseToml (BUG-13)', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-watch-'));
     const configPath = path.join(dir, 'agentenv.toml');
     const miseTomlPath = path.join(dir, 'mise.toml');
+    // loadConfig() now layers a user-scope config beneath this project one
+    // (FEAT-08) — this machine's real ~/.config/agentenv/agentenv.toml (if
+    // any) must be scrubbed out, or its real enabled tools would leak into
+    // getUpgradeableTools() and break the "No upgradeable tools" assertion.
+    const emptyHome = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-watch-home-'));
+    const originalHome = process.env.HOME;
+    const originalUserProfile = process.env.USERPROFILE;
+    const originalXdg = process.env.XDG_CONFIG_HOME;
+    process.env.HOME = emptyHome;
+    process.env.USERPROFILE = emptyHome;
+    process.env.XDG_CONFIG_HOME = path.join(emptyHome, 'xdg');
     // Every Tier 1/2 tool explicitly disabled: getUpgradeableTools() returns
     // [], so the trigger path never has to spawn a real `mise up`.
     fs.writeFileSync(
@@ -343,6 +354,12 @@ describe('watchMiseToml (BUG-13)', () => {
       watcher?.close();
       console.log = originalLog;
       console.error = originalError;
+      if (originalHome === undefined) delete process.env.HOME;
+      else process.env.HOME = originalHome;
+      if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+      else process.env.USERPROFILE = originalUserProfile;
+      if (originalXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = originalXdg;
     }
   });
 });

@@ -262,7 +262,7 @@ export function gatherDoctor(sectionFilter?: string, deps: GatherDoctorDeps = {}
 
   let config;
   try {
-    config = loadConfigFn(configPath);
+    config = loadConfigFn(configPath, { layerUserConfig: true });
   } catch (error) {
     configItems.push({
       status: 'fail',
