@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-09-22
 
-Target: 40 · Found: 46 deduplicated items · Completed: 40/46 (+1 partial)
+Target: 40 · Found: 46 deduplicated items · Completed: 41/46 (+1 partial)
 
 > **How to use this document — read before implementing anything.**
 > As you finish each item, change `- [ ]` to `- [x]`, append ` ✅ <commit-sha>`,
@@ -62,7 +62,7 @@ Themes this round:
   None of them run on this repo's own workflows or source today, and locally `actionlint`/`gitleaks` shims aren't even pinned (`mise ERROR No version is set for shim`).
 - [x] **SWEEP-09** ✅ 10b33ad [test] Unit-test `update` (13% line coverage) via injectable mise runners, the same way `apply.test.ts` stubs rtk/claude — `src/commands/update.ts` · effort M · impact med
   `update` rewrites the global shims config and runs `mise self-update`/`mise up`, yet almost none of it is exercised.
-- [ ] **SWEEP-10** [test] Raise coverage on the environment-touching modules: `commands/wizard.ts` (7%), `toolchain/rtk.ts` (60%), `commands/doctor.ts` (58%), `shell/detector.ts` (69%) · effort L · impact med
+- [x] **SWEEP-10** ✅ 2a0a38b [test] Raise coverage on the environment-touching modules: `commands/wizard.ts` (7%), `toolchain/rtk.ts` (60%), `commands/doctor.ts` (58%), `shell/detector.ts` (69%) · effort L · impact med
   The lowest-covered modules are the ones that touch real user machines, where regressions cost the most.
 - [ ] **SWEEP-11** [ci] Add a coverage report/gate (`node --test --experimental-test-coverage`) to `npm test` or CI — `cmd/agentenv/package.json`, `.github/workflows/ci.yml` · effort S · impact low
   Coverage (78% lines / 77% branches) is invisible today, so it can drop silently.
