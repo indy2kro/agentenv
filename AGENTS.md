@@ -68,13 +68,16 @@ npm run smoke:real     # build + node scripts/smoke.mjs --real (real mise + rtk 
 - `npm run prepare` wires Husky; the pre-commit hook runs
   `cd cmd/agentenv && npx lint-staged` (eslint --fix + prettier on staged
   `*.ts`).
-- CI (`.github/workflows/ci.yml`) has two jobs on a windows/macos/ubuntu matrix:
-  `build-test` (build, lint, format:check, test, stub smoke, and a CLI-surface
-  check that version/help/completion work and cover every command) on every
-  push/PR, and `acceptance` (real mise + `npm run smoke:real`, gated on
-  `build-test`) on PRs, `main` pushes, and manual dispatch. Treat all four
-  local gates (build, lint, format:check, test) as required before considering
-  work done.
+- CI (`.github/workflows/ci.yml`) has three jobs: `lint-repo` (ubuntu-only,
+  once — `actionlint` against `.github/workflows/*.yml`, which also
+  shellchecks every embedded `run:` script, plus `gitleaks`) on every
+  push/PR; `build-test` (windows/macos/ubuntu × Node 22/24 matrix — build,
+  lint, format:check, test, stub smoke, and a CLI-surface check that
+  version/help/completion work and cover every command) on every push/PR;
+  and `acceptance` (real mise + `npm run smoke:real`, gated on `build-test`)
+  on PRs, `main` pushes, and manual dispatch. Treat all four local gates
+  (build, lint, format:check, test) as required before considering work
+  done.
 - Releases are one-button via the `Release` GitHub Actions workflow, never a
   manual `npm publish` — see `docs/guides/releasing.md`.
 
@@ -82,7 +85,12 @@ npm run smoke:real     # build + node scripts/smoke.mjs --real (real mise + rtk 
 
 Everything flows from one user-authored file, `agentenv.toml` (schema in
 `src/config/schema.ts`), resolved to either the project root or
-`~/.config/agentenv/` (`src/config/scopes.ts`). `agentenv apply`
+`~/.config/agentenv/` (`src/config/scopes.ts`). This repo dogfoods its own
+project-scope `agentenv.toml` (repo root) to pin the linters `lint-repo`
+runs (`actionlint`, `gitleaks`, `shellcheck`) via mise — it declares no
+`[agents]`, so running `agentenv apply` here also wires the default agents
+(Claude Code, Codex CLI); do that deliberately, not as a side effect of
+testing something else. `agentenv apply`
 (`src/commands/apply.ts`, `applyConfiguration()`) is the single pipeline all
 of `setup`/`configure`/`apply` funnel into, in this fixed order:
 

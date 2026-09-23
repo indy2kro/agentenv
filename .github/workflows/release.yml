@@ -89,9 +89,11 @@ jobs:
             *-*) tag=beta ;; # any "-" in the version → beta dist-tag
             *)   tag=latest ;;
           esac
-          echo "current=$current" >> "$GITHUB_OUTPUT"
-          echo "next=$next" >> "$GITHUB_OUTPUT"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          {
+            echo "current=$current"
+            echo "next=$next"
+            echo "tag=$tag"
+          } >> "$GITHUB_OUTPUT"
       - name: Ensure target version not already published
         run: |
           if npm view "@indy2kro/agentenv@${{ steps.version.outputs.next }}" version >/dev/null 2>&1; then

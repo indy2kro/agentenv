@@ -1,0 +1,13 @@
+# agentenv's own project-scope configuration (dogfooding, SWEEP-08).
+#
+# Pins the linters CI runs (actionlint, shellcheck, gitleaks — see
+# .github/workflows/ci.yml's lint-repo job) via mise, so `agentenv apply`
+# gets a contributor the same versions CI checks against instead of each of
+# us guessing at a `mise use -g <tool>` version. See docs/configuration.md
+# for the full schema.
+scope = "project"
+
+[tools]
+actionlint = true
+gitleaks = true
+shellcheck = true
