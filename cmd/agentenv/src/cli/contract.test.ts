@@ -566,9 +566,13 @@ direnv = false
 
   it('add --json runs a full apply with --skip-mise-install, generating files (FEAT-07)', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-configedit-'));
+    // Every agent explicitly disabled (not just claude_code): codex_cli
+    // defaults to enabled via DEFAULT_CONFIG, and an enabled agent here
+    // would attempt a real `rtk init` subprocess — this test only cares
+    // that the tool change applies, not about any agent wiring.
     fs.writeFileSync(
       path.join(dir, 'agentenv.toml'),
-      'scope = "project"\n[agents]\nclaude_code = false\n[tools]\njq = false\n',
+      'scope = "project"\n[agents]\nclaude_code = false\ncodex_cli = false\ncopilot = false\nopencode = false\ngemini_cli = false\ncursor = false\nwindsurf = false\ncline = false\nvibe = false\n[tools]\njq = false\n',
     );
 
     const result = run(['add', 'jq', '--skip-mise-install', '--json'], dir, shellEnv);

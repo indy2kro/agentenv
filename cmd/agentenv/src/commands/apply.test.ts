@@ -156,12 +156,21 @@ const CONFIG: AgentenvConfig = {
 describe('apply pipeline', () => {
   const originalHome = process.env.HOME;
   const originalUserProfile = process.env.USERPROFILE;
+  const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
+  // opencodeConfigDir()/copilotConfigDir() prefer XDG_CONFIG_HOME over
+  // <HOME>/.config when it's set — a value already present in the ambient
+  // environment (some CI images set it) would silently redirect every test
+  // below that sets HOME to a temp dir to the real XDG_CONFIG_HOME instead,
+  // so it must be scrubbed for the whole block, not just HOME/USERPROFILE.
+  delete process.env.XDG_CONFIG_HOME;
 
   after(() => {
     if (originalHome === undefined) delete process.env.HOME;
     else process.env.HOME = originalHome;
     if (originalUserProfile === undefined) delete process.env.USERPROFILE;
     else process.env.USERPROFILE = originalUserProfile;
+    if (originalXdgConfigHome === undefined) delete process.env.XDG_CONFIG_HOME;
+    else process.env.XDG_CONFIG_HOME = originalXdgConfigHome;
   });
 
   it('generates all expected files and delegates each agent to rtk init once', async () => {
