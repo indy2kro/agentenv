@@ -344,6 +344,17 @@ export function saveGeneratedFiles(files: GeneratedFile[]): {
   };
 }
 
+/** The dominant line ending in `content`, defaulting to LF for empty/LF-only content. */
+function detectLineEnding(content: string): '\r\n' | '\n' {
+  return content.includes('\r\n') ? '\r\n' : '\n';
+}
+
+/** Normalize `content` to LF, then to `eol` — so callers never double up an existing `\r`. */
+function matchLineEndings(content: string, eol: '\r\n' | '\n'): string {
+  const normalized = content.replace(/\r\n/g, '\n');
+  return eol === '\r\n' ? normalized.replace(/\n/g, '\r\n') : normalized;
+}
+
 /**
  * Update existing AGENTS.md/CLAUDE.md with new content, preserving user additions
  * Uses marker blocks to only replace the managed sections
@@ -400,10 +411,14 @@ export function updateWithMarkers(
         };
       }
 
-      const managedBlock = newContent.substring(newStartIndex, newEndIndex + markerEnd.length);
+      const eol = detectLineEnding(existingContent);
+      const managedBlock = matchLineEndings(
+        newContent.substring(newStartIndex, newEndIndex + markerEnd.length),
+        eol,
+      );
       const separator =
-        existingContent.length === 0 || existingContent.endsWith('\n') ? '\n' : '\n\n';
-      writeFileWithRetry(filePath, `${existingContent}${separator}${managedBlock}\n`);
+        existingContent.length === 0 || existingContent.endsWith(eol) ? eol : eol + eol;
+      writeFileWithRetry(filePath, `${existingContent}${separator}${managedBlock}${eol}`);
       return {
         success: true,
         updated: true,
@@ -438,7 +453,10 @@ export function updateWithMarkers(
       };
     }
 
-    const newMiddle = newContent.substring(newStartIndex, newEndIndex + markerEnd.length);
+    const newMiddle = matchLineEndings(
+      newContent.substring(newStartIndex, newEndIndex + markerEnd.length),
+      detectLineEnding(existingContent),
+    );
 
     // Reconstruct the file
     const updatedContent = before + newMiddle + after;

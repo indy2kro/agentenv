@@ -46,6 +46,32 @@ describe('managed instruction blocks', () => {
     assert.equal(fs.readFileSync(filePath, 'utf8'), content);
   });
 
+  it('matches a CRLF file when replacing the managed block', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-markers-'));
+    const filePath = path.join(directory, 'CLAUDE.md');
+    fs.writeFileSync(filePath, `before\r\n${start}\r\nold\r\n${end}\r\nafter\r\n`);
+
+    updateWithMarkers(filePath, `${start}\nnew\n${end}\n`, start, end);
+
+    assert.equal(
+      fs.readFileSync(filePath, 'utf8'),
+      `before\r\n${start}\r\nnew\r\n${end}\r\nafter\r\n`,
+    );
+  });
+
+  it('matches a CRLF file when appending a managed block', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-markers-'));
+    const filePath = path.join(directory, 'AGENTS.md');
+    fs.writeFileSync(filePath, '# My instructions\r\n\r\nKeep this.\r\n');
+
+    updateWithMarkers(filePath, `${start}\nmanaged\n${end}\n`, start, end);
+
+    assert.equal(
+      fs.readFileSync(filePath, 'utf8'),
+      `# My instructions\r\n\r\nKeep this.\r\n\r\n${start}\r\nmanaged\r\n${end}\r\n`,
+    );
+  });
+
   it('fails safely when a file has only one marker (partial write)', () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-markers-'));
     const filePath = path.join(directory, 'AGENTS.md');
