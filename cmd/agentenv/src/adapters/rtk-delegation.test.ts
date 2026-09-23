@@ -4,7 +4,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { RtkDelegationAdapter } from './rtk-delegation.js';
-import type { RtkInitFn } from '../toolchain/rtk.js';
+import { RTK_AGENT_MIN_VERSIONS } from '../toolchain/rtk.js';
+import type { RtkInitFn, RtkInstallationCheck } from '../toolchain/rtk.js';
 import type { AdapterConfig } from './base.js';
 
 interface RtkCall {
@@ -93,6 +94,111 @@ describe('RtkDelegationAdapter', () => {
     assert.equal(result.success, true);
     assert.ok(result.message.includes('not enabled'));
     assert.deepEqual(rtk.calls, []);
+  });
+
+  describe('proactive version capability check (FEAT-09)', () => {
+    it('skips the real rtk init call when a verified minimum version rules the agent out', async () => {
+      const home = tempDir('agentenv-rtk-deleg-vercap-');
+      const rtk = fakeRtkInit();
+      RTK_AGENT_MIN_VERSIONS['test-agent'] = [999, 0, 0];
+      try {
+        const adapter = new RtkDelegationAdapter(
+          {
+            enabled: true,
+            baseDir: home,
+            rtkEnabled: true,
+            rtkInit: rtk.fn,
+            checkRtkInstallation: (): RtkInstallationCheck => ({
+              resolvedPath: '/usr/local/bin/rtk',
+              version: 'rtk 0.42.4',
+              gainOk: true,
+            }),
+          },
+          {
+            agentKey: 'test-agent' as never,
+            label: 'Test Agent',
+            rtkFlags: ['--agent', 'test-agent'],
+            configDir: path.join(home, '.test-agent'),
+            expectedFile: 'RTK.md',
+          },
+        );
+
+        const result = await adapter.initialize();
+
+        assert.equal(result.success, false);
+        assert.ok(result.errors.some((e) => e.includes('does not yet support')));
+        assert.deepEqual(rtk.calls, [], 'the real rtk init call must never run');
+      } finally {
+        delete RTK_AGENT_MIN_VERSIONS['test-agent'];
+      }
+    });
+
+    it('proceeds to the real rtk init call when the version check is inconclusive (unresolved rtk)', async () => {
+      const home = tempDir('agentenv-rtk-deleg-vercap-');
+      const rtk = fakeRtkInit();
+      RTK_AGENT_MIN_VERSIONS['test-agent'] = [999, 0, 0];
+      try {
+        const adapter = new RtkDelegationAdapter(
+          {
+            enabled: true,
+            baseDir: home,
+            rtkEnabled: true,
+            rtkInit: rtk.fn,
+            checkRtkInstallation: (): RtkInstallationCheck => ({
+              resolvedPath: null,
+              version: null,
+              gainOk: null,
+            }),
+          },
+          {
+            agentKey: 'test-agent' as never,
+            label: 'Test Agent',
+            rtkFlags: ['--agent', 'test-agent'],
+            configDir: path.join(home, '.test-agent'),
+            expectedFile: 'RTK.md',
+          },
+        );
+
+        const result = await adapter.initialize();
+
+        assert.equal(result.success, true);
+        assert.equal(
+          rtk.calls.length,
+          1,
+          'a null version is unknown, not a denial — must attempt init',
+        );
+      } finally {
+        delete RTK_AGENT_MIN_VERSIONS['test-agent'];
+      }
+    });
+
+    it('never probes rtk --version for an agent with no verified minimum (e.g. vibe today)', async () => {
+      const home = tempDir('agentenv-rtk-deleg-vercap-');
+      const rtk = fakeRtkInit();
+      const adapter = new RtkDelegationAdapter(
+        {
+          enabled: true,
+          baseDir: home,
+          rtkEnabled: true,
+          rtkInit: rtk.fn,
+          checkRtkInstallation: (): RtkInstallationCheck => {
+            throw new Error('must not probe rtk --version when no threshold is known');
+          },
+        },
+        {
+          agentKey: 'vibe',
+          label: 'Mistral Vibe',
+          rtkFlags: ['-g', '--agent', 'vibe'],
+          configDir: path.join(home, '.vibe'),
+          expectedFile: 'RTK.md',
+        },
+      );
+
+      const result = await adapter.initialize();
+
+      assert.equal(result.success, true);
+      assert.equal(rtk.calls.length, 1);
+    });
   });
 
   it('cleanup is a no-op', async () => {

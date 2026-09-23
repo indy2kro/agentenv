@@ -5,9 +5,13 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  RTK_AGENT_MIN_VERSIONS,
   RTK_INIT_FLAGS,
   checkRtkInstallation,
+  compareRtkVersions,
+  isRtkAgentSupportedByVersion,
   isUnsupportedRtkAgentError,
+  parseRtkVersion,
   resolveRtkBinary,
   resolveRtkInit,
   rtkMessage,
@@ -53,6 +57,62 @@ describe('isUnsupportedRtkAgentError', () => {
       isUnsupportedRtkAgentError(["invalid value 'cline' for '--agent <AGENT>'"], 'vibe'),
       false,
     );
+  });
+
+  it('also recognizes the version-verified-unsupported synthetic message (FEAT-09)', () => {
+    assert.equal(
+      isUnsupportedRtkAgentError(
+        ['rtk 0.42.4 does not yet support "vibe" as an --agent value'],
+        'vibe',
+      ),
+      true,
+    );
+  });
+});
+
+describe('parseRtkVersion (FEAT-09)', () => {
+  it('extracts the leading X.Y.Z from rtk --version output', () => {
+    assert.deepEqual(parseRtkVersion('rtk 0.42.4'), [0, 42, 4]);
+    assert.deepEqual(parseRtkVersion('0.49.0'), [0, 49, 0]);
+  });
+
+  it('returns null for null, empty, or unparseable input', () => {
+    assert.equal(parseRtkVersion(null), null);
+    assert.equal(parseRtkVersion(''), null);
+    assert.equal(parseRtkVersion('not a version'), null);
+  });
+});
+
+describe('compareRtkVersions (FEAT-09)', () => {
+  it('compares major, then minor, then patch', () => {
+    assert.equal(compareRtkVersions([0, 42, 4], [0, 49, 0]), -1);
+    assert.equal(compareRtkVersions([0, 49, 0], [0, 42, 4]), 1);
+    assert.equal(compareRtkVersions([1, 0, 0], [0, 99, 99]), 1);
+    assert.equal(compareRtkVersions([0, 49, 0], [0, 49, 0]), 0);
+  });
+});
+
+describe('isRtkAgentSupportedByVersion (FEAT-09)', () => {
+  it('returns null (unknown) for an agent with no verified minimum, e.g. vibe today', () => {
+    assert.equal(RTK_AGENT_MIN_VERSIONS.vibe, undefined);
+    assert.equal(isRtkAgentSupportedByVersion('vibe', '0.42.4'), null);
+    assert.equal(isRtkAgentSupportedByVersion('vibe', null), null);
+  });
+
+  it('returns null when a threshold exists but the version is unparseable', () => {
+    const withThreshold: Partial<Record<string, [number, number, number]>> = {
+      'test-agent': [1, 0, 0],
+    };
+    assert.equal(RTK_AGENT_MIN_VERSIONS['test-agent'], undefined);
+    Object.assign(RTK_AGENT_MIN_VERSIONS, withThreshold);
+    try {
+      assert.equal(isRtkAgentSupportedByVersion('test-agent', 'garbage'), null);
+      assert.equal(isRtkAgentSupportedByVersion('test-agent', '0.9.9'), false);
+      assert.equal(isRtkAgentSupportedByVersion('test-agent', '1.0.0'), true);
+      assert.equal(isRtkAgentSupportedByVersion('test-agent', '1.2.0'), true);
+    } finally {
+      delete RTK_AGENT_MIN_VERSIONS['test-agent'];
+    }
   });
 });
 

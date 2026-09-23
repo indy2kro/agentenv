@@ -11,7 +11,13 @@ import * as path from 'path';
 import { BaseAdapter, type AdapterConfig, type AdapterResult } from './base.js';
 import { isAgentInstalled } from './detect.js';
 import type { AgentKey } from '../config/schema.js';
-import { resolveRtkInit, rtkMessage } from '../toolchain/rtk.js';
+import {
+  RTK_AGENT_MIN_VERSIONS,
+  checkRtkInstallation,
+  isRtkAgentSupportedByVersion,
+  resolveRtkInit,
+  rtkMessage,
+} from '../toolchain/rtk.js';
 
 export interface RtkDelegationOptions {
   agentKey: AgentKey;
@@ -106,6 +112,24 @@ export class RtkDelegationAdapter extends BaseAdapter {
     if (!this.config.enabled) {
       result.message = `${this.opts.label} adapter not enabled`;
       return result;
+    }
+
+    // Proactive capability check: only spends a `rtk --version` subprocess
+    // call when a verified minimum version actually exists for this agent
+    // (RTK_AGENT_MIN_VERSIONS), so this stays free for every agent lacking
+    // one. Confirmed-unsupported skips the real `rtk init` attempt entirely
+    // instead of always trying it and parsing rtk's rejection text after
+    // the fact.
+    if (RTK_AGENT_MIN_VERSIONS[this.opts.agentKey]) {
+      const checkInstallation = this.config.checkRtkInstallation ?? checkRtkInstallation;
+      const { version } = checkInstallation(this.config.baseDir);
+      if (isRtkAgentSupportedByVersion(this.opts.agentKey, version) === false) {
+        result.success = false;
+        result.errors.push(
+          `rtk ${version ?? '(unresolved version)'} does not yet support "${this.opts.agentKey}" as an --agent value`,
+        );
+        return result;
+      }
     }
 
     const expectedPath = path.join(this.config.baseDir, this.opts.expectedFile);

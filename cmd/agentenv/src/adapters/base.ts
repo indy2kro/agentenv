@@ -4,7 +4,7 @@
  */
 
 import * as path from 'path';
-import type { RtkInitFn } from '../toolchain/rtk.js';
+import type { RtkInitFn, checkRtkInstallation } from '../toolchain/rtk.js';
 
 export interface AdapterConfig {
   enabled: boolean;
@@ -12,6 +12,12 @@ export interface AdapterConfig {
   rtkEnabled?: boolean;
   /** Injectable `rtk init` runner; defaults to the real rtk binary. */
   rtkInit?: RtkInitFn;
+  /**
+   * Injectable rtk-version probe (RtkDelegationAdapter's proactive
+   * capability check, FEAT-09); defaults to the real `rtk --version`/`mise
+   * which rtk` probe.
+   */
+  checkRtkInstallation?: typeof checkRtkInstallation;
 }
 
 export interface AdapterResult {

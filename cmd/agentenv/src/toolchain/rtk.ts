@@ -119,17 +119,72 @@ export function resolveRtkInit(rtkInit?: RtkInitFn): RtkInitFn {
   return rtkInit ?? defaultRtkInit;
 }
 
+export type RtkVersionTuple = [number, number, number];
+
+/** Parse a leading `X.Y.Z` out of rtk's `--version` output (e.g. "rtk 0.42.4"); null if unparseable. */
+export function parseRtkVersion(version: string | null): RtkVersionTuple | null {
+  if (!version) return null;
+  const match = version.match(/(\d+)\.(\d+)\.(\d+)/);
+  return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null;
+}
+
+/** -1/0/1, like a standard Array.sort comparator. */
+export function compareRtkVersions(a: RtkVersionTuple, b: RtkVersionTuple): -1 | 0 | 1 {
+  for (let i = 0; i < 3; i++) {
+    if (a[i] !== b[i]) return a[i] < b[i] ? -1 : 1;
+  }
+  return 0;
+}
+
+/**
+ * Minimum rtk version known — and independently verified — to support each
+ * agent as an `rtk init --agent <value>`. An agent absent from this map has
+ * no confirmed minimum: isRtkAgentSupportedByVersion() then returns null
+ * (unknown) instead of guessing a threshold nobody has verified, and callers
+ * fall back to attempting the delegation and reading rtk's own rejection
+ * (isUnsupportedRtkAgentError's clap-style text match, below).
+ *
+ * vibe: confirmed NOT supported as of rtk 0.42.4 — `rtk init --agent`'s enum
+ * lists claude/cursor/windsurf/cline/kilocode/antigravity/pi/hermes, no
+ * "vibe" — checked live against a real rtk binary (2026-09-23). No verified
+ * release adds it yet, so it's left out rather than guessing a version.
+ */
+export const RTK_AGENT_MIN_VERSIONS: Partial<Record<string, RtkVersionTuple>> = {};
+
+/**
+ * Whether `agent` is supported by a resolved rtk `version`, per
+ * RTK_AGENT_MIN_VERSIONS: true/false when a verified threshold exists and
+ * `version` parses, null when either is unknown — callers treat null as
+ * "don't know yet, attempt delegation normally" rather than as a denial.
+ */
+export function isRtkAgentSupportedByVersion(
+  agent: string,
+  version: string | null,
+): boolean | null {
+  const minVersion = RTK_AGENT_MIN_VERSIONS[agent];
+  if (!minVersion) return null;
+  const parsed = parseRtkVersion(version);
+  if (!parsed) return null;
+  return compareRtkVersions(parsed, minVersion) >= 0;
+}
+
 /**
  * True when an `rtk init` failure is rtk's own `--agent` enum rejecting a
  * value agentenv passes it (e.g. the pinned rtk build not yet knowing
  * "vibe"), rather than an environment problem (missing binary, permissions,
- * ...). Detected from rtk's clap-style usage error text so this keeps
- * working as rtk's supported agent list changes upstream, without agentenv
- * having to hardcode rtk's enum.
+ * ...). Recognizes both rtk's clap-style usage error text (keeps working as
+ * rtk's supported agent list changes upstream, without agentenv having to
+ * hardcode rtk's enum) and the synthetic message RtkDelegationAdapter
+ * produces when a version-verified threshold (RTK_AGENT_MIN_VERSIONS) rules
+ * an agent out before even attempting delegation.
  */
 export function isUnsupportedRtkAgentError(errors: string[], agentValue: string): boolean {
-  const pattern = new RegExp(`invalid value ['"]?${agentValue}['"]?`, 'i');
-  return errors.some((error) => pattern.test(error));
+  const clapPattern = new RegExp(`invalid value ['"]?${agentValue}['"]?`, 'i');
+  const versionPattern = new RegExp(
+    `does not yet support ['"]?${agentValue}['"]? as an --agent value`,
+    'i',
+  );
+  return errors.some((error) => clapPattern.test(error) || versionPattern.test(error));
 }
 
 /**
