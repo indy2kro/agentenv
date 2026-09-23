@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-09-22
 
-Target: 40 · Found: 46 deduplicated items · Completed: 32/46 (+1 partial)
+Target: 40 · Found: 46 deduplicated items · Completed: 33/46 (+1 partial)
 
 > **How to use this document — read before implementing anything.**
 > As you finish each item, change `- [ ]` to `- [x]`, append ` ✅ <commit-sha>`,
@@ -54,7 +54,7 @@ Themes this round:
   These agents are wired into home-dir config, but both places look for `RTK.md` in the project `baseDir`.
 - [x] **SWEEP-05** ✅ 5b26c73 [feature] `--json` output for the mutating commands `apply` / `update` / `uninstall` — `src/commands/apply.ts`, `update.ts`, `uninstall.ts` · effort M · impact med
   Only the read-only commands emit JSON. `ApplyResult` is already structured, yet CI has to scrape colored text.
-- [ ] **SWEEP-06** [feature] Back up user-global files before agentenv first edits them (`~/.claude/settings.json`, `~/.codex/config.toml`, user-scope `CLAUDE.md`/`AGENTS.md`) — `src/adapters/claude.ts`, `codex.ts`, `utils/fs-retry.ts` · effort M · impact med
+- [x] **SWEEP-06** ✅ 52939e4 [feature] Back up user-global files before agentenv first edits them (`~/.claude/settings.json`, `~/.codex/config.toml`, user-scope `CLAUDE.md`/`AGENTS.md`) — `src/adapters/claude.ts`, `codex.ts`, `utils/fs-retry.ts` · effort M · impact med
   Tier 0 edits are recorded for `shell-fix --revert`, but the adapters' writes to the *same* files have no backup or undo.
 - [x] **SWEEP-07** ✅ d5ee770 Add the minimum supported Node (22) to the CI matrix next to 24 — `.github/workflows/ci.yml:32,91`, `cmd/agentenv/package.json` `engines` · effort S · impact med
   `engines` promises `>=22.13.0`, but CI only runs Node 24 with `@types/node` 26, so a Node 23+-only API would ship unnoticed.
