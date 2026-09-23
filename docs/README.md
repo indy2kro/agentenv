@@ -24,8 +24,6 @@ Supporting references:
   new supported AI coding agent.
 - [`guides/releasing.md`](guides/releasing.md) — cutting an npm release
   (one-button `Release` workflow).
-- [`improvement-audit/2026-09-19-improvement-backlog.md`](improvement-audit/2026-09-19-improvement-backlog.md) —
-  active improvement backlog; tick items as they land.
 
 ## Research & decisions
 
@@ -33,8 +31,10 @@ Supporting references:
   (e.g. [`superpowers-install-mechanisms.md`](research/superpowers-install-mechanisms.md)).
 - [`decisions/`](decisions/) — architecture decision records
   (e.g. [`0002-cli-tech-stack.md`](decisions/0002-cli-tech-stack.md)).
-- [`improvement-audit/`](improvement-audit/) — prior audit records, kept as
-  history.
 
-Implemented phase plans were removed when their work landed; the design
-rationale is captured in the files above.
+Implemented phase plans and completed improvement-audit backlogs are removed
+once their work lands (`git log -- docs/improvement-audit/` has the history);
+the design rationale is captured in the files above. A still-open item from a
+removed backlog stays tracked as a `TODO` comment at its actual call site
+(e.g. `cmd/agentenv/src/commands/status.ts`'s windsurf/vibe rtk-install-path
+note) instead of only living in a deleted doc.
