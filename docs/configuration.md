@@ -16,9 +16,13 @@ file you see are *generated outputs* of `agentenv apply` (see
 | `project` (default) | `<project-root>/agentenv.toml` | Committed to the repo; the whole team shares it. |
 | `user` | `~/.config/agentenv/agentenv.toml` | Global defaults for every project. Honors `XDG_CONFIG_HOME` when set (otherwise `~/.config/agentenv` on every platform). |
 
-`agentenv` looks in the project directory first and falls back to the
-user-scope file, so a personal `~/.config/agentenv/agentenv.toml` applies
-anywhere and an in-repo file overrides it per project.
+`agentenv` looks for `<project-root>/agentenv.toml` starting at the current
+directory and searching upward through its parents (the way `git`/`mise`
+find their own config), then falls back to the user-scope file — so a
+personal `~/.config/agentenv/agentenv.toml` applies anywhere, an in-repo file
+overrides it per project, and commands run from a subdirectory (e.g.
+`repo/src`) still find `repo/agentenv.toml` and apply against `repo/`, not
+the subdirectory.
 
 ## Getting started
 

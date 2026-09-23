@@ -216,6 +216,22 @@ function scopeFromConfigPath(configPath: string): 'project' | 'user' {
     : 'project';
 }
 
+/**
+ * The directory a project-scoped config's mise.toml/AGENTS.md/etc. actually
+ * live in. findConfigPath() now searches parent directories (FEAT-05), so
+ * that directory is no longer always process.cwd() — resolveScopeDir('project')
+ * only knows about cwd, so a project config found in an ancestor directory
+ * must use its own dirname instead, the same "derive from where the file was
+ * found" fix SWEEP-01 applied to config.scope itself.
+ */
+function resolveBaseDir(
+  configPath: string,
+  scope: 'project' | 'user' | undefined,
+  resolveDir: typeof resolveScopeDir,
+): string {
+  return scope === 'user' ? resolveDir('user') : path.dirname(configPath);
+}
+
 function hasManagedMarker(file: string, config: AgentenvConfig): boolean {
   try {
     const content = fs.readFileSync(file, 'utf-8');
@@ -310,7 +326,7 @@ export async function gatherStatus(deps: StatusDeps = {}): Promise<StatusReport>
       command: 'status',
       config: configPath,
       scope,
-      baseDir: (deps.resolveScopeDir ?? resolveScopeDir)(scope),
+      baseDir: resolveBaseDir(configPath, scope, deps.resolveScopeDir ?? resolveScopeDir),
       exitCode: 0,
       validation: {
         errors: [error instanceof Error ? error.message : String(error)],
@@ -331,7 +347,7 @@ export async function gatherStatus(deps: StatusDeps = {}): Promise<StatusReport>
   }
 
   const resolveDir = deps.resolveScopeDir ?? resolveScopeDir;
-  const baseDir = resolveDir(config.scope);
+  const baseDir = resolveBaseDir(configPath, config.scope, resolveDir);
   const validation = (deps.validateConfig ?? validateConfig)(config);
   const shell = (deps.detectShell ?? detectShell)();
   const enabledAgents = (deps.getEnabledAgents ?? getEnabledAgents)(config) as AgentKey[];

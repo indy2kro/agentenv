@@ -1,14 +1,10 @@
 import { Command } from 'commander';
 import * as fs from 'fs';
+import * as path from 'path';
 import { detectInstalledAgents } from '../adapters/detect.js';
 import { loadConfig, saveConfig, validateConfig } from '../config/schema.js';
 import type { AgentKey, AgentenvConfig } from '../config/schema.js';
-import {
-  configFilePath,
-  findConfigPath,
-  parseScopeFlag,
-  resolveScopeDir,
-} from '../config/scopes.js';
+import { configFilePath, findConfigPath, parseScopeFlag } from '../config/scopes.js';
 import type { ScopeValue } from '../config/scopes.js';
 import { applyConfiguration } from './apply.js';
 import { runConfigWizard } from './wizard.js';
@@ -76,9 +72,13 @@ export async function saveAndApply(
   console.log(`Saved configuration: ${file}\n`);
 
   const apply = deps.applyConfiguration ?? applyConfiguration;
+  // `file` is always the actual agentenv.toml being applied — including when
+  // findConfigPath()'s upward search (FEAT-05) found it in an ancestor
+  // directory — so its own directory is the base dir, not a re-derivation
+  // from config.scope that assumes cwd for "project".
   const result = await withSpinner('Applying configuration...', (spinner: Spinner) =>
     // setup already printed the prereq line above, so tell apply not to repeat it.
-    apply(config, resolveScopeDir(config.scope ?? 'project'), {
+    apply(config, path.dirname(file), {
       skipPrereqMessage: true,
       onMiseInstall: {
         onStart: () => {

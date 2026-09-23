@@ -172,6 +172,42 @@ describe('unattended setup pipeline', () => {
     );
   });
 
+  it('applies a project config found in a parent directory to that directory, not cwd (FEAT-05)', async () => {
+    const projectRoot = tempDir('agentenv-project-');
+    const nestedCwd = path.join(projectRoot, 'src', 'commands');
+    fs.mkdirSync(nestedCwd, { recursive: true });
+    const projectToml = path.join(projectRoot, 'agentenv.toml');
+    saveConfig({ ...DEFAULT_CONFIG, agents: { claude_code: true } }, projectToml);
+
+    let appliedBaseDir: string | undefined;
+    const stubApply: typeof applyConfiguration = async (_config, baseDir) => {
+      appliedBaseDir = baseDir;
+      return { success: true, messages: [], errors: [] };
+    };
+
+    const originalLog = console.log;
+    const originalError = console.error;
+    const originalCwd = process.cwd();
+    console.log = () => {};
+    console.error = () => {};
+    try {
+      process.chdir(nestedCwd);
+      await unattendedSetup(
+        { yes: true },
+        {
+          misePrereqCheckDeps: { isInstalled: () => true, version: () => '3.2.1' },
+          applyConfiguration: stubApply,
+        },
+      );
+    } finally {
+      process.chdir(originalCwd);
+      console.log = originalLog;
+      console.error = originalError;
+    }
+
+    assert.equal(appliedBaseDir, projectRoot);
+  });
+
   it('warns that --agents/--superpowers are ignored when reusing an existing config', async () => {
     const dir = tempDir('agentenv-setup-');
     const toml = path.join(dir, 'agentenv.toml');

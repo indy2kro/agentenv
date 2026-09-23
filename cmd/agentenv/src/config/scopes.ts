@@ -42,12 +42,30 @@ export function configFilePath(scope: 'project' | 'user' | undefined): string {
 }
 
 /**
- * Locate an existing agentenv.toml: project config first, then user/global.
- * Returns the first match, or undefined when none exists.
+ * Walk from `startDir` up to the filesystem root looking for `filename`, the
+ * way git looks for `.git` and mise looks for `mise.toml`. Returns the first
+ * match, or undefined if none exists all the way to the root.
+ */
+function findUpward(startDir: string, filename: string): string | undefined {
+  let dir = path.resolve(startDir);
+  for (;;) {
+    const candidate = path.join(dir, filename);
+    if (fs.existsSync(candidate)) return candidate;
+    const parent = path.dirname(dir);
+    if (parent === dir) return undefined;
+    dir = parent;
+  }
+}
+
+/**
+ * Locate an existing agentenv.toml: project config first — searching `cwd`
+ * and its parent directories, so `agentenv status` from `repo/src` still
+ * finds `repo/agentenv.toml` — then user/global. Returns the first match, or
+ * undefined when none exists.
  */
 export function findConfigPath(cwd: string = process.cwd()): string | undefined {
-  const project = path.join(cwd, 'agentenv.toml');
-  if (fs.existsSync(project)) return project;
+  const project = findUpward(cwd, 'agentenv.toml');
+  if (project) return project;
   const user = path.join(userConfigDir(), 'agentenv.toml');
   if (fs.existsSync(user)) return user;
   return undefined;

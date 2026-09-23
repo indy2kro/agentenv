@@ -99,4 +99,42 @@ describe('scope resolution', () => {
     fs.writeFileSync(projectFile, '');
     assert.equal(findConfigPath(cwd), projectFile);
   });
+
+  it('findConfigPath searches parent directories, like git looks for .git', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-scopes-'));
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-scopes-root-'));
+    const nested = path.join(root, 'src', 'commands');
+    fs.mkdirSync(nested, { recursive: true });
+
+    // No config anywhere in the chain up to `root`'s ancestors that matter for this test.
+    assert.equal(findConfigPath(nested), undefined);
+
+    const projectFile = path.join(root, 'agentenv.toml');
+    fs.writeFileSync(projectFile, '');
+    assert.equal(
+      findConfigPath(nested),
+      projectFile,
+      'running from repo/src/commands should find repo/agentenv.toml',
+    );
+  });
+
+  it('findConfigPath prefers the nearest ancestor project config over the user config', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-scopes-'));
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    const userFile = path.join(home, '.config', 'agentenv', 'agentenv.toml');
+    fs.mkdirSync(path.dirname(userFile), { recursive: true });
+    fs.writeFileSync(userFile, '');
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-scopes-root-'));
+    const nested = path.join(root, 'deeply', 'nested');
+    fs.mkdirSync(nested, { recursive: true });
+    const projectFile = path.join(root, 'agentenv.toml');
+    fs.writeFileSync(projectFile, '');
+
+    assert.equal(findConfigPath(nested), projectFile);
+  });
 });

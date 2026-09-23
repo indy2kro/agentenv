@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import * as path from 'path';
 import {
   AGENT_CONFIG_FILES,
   computeStatusExitCode,
@@ -213,6 +214,32 @@ describe('gatherStatus', () => {
     assert.ok(!('tier0' in json));
     assert.ok(!('ghAuth' in json));
     assert.ok(!('integrationDetails' in json));
+  });
+
+  it('derives baseDir from where a project config was actually found, not resolveScopeDir(scope) (FEAT-05)', async () => {
+    // findConfigPath now searches parent directories, so a project config
+    // discovered from e.g. `repo/src/commands` no longer lives at cwd — the
+    // real fix here is that baseDir must follow the config's own directory,
+    // not a stubbed/assumed cwd.
+    const report = await gatherStatus({
+      findConfigPath: () => path.join('C:', 'repo', 'agentenv.toml'),
+      loadConfig: () => noopConfig,
+      resolveScopeDir: () => {
+        throw new Error('resolveScopeDir should not be consulted for project scope');
+      },
+      validateConfig: () => ({ errors: [], warnings: [] }),
+      getEnabledAgents: () => [],
+      detectShell: () =>
+        ({
+          isWindows: false,
+          isPosixCompatible: true,
+          currentShell: 'bash',
+          missingUtilities: [],
+        }) as never,
+      fileExists: () => true,
+      hasManagedMarker: () => true,
+    });
+    assert.equal(report.baseDir, path.join('C:', 'repo'));
   });
 
   it('puts a load failure into validation.errors and keeps the path', async () => {
