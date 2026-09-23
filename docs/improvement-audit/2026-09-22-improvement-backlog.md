@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-09-22
 
-Target: 40 · Found: 46 deduplicated items · Completed: 38/46 (+1 partial)
+Target: 40 · Found: 46 deduplicated items · Completed: 39/46 (+1 partial)
 
 > **How to use this document — read before implementing anything.**
 > As you finish each item, change `- [ ]` to `- [x]`, append ` ✅ <commit-sha>`,
@@ -134,7 +134,7 @@ Themes this round:
   An AI agent running `agentenv apply`, the product's core audience, never has a TTY, so the Windows shell fix never happens and nothing can override that.
 - [x] **FEAT-02** ✅ ded7738 Add an rtk section to `doctor`: on PATH, version against the pin, and a check for the Rust Type Kit name collision (`rtk gain` works) — `src/commands/doctor.ts` · effort S · impact high
   Every agent hook depends on rtk, and the generated `RTK.md` itself warns about the `reachingforthejack/rtk` collision, yet `doctor` never checks rtk.
-- [ ] **FEAT-03** Add an "unwire agents" path: call the unused `BaseAdapter.cleanup()`, remove the marker blocks, and optionally delete the generated `mise.toml` — `src/adapters/base.ts`, `src/commands/uninstall.ts`, `src/generate/agentsmd.ts` · effort L · impact high
+- [x] **FEAT-03** ✅ fccf359 Add an "unwire agents" path: call the unused `BaseAdapter.cleanup()`, remove the marker blocks, and optionally delete the generated `mise.toml` — `src/adapters/base.ts`, `src/commands/uninstall.ts`, `src/generate/agentsmd.ts` · effort L · impact high
   `uninstall` only removes mise tools. Nothing removes the Claude hook, the codex config or the instruction blocks, and every adapter's `cleanup()` is dead code.
 - [x] **FEAT-04** ✅ 1b58b11 Tell agents about the `rtk proxy <cmd>` escape hatch in the generated RTK section — `src/generate/agentsmd.ts:158-168` · effort S · impact med
   Seen during this audit: the rtk hook rewrote `rg -g …` / `rg --type …` into GNU `grep` and failed ("grep: unknown option -- g"), and agents have no hint on how to bypass the rewrite. Also worth reporting upstream to rtk.
