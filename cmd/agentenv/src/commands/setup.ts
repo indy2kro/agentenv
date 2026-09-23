@@ -57,6 +57,8 @@ export interface SaveAndApplyDeps {
   successMessage?: string;
   /** Epoch ms the whole command started, for the end-of-run timing line. */
   startedAt?: number;
+  /** Generate files only — no `mise install`, no verification. */
+  skipMiseInstall?: boolean;
 }
 
 /** Save the config and apply it, mirroring the shared setup tail. */
@@ -80,6 +82,7 @@ export async function saveAndApply(
     // setup already printed the prereq line above, so tell apply not to repeat it.
     apply(config, path.dirname(file), {
       skipPrereqMessage: true,
+      skipMiseInstall: deps.skipMiseInstall,
       onMiseInstall: {
         onStart: () => {
           spinner.stop();

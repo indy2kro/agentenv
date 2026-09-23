@@ -58,4 +58,22 @@ describe('installExitOverride', () => {
     assert.equal(process.exitCode, 0);
     process.exitCode = saved;
   });
+
+  it('does not crash on a command literally named "add" (regression)', async () => {
+    // Commander's *legacy* per-command completion event is named
+    // `command:${name}`, fired on the parent with (operands, unknown) once
+    // that command's action finishes — coincidentally the same string as
+    // 'command:add' for a command literally named "add". A listener bound
+    // to that literal string would receive an array where it expects a
+    // Command and crash on every run.
+    const program = new Command('agentenv');
+    program.addCommand(new Command('add').argument('<items...>').action(() => {}));
+    installExitOverride(program);
+
+    const saved = process.exitCode;
+    process.exitCode = undefined;
+    await program.parseAsync(['node', 'agentenv', 'add', 'jq']);
+    assert.equal(process.exitCode, undefined);
+    process.exitCode = saved;
+  });
 });

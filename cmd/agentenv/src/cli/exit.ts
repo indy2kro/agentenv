@@ -16,12 +16,23 @@ export function exitCodeForCommanderError(error: CommanderError): 0 | 2 {
 }
 
 /**
- * Install the usage-error exit-code contract on a program and every registered
- * or future subcommand. MUST be called *after* `addCommand` for the program's
- * own override, and it subscribes to commander's `command:add` so any command
- * registered later (e.g. by an extension or a future release) inherits the
- * same contract instead of silently falling back to `process.exit(1)`. The
- * callback MUST rethrow: commander's `error()` calls `process.exit(1)`
+ * Install the usage-error exit-code contract on a program and every command
+ * already registered on it. MUST be called *after* every `addCommand()`, so
+ * the explicit loop below reaches them all. A command registered later via
+ * `.command(name)` (not `.addCommand()`) inherits it automatically —
+ * Commander's own `copyInheritedSettings()` copies the parent's exit
+ * callback onto it at creation time.
+ *
+ * This deliberately does NOT also listen for a `'command:add'` event: no
+ * such registration event exists in Commander. That string is only ever
+ * emitted as the *legacy* per-command completion event `command:${name}` —
+ * fired on the parent after a subcommand's action handler runs, with
+ * `(operands, unknown)` as its arguments — so a listener bound to the
+ * literal name `'command:add'` would silently misfire as soon as any
+ * command were named "add", handing `command.exitOverride()` an array
+ * instead of a Command and crashing every run of it.
+ *
+ * The callback MUST rethrow: commander's `error()` calls `process.exit(1)`
  * immediately after the override returns normally, which would clobber the
  * mapped code. Rethrowing lets `parseAsync()`'s rejection carry the error out
  * to the entrypoint, which then honors the already-set `process.exitCode`.
@@ -32,6 +43,5 @@ export function installExitOverride(program: Command): void {
     throw error;
   };
   program.exitOverride(override);
-  program.on('command:add', (command: Command) => command.exitOverride(override));
   for (const command of program.commands) command.exitOverride(override);
 }

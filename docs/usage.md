@@ -226,6 +226,23 @@ agentenv uninstall --unwire-agents claude_code --yes        # unwire just Claude
 agentenv uninstall --unwire-agents --delete-mise-toml --yes # also delete mise.toml
 ```
 
+### `agentenv add` / `agentenv remove`
+
+Non-interactive config edits: flip tool/agent booleans in `agentenv.toml`
+and (by default) re-apply, without the TTY-only wizard or hand-editing
+TOML — the likeliest way an AI agent enables a tool or agent for itself.
+Items are config keys (e.g. `ripgrep`, `claude_code`), not binary/mise
+names. An item already at the target value is a silent no-op.
+
+```sh
+agentenv add jq claude_code           # enable, then apply
+agentenv remove tokei                 # disable, then apply
+agentenv add jq --dry-run             # preview the change, apply nothing
+agentenv add jq --no-apply            # save the change without applying
+agentenv add jq --scope project|user
+agentenv add jq --json                # one JSON document ({success, message, changes, applied, ...apply result})
+```
+
 ### `agentenv shell-fix`
 
 Inspect or revert the per-user Tier 0 shell changes `apply` records on

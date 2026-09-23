@@ -512,6 +512,93 @@ direnv = false
     assert.match(result.stderr, /--delete-mise-toml requires --unwire-agents/);
   });
 
+  it('add/remove --dry-run previews the planned change without writing (FEAT-07)', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-configedit-'));
+    fs.writeFileSync(
+      path.join(dir, 'agentenv.toml'),
+      'scope = "project"\n[agents]\nclaude_code = false\n[tools]\njq = false\n',
+    );
+
+    const dry = run(['add', 'jq', '--dry-run'], dir, shellEnv);
+    assert.equal(dry.status, 0, dry.stderr);
+    assert.match(dry.stdout, /tool jq: false -> true/);
+    assert.match(dry.stdout, /Dry run complete/);
+    assert.match(fs.readFileSync(path.join(dir, 'agentenv.toml'), 'utf-8'), /jq = false/);
+  });
+
+  it('add --no-apply --json saves the change without running apply (FEAT-07)', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-configedit-'));
+    fs.writeFileSync(
+      path.join(dir, 'agentenv.toml'),
+      'scope = "project"\n[agents]\nclaude_code = false\n[tools]\njq = false\n',
+    );
+
+    const result = run(['add', 'jq', '--no-apply', '--json'], dir, shellEnv);
+    assert.equal(result.status, 0, result.stderr);
+    const json = JSON.parse(result.stdout);
+    assert.equal(json.success, true);
+    assert.equal(json.applied, false);
+    assert.deepEqual(json.changes, [{ kind: 'tool', key: 'jq', from: false, to: true }]);
+    assert.match(fs.readFileSync(path.join(dir, 'agentenv.toml'), 'utf-8'), /jq = true/);
+    // apply never ran: no generated files.
+    assert.equal(fs.existsSync(path.join(dir, 'mise.toml')), false);
+
+    const removed = run(['remove', 'jq', '--no-apply', '--json'], dir, shellEnv);
+    assert.equal(removed.status, 0, removed.stderr);
+    const removedJson = JSON.parse(removed.stdout);
+    assert.deepEqual(removedJson.changes, [{ kind: 'tool', key: 'jq', from: true, to: false }]);
+    assert.match(fs.readFileSync(path.join(dir, 'agentenv.toml'), 'utf-8'), /jq = false/);
+  });
+
+  it('add reports "Nothing to change" as a no-op when already at the target value (FEAT-07)', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-configedit-'));
+    fs.writeFileSync(
+      path.join(dir, 'agentenv.toml'),
+      'scope = "project"\n[agents]\nclaude_code = false\n[tools]\njq = true\n',
+    );
+
+    const result = run(['add', 'jq', '--json'], dir, shellEnv);
+    assert.equal(result.status, 0, result.stderr);
+    const json = JSON.parse(result.stdout);
+    assert.equal(json.success, true);
+    assert.match(json.message, /Nothing to change/);
+  });
+
+  it('add --json runs a full apply with --skip-mise-install, generating files (FEAT-07)', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-configedit-'));
+    fs.writeFileSync(
+      path.join(dir, 'agentenv.toml'),
+      'scope = "project"\n[agents]\nclaude_code = false\n[tools]\njq = false\n',
+    );
+
+    const result = run(['add', 'jq', '--skip-mise-install', '--json'], dir, shellEnv);
+    assert.equal(result.status, 0, result.stderr);
+    const json = JSON.parse(result.stdout);
+    assert.equal(json.success, true);
+    assert.deepEqual(json.changes, [{ kind: 'tool', key: 'jq', from: false, to: true }]);
+    assert.equal(fs.existsSync(path.join(dir, 'mise.toml')), true);
+  });
+
+  it('exits 2 for an unknown tool/agent key on add (FEAT-07)', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-configedit-'));
+    fs.writeFileSync(path.join(dir, 'agentenv.toml'), 'scope = "project"\n[agents]\n[tools]\n');
+
+    const result = run(['add', 'not-a-real-key', '--dry-run'], dir, shellEnv);
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /Unknown tool\/agent key\(s\) to add: not-a-real-key/);
+  });
+
+  it('rejects unknown flags on add/remove as a usage error (FEAT-07)', () => {
+    assert.equal(run(['add', 'jq', '--nope'], wipe).status, 2);
+    assert.equal(run(['remove', 'jq', '--nope'], wipe).status, 2);
+  });
+
+  it('exits 1 for add with no config (operational failure) (FEAT-07)', () => {
+    const missing = run(['add', 'jq'], empty, shellEnv);
+    assert.equal(missing.status, 1);
+    assert.match(missing.stderr, /No agentenv\.toml found/);
+  });
+
   it('exits 1 for uninstall with no config (operational failure)', () => {
     const missing = run(['uninstall'], empty, shellEnv);
     assert.equal(missing.status, 1);

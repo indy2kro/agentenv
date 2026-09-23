@@ -13,6 +13,7 @@ import { statusCommand } from './commands/status.js';
 import { updateCommand } from './commands/update.js';
 import { doctorCommand } from './commands/doctor.js';
 import { uninstallCommand } from './commands/uninstall.js';
+import { addCommand, removeCommand } from './commands/config-edit.js';
 import { completionCommand } from './commands/completion.js';
 import { shellFixCommand } from './commands/shell-fix.js';
 import { setColorEnabled } from './ui/theme.js';
@@ -58,6 +59,8 @@ program.addCommand(statusCommand);
 program.addCommand(updateCommand);
 program.addCommand(doctorCommand);
 program.addCommand(uninstallCommand);
+program.addCommand(addCommand);
+program.addCommand(removeCommand);
 program.addCommand(completionCommand);
 program.addCommand(shellFixCommand);
 
