@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-09-22
 
-Target: 40 · Found: 46 deduplicated items · Completed: 31/46 (+1 partial)
+Target: 40 · Found: 46 deduplicated items · Completed: 32/46 (+1 partial)
 
 > **How to use this document — read before implementing anything.**
 > As you finish each item, change `- [ ]` to `- [x]`, append ` ✅ <commit-sha>`,
@@ -52,7 +52,7 @@ Themes this round:
   Users who relocate agent config get hooks written where the agent never reads them, and an unset HOME makes adapters write `.claude/` into the cwd.
 - [~] **SWEEP-04** [bug] Check the real `rtk init -g` install locations for global-only agents (gemini_cli, cursor, windsurf, vibe) in both `status` and the adapter's `filesCreated` — `src/commands/status.ts:43-55`, `src/adapters/rtk-delegation.ts:111` · effort M · impact med — **partially done** ✅ 3bedfd2 (gemini_cli, cursor fixed and verified live against a real rtk install; windsurf/vibe left as a TODO in the source — live probe against an older rtk build was inconclusive/contradictory, needs re-verification against the pinned 0.49.0 via `smoke:real` before changing). `adapters/rtk-delegation.ts:111`'s own `expectedPath` still has the same unresolved issue for windsurf/vibe.
   These agents are wired into home-dir config, but both places look for `RTK.md` in the project `baseDir`.
-- [ ] **SWEEP-05** [feature] `--json` output for the mutating commands `apply` / `update` / `uninstall` — `src/commands/apply.ts`, `update.ts`, `uninstall.ts` · effort M · impact med
+- [x] **SWEEP-05** ✅ 5b26c73 [feature] `--json` output for the mutating commands `apply` / `update` / `uninstall` — `src/commands/apply.ts`, `update.ts`, `uninstall.ts` · effort M · impact med
   Only the read-only commands emit JSON. `ApplyResult` is already structured, yet CI has to scrape colored text.
 - [ ] **SWEEP-06** [feature] Back up user-global files before agentenv first edits them (`~/.claude/settings.json`, `~/.codex/config.toml`, user-scope `CLAUDE.md`/`AGENTS.md`) — `src/adapters/claude.ts`, `codex.ts`, `utils/fs-retry.ts` · effort M · impact med
   Tier 0 edits are recorded for `shell-fix --revert`, but the adapters' writes to the *same* files have no backup or undo.
