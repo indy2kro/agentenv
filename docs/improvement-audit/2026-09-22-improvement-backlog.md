@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-09-22
 
-Target: 40 · Found: 46 deduplicated items · Completed: 41/46 (+1 partial)
+Target: 40 · Found: 46 deduplicated items · Completed: 42/46 (+1 partial)
 
 > **How to use this document — read before implementing anything.**
 > As you finish each item, change `- [ ]` to `- [x]`, append ` ✅ <commit-sha>`,
@@ -64,7 +64,7 @@ Themes this round:
   `update` rewrites the global shims config and runs `mise self-update`/`mise up`, yet almost none of it is exercised.
 - [x] **SWEEP-10** ✅ 2a0a38b [test] Raise coverage on the environment-touching modules: `commands/wizard.ts` (7%), `toolchain/rtk.ts` (60%), `commands/doctor.ts` (58%), `shell/detector.ts` (69%) · effort L · impact med
   The lowest-covered modules are the ones that touch real user machines, where regressions cost the most.
-- [ ] **SWEEP-11** [ci] Add a coverage report/gate (`node --test --experimental-test-coverage`) to `npm test` or CI — `cmd/agentenv/package.json`, `.github/workflows/ci.yml` · effort S · impact low
+- [x] **SWEEP-11** ✅ 548db4c [ci] Add a coverage report/gate (`node --test --experimental-test-coverage`) to `npm test` or CI — `cmd/agentenv/package.json`, `.github/workflows/ci.yml` · effort S · impact low
   Coverage (78% lines / 77% branches) is invisible today, so it can drop silently.
 
 ## Correctness bugs   (BUG-NN)
