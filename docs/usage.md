@@ -207,6 +207,25 @@ agentenv uninstall --json           # one JSON document ({success, message, toUn
 
 `agentenv apply` reinstalls whatever you remove. Non-TTY runs require `--yes`.
 
+`--unwire-agents [agents]` removes agent wiring instead of mise-managed
+tools: each targeted agent's adapter `cleanup()` (e.g. Claude Code's
+PreToolUse hook) and, for a user-scope config, that agent's own managed
+instruction file. With no value it unwires every enabled agent and also
+strips the shared `AGENTS.md`/`CLAUDE.md` managed block (deleting a file
+that held only that block); a comma-separated value (e.g.
+`--unwire-agents claude_code,codex_cli`) unwires just those agents and
+never touches the shared files, since other agents may still need them.
+Combine with `--delete-mise-toml` (full unwire only) to also remove the
+generated `mise.toml`. Mutually exclusive with `[tools...]`; supports
+`--dry-run`, `--yes`, `--scope`, and `--json`
+(`{success, message, unwiredAgents, filesChanged, deletedMiseToml}`).
+
+```sh
+agentenv uninstall --unwire-agents --yes                    # unwire every enabled agent
+agentenv uninstall --unwire-agents claude_code --yes        # unwire just Claude Code
+agentenv uninstall --unwire-agents --delete-mise-toml --yes # also delete mise.toml
+```
+
 ### `agentenv shell-fix`
 
 Inspect or revert the per-user Tier 0 shell changes `apply` records on

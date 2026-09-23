@@ -27,11 +27,37 @@ function run(
   }
 }
 
+/**
+ * A fresh directory shaped like `unwireFixture` (codex_cli enabled, a
+ * marker-blocked AGENTS.md/CLAUDE.md, a generated mise.toml) for tests that
+ * mutate it via `uninstall --unwire-agents --yes` — a shared fixture would
+ * make one such test's writes leak into another's assertions.
+ */
+function makeUnwireFixture(root: string): string {
+  const dir = fs.mkdtempSync(path.join(root, 'agentenv-unwire-'));
+  fs.writeFileSync(
+    path.join(dir, 'agentenv.toml'),
+    `scope = "project"
+[agents]
+claude_code = false
+codex_cli = true
+[tools]
+`,
+  );
+  const managedBlock =
+    '<!-- agentenv-managed-start -->\nmanaged content\n<!-- agentenv-managed-end -->\n';
+  fs.writeFileSync(path.join(dir, 'AGENTS.md'), managedBlock);
+  fs.writeFileSync(path.join(dir, 'CLAUDE.md'), managedBlock);
+  fs.writeFileSync(path.join(dir, 'mise.toml'), '# generated\n');
+  return dir;
+}
+
 describe('CLI exit-code contract', () => {
   let empty: string;
   let clean: string;
   let wipe: string;
   let agentsonly: string;
+  let unwireFixture: string;
   let noMiseEnv: NodeJS.ProcessEnv;
   let shellEnv: NodeJS.ProcessEnv;
 
@@ -157,6 +183,14 @@ watchexec = false
 direnv = false
 `,
     );
+    // "unwireFixture" has codex_cli enabled (whose adapter cleanup() is a
+    // no-op — no mise/rtk needed) and hand-written marker-blocked
+    // AGENTS.md/CLAUDE.md, so --unwire-agents can be exercised end-to-end
+    // without ever needing a real `apply`. Only used for read-only
+    // (--dry-run / usage-error) tests; mutating tests use a fresh
+    // makeUnwireFixture(root) copy instead.
+    unwireFixture = makeUnwireFixture(root);
+
     // A mise-absent environment, deterministic on any machine: no PATH lookup
     // can find mise, and HOME/XDG point at empty dirs so no real config leaks.
     const scrub = path.join(root, 'scrub');
@@ -381,6 +415,101 @@ direnv = false
     assert.ok(
       payload.generatedFiles.every((file: { status: string }) => file.status === 'unchanged'),
     );
+  });
+
+  it('uninstall --unwire-agents --dry-run previews classified changes without writing (FEAT-03)', () => {
+    const dry = run(['uninstall', '--unwire-agents', '--dry-run'], unwireFixture, shellEnv);
+    assert.equal(dry.status, 0, dry.stderr);
+    assert.match(dry.stdout, /codex_cli — would run cleanup\(\)/);
+    assert.match(dry.stdout, /AGENTS\.md — delete/);
+    assert.match(dry.stdout, /CLAUDE\.md — delete/);
+    assert.match(dry.stdout, /Dry run complete/);
+    // Read-only: nothing on disk changed.
+    assert.equal(fs.existsSync(path.join(unwireFixture, 'AGENTS.md')), true);
+  });
+
+  it('uninstall --unwire-agents --yes removes the managed block and reports success (FEAT-03)', () => {
+    const dir = makeUnwireFixture(fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-contract-')));
+    const result = run(['uninstall', '--unwire-agents', '--yes', '--json'], dir, shellEnv);
+    assert.equal(result.status, 0, result.stderr);
+    const json = JSON.parse(result.stdout);
+    assert.equal(json.success, true);
+    assert.deepEqual(json.unwiredAgents, ['codex_cli']);
+    assert.ok(json.filesChanged.some((f: string) => f.endsWith('AGENTS.md')));
+    assert.ok(json.filesChanged.some((f: string) => f.endsWith('CLAUDE.md')));
+    // Files held only the managed block, so they were deleted outright.
+    assert.equal(fs.existsSync(path.join(dir, 'AGENTS.md')), false);
+    assert.equal(fs.existsSync(path.join(dir, 'CLAUDE.md')), false);
+    // mise.toml survives without --delete-mise-toml.
+    assert.equal(fs.existsSync(path.join(dir, 'mise.toml')), true);
+  });
+
+  it('uninstall --unwire-agents --delete-mise-toml --yes also removes mise.toml (FEAT-03)', () => {
+    const dir = makeUnwireFixture(fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-contract-')));
+    const result = run(
+      ['uninstall', '--unwire-agents', '--delete-mise-toml', '--yes', '--json'],
+      dir,
+      shellEnv,
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const json = JSON.parse(result.stdout);
+    assert.equal(json.deletedMiseToml, true);
+    assert.equal(fs.existsSync(path.join(dir, 'mise.toml')), false);
+  });
+
+  it('uninstall --unwire-agents=<agent> only unwires that agent and never touches shared files (FEAT-03)', () => {
+    const dir = makeUnwireFixture(fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-contract-')));
+    const result = run(
+      ['uninstall', '--unwire-agents', 'codex_cli', '--yes', '--json'],
+      dir,
+      shellEnv,
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const json = JSON.parse(result.stdout);
+    assert.deepEqual(json.unwiredAgents, ['codex_cli']);
+    assert.deepEqual(json.filesChanged, []);
+    // Partial unwire never strips shared AGENTS.md/CLAUDE.md.
+    assert.equal(fs.existsSync(path.join(dir, 'AGENTS.md')), true);
+    assert.equal(fs.existsSync(path.join(dir, 'CLAUDE.md')), true);
+  });
+
+  it('exits 2 for an unknown agent on uninstall --unwire-agents (FEAT-03)', () => {
+    const result = run(
+      ['uninstall', '--unwire-agents', 'not-a-real-agent', '--dry-run'],
+      unwireFixture,
+      shellEnv,
+    );
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /Unknown agent\(s\) to unwire: not-a-real-agent/);
+  });
+
+  it('exits 2 when --unwire-agents is combined with specific tool arguments (FEAT-03)', () => {
+    const result = run(
+      ['uninstall', 'ripgrep', '--unwire-agents', '--dry-run'],
+      unwireFixture,
+      shellEnv,
+    );
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /--unwire-agents cannot be combined with specific tool arguments/);
+  });
+
+  it('exits 2 when --delete-mise-toml is combined with a specific agent list (FEAT-03)', () => {
+    const result = run(
+      ['uninstall', '--unwire-agents', 'codex_cli', '--delete-mise-toml', '--dry-run'],
+      unwireFixture,
+      shellEnv,
+    );
+    assert.equal(result.status, 2);
+    assert.match(
+      result.stderr,
+      /--delete-mise-toml requires --unwire-agents with no specific agent list/,
+    );
+  });
+
+  it('exits 2 for --delete-mise-toml without --unwire-agents at all (FEAT-03)', () => {
+    const result = run(['uninstall', '--delete-mise-toml', '--dry-run'], unwireFixture, shellEnv);
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /--delete-mise-toml requires --unwire-agents/);
   });
 
   it('exits 1 for uninstall with no config (operational failure)', () => {

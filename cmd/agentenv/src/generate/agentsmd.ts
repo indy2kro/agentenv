@@ -488,3 +488,117 @@ export function updateWithMarkers(
     };
   }
 }
+
+export type MarkerRemovalPlan =
+  | { status: 'delete' }
+  | { status: 'strip'; content: string }
+  | { status: 'absent' }
+  | { status: 'no-markers' }
+  | { status: 'error'; message: string };
+
+/**
+ * Decide what removeMarkerBlock() would do to `filePath` — the read half of
+ * an unwire (FEAT-03), mirroring planMarkerUpdate()'s role for apply. A file
+ * that contains only the managed block (nothing else before/after it, once
+ * whitespace is trimmed) is deleted outright rather than left as an empty
+ * shell; a file with user content around the block keeps that content and
+ * loses only the block.
+ */
+export function planMarkerRemoval(
+  filePath: string,
+  markerStart: string,
+  markerEnd: string,
+): MarkerRemovalPlan {
+  if (!fs.existsSync(filePath)) {
+    return { status: 'absent' };
+  }
+
+  const existingContent = fs.readFileSync(filePath, 'utf-8');
+  const hasStart = existingContent.includes(markerStart);
+  const hasEnd = existingContent.includes(markerEnd);
+
+  if (!hasStart && !hasEnd) {
+    return { status: 'no-markers' };
+  }
+  if (hasStart !== hasEnd) {
+    return {
+      status: 'error',
+      message: `File ${filePath} contains only one managed marker (a partial write); leaving it untouched`,
+    };
+  }
+
+  const startIndex = existingContent.indexOf(markerStart);
+  const endIndex = existingContent.indexOf(markerEnd, startIndex);
+  if (startIndex === -1 || endIndex === -1 || startIndex >= endIndex) {
+    return { status: 'error', message: `Invalid marker positions in ${filePath}` };
+  }
+
+  const before = existingContent.slice(0, startIndex).replace(/\s+$/, '');
+  const after = existingContent.slice(endIndex + markerEnd.length).replace(/^\s+/, '');
+
+  if (before.length === 0 && after.length === 0) {
+    return { status: 'delete' };
+  }
+
+  const eol = detectLineEnding(existingContent);
+  const separator = before.length > 0 && after.length > 0 ? eol + eol : '';
+  const body = `${before}${separator}${after}`;
+  return { status: 'strip', content: body.endsWith(eol) ? body : `${body}${eol}` };
+}
+
+/**
+ * Remove the agentenv-managed block from `filePath` (the write half of an
+ * unwire, FEAT-03). Deletes the file when it held only the managed block;
+ * otherwise strips just the block and preserves the surrounding user
+ * content. A file with no markers, or that doesn't exist, is left untouched.
+ */
+export function removeMarkerBlock(
+  filePath: string,
+  markerStart: string,
+  markerEnd: string,
+): { success: boolean; removed: boolean; deleted: boolean; message: string } {
+  try {
+    const plan = planMarkerRemoval(filePath, markerStart, markerEnd);
+    switch (plan.status) {
+      case 'absent':
+        return {
+          success: true,
+          removed: false,
+          deleted: false,
+          message: `${filePath} does not exist; nothing to remove`,
+        };
+      case 'no-markers':
+        return {
+          success: true,
+          removed: false,
+          deleted: false,
+          message: `${filePath} has no managed block; left untouched`,
+        };
+      case 'error':
+        return { success: false, removed: false, deleted: false, message: plan.message };
+      case 'delete':
+        fs.unlinkSync(filePath);
+        return {
+          success: true,
+          removed: true,
+          deleted: true,
+          message: `Deleted ${filePath} (contained only agentenv-managed content)`,
+        };
+      case 'strip':
+        writeFileWithRetry(filePath, plan.content);
+        return {
+          success: true,
+          removed: true,
+          deleted: false,
+          message: `Removed managed block from ${filePath}`,
+        };
+    }
+  } catch (err) {
+    return {
+      success: false,
+      removed: false,
+      deleted: false,
+      message: `Error removing managed block from ${filePath}: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+}

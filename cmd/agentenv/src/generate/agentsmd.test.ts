@@ -3,7 +3,12 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { generateAgentsMd, generateInstructionFiles, updateWithMarkers } from './agentsmd.js';
+import {
+  generateAgentsMd,
+  generateInstructionFiles,
+  removeMarkerBlock,
+  updateWithMarkers,
+} from './agentsmd.js';
 import type { AgentenvConfig } from '../config/schema.js';
 
 const start = '<!-- agentenv-managed-start -->';
@@ -87,6 +92,98 @@ describe('managed instruction blocks', () => {
     assert.equal(result.updated, false);
     assert.match(result.message, /only one managed marker/);
     assert.equal(fs.readFileSync(filePath, 'utf8'), `user text\n${start}\nome-players\n`);
+  });
+});
+
+describe('removeMarkerBlock (FEAT-03 unwire)', () => {
+  it('deletes the file when it holds only the agentenv-managed block', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-unwire-'));
+    const filePath = path.join(directory, 'AGENTS.md');
+    fs.writeFileSync(filePath, `${start}\nmanaged\n${end}\n`);
+
+    const result = removeMarkerBlock(filePath, start, end);
+
+    assert.equal(result.success, true);
+    assert.equal(result.removed, true);
+    assert.equal(result.deleted, true);
+    assert.equal(fs.existsSync(filePath), false);
+  });
+
+  it('strips only the managed block and preserves surrounding user content', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-unwire-'));
+    const filePath = path.join(directory, 'AGENTS.md');
+    fs.writeFileSync(filePath, `# My notes\n\n${start}\nmanaged\n${end}\n\nmore notes\n`);
+
+    const result = removeMarkerBlock(filePath, start, end);
+
+    assert.equal(result.success, true);
+    assert.equal(result.removed, true);
+    assert.equal(result.deleted, false);
+    const content = fs.readFileSync(filePath, 'utf8');
+    assert.equal(content, '# My notes\n\nmore notes\n');
+    assert.ok(!content.includes(start));
+  });
+
+  it('is idempotent: a second removal is a no-op once the block is gone', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-unwire-'));
+    const filePath = path.join(directory, 'AGENTS.md');
+    fs.writeFileSync(filePath, `intro\n${start}\nmanaged\n${end}\noutro\n`);
+
+    const first = removeMarkerBlock(filePath, start, end);
+    assert.equal(first.removed, true);
+    const contentAfterFirst = fs.readFileSync(filePath, 'utf8');
+
+    const second = removeMarkerBlock(filePath, start, end);
+    assert.equal(second.success, true);
+    assert.equal(second.removed, false);
+    assert.match(second.message, /no managed block/);
+    assert.equal(fs.readFileSync(filePath, 'utf8'), contentAfterFirst);
+  });
+
+  it('leaves a file with no markers untouched', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-unwire-'));
+    const filePath = path.join(directory, 'NOTES.md');
+    fs.writeFileSync(filePath, 'just user content\n');
+
+    const result = removeMarkerBlock(filePath, start, end);
+
+    assert.equal(result.success, true);
+    assert.equal(result.removed, false);
+    assert.equal(fs.readFileSync(filePath, 'utf8'), 'just user content\n');
+  });
+
+  it('is a no-op when the file does not exist', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-unwire-'));
+    const filePath = path.join(directory, 'MISSING.md');
+
+    const result = removeMarkerBlock(filePath, start, end);
+
+    assert.equal(result.success, true);
+    assert.equal(result.removed, false);
+    assert.match(result.message, /does not exist/);
+  });
+
+  it('fails safely on a partial write (only one marker present)', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-unwire-'));
+    const filePath = path.join(directory, 'AGENTS.md');
+    fs.writeFileSync(filePath, `intro\n${start}\nonly start\n`);
+
+    const result = removeMarkerBlock(filePath, start, end);
+
+    assert.equal(result.success, false);
+    assert.match(result.message, /only one managed marker/);
+    assert.equal(fs.readFileSync(filePath, 'utf8'), `intro\n${start}\nonly start\n`);
+  });
+
+  it('matches a CRLF file when stripping the managed block', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-unwire-'));
+    const filePath = path.join(directory, 'AGENTS.md');
+    fs.writeFileSync(filePath, `intro\r\n${start}\r\nmanaged\r\n${end}\r\noutro\r\n`);
+
+    const result = removeMarkerBlock(filePath, start, end);
+
+    assert.equal(result.success, true);
+    assert.equal(fs.readFileSync(filePath, 'utf8'), 'intro\r\n\r\noutro\r\n');
   });
 });
 
