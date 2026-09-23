@@ -8,7 +8,13 @@ import { applyConfiguration } from './apply.js';
 import { DEFAULT_CONFIG, saveConfig } from '../config/schema.js';
 
 function tempDir(prefix: string): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  // realpathSync: several tests here process.chdir() into this directory and
+  // then compare a baseDir/path the code derived from process.cwd() against
+  // the raw value returned here. On macOS, os.tmpdir() is under
+  // /var/folders/..., a symlink to /private/var/folders/...; POSIX
+  // chdir+getcwd resolves through that symlink, so the two would otherwise
+  // never match.
+  return fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
 }
 
 // The step 0 prerequisite must be printed exactly once across the

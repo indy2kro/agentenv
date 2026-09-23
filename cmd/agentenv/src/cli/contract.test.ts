@@ -62,7 +62,13 @@ describe('CLI exit-code contract', () => {
   let shellEnv: NodeJS.ProcessEnv;
 
   before(() => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-contract-'));
+    // realpathSync: on macOS, os.tmpdir() is under /var/folders/..., a
+    // symlink to /private/var/folders/...; a child process's process.cwd()
+    // resolves through that symlink (standard POSIX chdir/getcwd behavior)
+    // and reports the /private/var form. Canonicalizing here once means
+    // every path derived from `root` below already matches what a spawned
+    // `agentenv` subprocess actually reports back.
+    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-contract-')));
     empty = path.join(root, 'empty');
     clean = path.join(root, 'clean');
     fs.mkdirSync(empty, { recursive: true });
