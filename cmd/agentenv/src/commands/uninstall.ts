@@ -20,7 +20,7 @@ import {
   type InstalledToolState,
 } from '../toolchain/mise.js';
 import { normalizeOutput } from '../utils/output.js';
-import { renderLogo } from '../ui/output.js';
+import { renderLogo, setQuietEnabled } from '../ui/output.js';
 import { printConfigPath, printResult, reportValidation } from '../ui/report.js';
 
 export interface UninstallTarget {
@@ -155,6 +155,7 @@ interface UninstallCommandOptions {
   yes?: boolean;
   dryRun?: boolean;
   scope?: ScopeValue;
+  json?: boolean;
   /**
    * The commander Command instance, when called from the real CLI action —
    * used so an unknown tool argument goes through the same command.error()
@@ -164,6 +165,19 @@ interface UninstallCommandOptions {
   command?: Command;
 }
 
+export interface UninstallJsonResult {
+  success: boolean;
+  message: string;
+  configPath?: string;
+  dryRun?: boolean;
+  toUninstall?: string[];
+  alreadyGone?: string[];
+}
+
+function printUninstallJson(payload: UninstallJsonResult): void {
+  console.log(JSON.stringify(payload, null, 2));
+}
+
 /**
  * Cleanup: remove the config-declared, mise-managed tools from the mise store.
  * Does not modify agentenv.toml or the generated mise.toml — `agentenv apply`
@@ -171,39 +185,48 @@ interface UninstallCommandOptions {
  */
 export async function doUninstall(options: UninstallCommandOptions): Promise<void> {
   const startedAt = Date.now();
+  const json = options.json === true;
+  if (json) setQuietEnabled(true);
   renderLogo();
+
+  const fail = (message: string, exitCode: 1 | 2 = 1): void => {
+    if (json) printUninstallJson({ success: false, message });
+    else console.error(message);
+    process.exitCode = exitCode;
+  };
+
   // 1. Config resolution (mirrors update.ts).
   let configPath: string | null;
   if (options.scope) {
     configPath = configFilePath(options.scope);
     if (!fs.existsSync(configPath)) {
-      console.error(`No agentenv.toml found at ${configPath} (scope ${options.scope}).`);
-      process.exitCode = 1;
+      fail(`No agentenv.toml found at ${configPath} (scope ${options.scope}).`);
       return;
     }
   } else {
     configPath = findConfigPath() ?? null;
     if (!configPath) {
-      console.error('No agentenv.toml found. Run `agentenv setup` first.');
-      process.exitCode = 1;
+      fail('No agentenv.toml found. Run `agentenv setup` first.');
       return;
     }
   }
-  printConfigPath(configPath);
+  if (!json) printConfigPath(configPath);
 
   let config: AgentenvConfig;
   try {
     config = loadConfig(configPath);
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
-    process.exitCode = 1;
+    fail(error instanceof Error ? error.message : String(error));
     return;
   }
   const report = validateConfig(config);
-  if (!reportValidation(report, 'Configuration invalid — not applying.')) {
+  if (report.errors.length > 0) {
+    if (json) printUninstallJson({ success: false, message: report.errors.join('; ') });
+    else reportValidation(report, 'Configuration invalid — not applying.');
     process.exitCode = 1;
     return;
   }
+  if (!json) reportValidation(report, 'Configuration invalid — not applying.');
 
   // 2. Argument validation runs immediately after config resolution, before
   //    confirmation, the mise gate, or any uninstall.
@@ -211,13 +234,12 @@ export async function doUninstall(options: UninstallCommandOptions): Promise<voi
   const { matched, unknown } = resolveToolArgs(options.tools ?? [], targets);
   if (unknown.length > 0) {
     const message = `Unknown tool(s) to uninstall: ${unknown.join(', ')}`;
-    if (options.command) {
+    if (options.command && !json) {
       // Usage error, not an operational failure — exit 2, matching
       // docs/guides/exit-codes.md.
       options.command.error(message);
     } else {
-      console.error(message);
-      process.exitCode = 2;
+      fail(message, 2);
     }
     return;
   }
@@ -225,7 +247,8 @@ export async function doUninstall(options: UninstallCommandOptions): Promise<voi
 
   // 3. No-op path needs no mise.
   if (requested.length === 0) {
-    printResult('warn', 'Nothing to uninstall.');
+    if (json) printUninstallJson({ success: true, message: 'Nothing to uninstall.', configPath });
+    else printResult('warn', 'Nothing to uninstall.');
     return;
   }
 
@@ -237,41 +260,66 @@ export async function doUninstall(options: UninstallCommandOptions): Promise<voi
   if (options.dryRun) {
     if (!isMiseInstalled()) {
       const plan = { toUninstall: [] as string[], alreadyGone: [] as string[] };
-      console.log(renderUninstallSummary(requested, plan, 'preview', true).join('\n'));
-      printResult('warn', 'Dry run complete', 'nothing was uninstalled (mise not installed)');
+      if (json) {
+        printUninstallJson({
+          success: true,
+          message: 'nothing was uninstalled (mise not installed)',
+          configPath,
+          dryRun: true,
+          toUninstall: [],
+          alreadyGone: [],
+        });
+      } else {
+        console.log(renderUninstallSummary(requested, plan, 'preview', true).join('\n'));
+        printResult('warn', 'Dry run complete', 'nothing was uninstalled (mise not installed)');
+      }
       return;
     }
     const state = readInstalledState();
     if (!state) {
-      process.exitCode = 1;
+      fail('mise ls --json failed or returned unrecognized output.');
       return;
     }
-    console.log(
-      renderUninstallSummary(requested, uninstallPlan(requested, state), 'preview', false).join(
-        '\n',
-      ),
-    );
-    printResult('warn', 'Dry run complete', 'no changes were made', Date.now() - startedAt);
+    const plan = uninstallPlan(requested, state);
+    if (json) {
+      printUninstallJson({
+        success: true,
+        message: 'no changes were made',
+        configPath,
+        dryRun: true,
+        toUninstall: plan.toUninstall,
+        alreadyGone: plan.alreadyGone,
+      });
+    } else {
+      console.log(renderUninstallSummary(requested, plan, 'preview', false).join('\n'));
+      printResult('warn', 'Dry run complete', 'no changes were made', Date.now() - startedAt);
+    }
     return;
   }
 
   // 5. Fail-closed mise gate: unknown installed state is not "already gone".
   if (!isMiseInstalled()) {
-    console.error('agentenv uninstall requires mise, but mise was not found.');
-    for (const line of miseInstallInstructions()) console.error(`  ${line}`);
-    process.exitCode = 1;
+    if (json) {
+      printUninstallJson({ success: false, message: 'agentenv uninstall requires mise' });
+      process.exitCode = 1;
+    } else {
+      console.error('agentenv uninstall requires mise, but mise was not found.');
+      for (const line of miseInstallInstructions()) console.error(`  ${line}`);
+      process.exitCode = 1;
+    }
     return;
   }
 
   // 6. Plan from live state.
   const state = readInstalledState();
   if (!state) {
-    process.exitCode = 1;
+    fail('mise ls --json failed or returned unrecognized output.');
     return;
   }
   const plan = uninstallPlan(requested, state);
   if (plan.toUninstall.length === 0) {
-    printResult('warn', 'Nothing to uninstall.');
+    if (json) printUninstallJson({ success: true, message: 'Nothing to uninstall.', configPath });
+    else printResult('warn', 'Nothing to uninstall.');
     return;
   }
 
@@ -283,14 +331,14 @@ export async function doUninstall(options: UninstallCommandOptions): Promise<voi
         default: false,
       });
       if (!proceed) {
-        printResult('warn', 'Aborted', 'no changes were made');
+        if (json) printUninstallJson({ success: true, message: 'Aborted', configPath });
+        else printResult('warn', 'Aborted', 'no changes were made');
         return;
       }
     } else {
-      console.error(
+      fail(
         'Interactive confirmation requires a TTY; pass `--yes` (or `--dry-run` to preview) to run non-interactively.',
       );
-      process.exitCode = 1;
       return;
     }
   }
@@ -298,10 +346,19 @@ export async function doUninstall(options: UninstallCommandOptions): Promise<voi
   // 8. Uninstall.
   const result = runMiseUninstall(plan.toUninstall, scopeDir, miseTomlPath);
   if (!result.success) {
-    console.error(
+    fail(
       `mise uninstall failed (exit ${result.exitCode ?? 'null'}): ${normalizeOutput(result.stderr || result.stdout).trim()}`,
     );
-    process.exitCode = 1;
+    return;
+  }
+  if (json) {
+    printUninstallJson({
+      success: true,
+      message: `Removed ${plan.toUninstall.length} tool(s)`,
+      configPath,
+      toUninstall: plan.toUninstall,
+      alreadyGone: plan.alreadyGone,
+    });
     return;
   }
   console.log(renderUninstallSummary(requested, plan, 'result', false).join('\n'));
@@ -325,6 +382,7 @@ export const uninstallCommand = new Command()
   .option('--yes', 'skip the confirmation prompt (required when non-interactive)')
   .option('--dry-run', 'print what would be uninstalled without changing anything')
   .option('--scope <scope>', 'config scope to use: project|user (default: nearest config)')
+  .option('--json', 'emit a machine-readable JSON document on stdout')
   .action((tools: string[], options: UninstallCommandOptions, command: Command) => {
     const scope = parseScopeFlag(options.scope);
     if (scope.error) {

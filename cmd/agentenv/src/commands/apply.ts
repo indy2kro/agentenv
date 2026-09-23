@@ -55,7 +55,7 @@ import {
 } from '../toolchain/mise.js';
 import { normalizeOutput } from '../utils/output.js';
 import { colorizeLine, theme } from '../ui/theme.js';
-import { renderLogo } from '../ui/output.js';
+import { renderLogo, setQuietEnabled } from '../ui/output.js';
 import { printConfigPath, printMessages, printResult, reportValidation } from '../ui/report.js';
 import { withSpinner } from '../ui/spinner.js';
 import type { Spinner } from '../ui/spinner.js';
@@ -66,6 +66,44 @@ export interface ApplyResult {
   errors: string[];
   /** Wall-clock milliseconds the apply took, for the end-of-run timing line. */
   elapsedMs?: number;
+}
+
+export interface ApplyJsonResult {
+  success: boolean;
+  configPath: string;
+  baseDir: string;
+  messages: string[];
+  errors: string[];
+  warnings: string[];
+  elapsedMs?: number;
+}
+
+/** Shape `--json` prints for a completed (non-dry-run) apply. */
+export function buildApplyJsonResult(
+  result: ApplyResult,
+  extra: { configPath: string; baseDir: string; warnings: string[] },
+): ApplyJsonResult {
+  return {
+    success: result.success,
+    configPath: extra.configPath,
+    baseDir: extra.baseDir,
+    messages: result.messages,
+    errors: result.errors,
+    warnings: extra.warnings,
+    elapsedMs: result.elapsedMs,
+  };
+}
+
+export interface ApplyDryRunJsonResult {
+  success: true;
+  dryRun: true;
+  configPath: string;
+  baseDir: string;
+  misePlan: { enabledToolCount: number; miseTomlPath: string };
+  generatedFiles: string[];
+  agents: string[];
+  rtkEnabled: boolean;
+  integrations: string[];
 }
 
 export interface ApplyOptions {
@@ -332,6 +370,7 @@ export const applyCommand = new Command()
     'Tier 0 Windows shell fix: auto (default; only writes files with a TTY) | always (write even without a TTY — for an agent running apply) | never',
   )
   .option('--scope <scope>', 'config scope to apply: project|user (default: nearest config)')
+  .option('--json', 'emit a machine-readable JSON document on stdout')
   .action(
     async (
       options: {
@@ -339,10 +378,13 @@ export const applyCommand = new Command()
         dryRun?: boolean;
         shellFix?: string;
         scope?: ScopeValue;
+        json?: boolean;
       },
       command: Command,
     ) => {
       const startedAt = Date.now();
+      const json = options.json === true;
+      if (json) setQuietEnabled(true);
       renderLogo();
       const dryRun = options.dryRun === true;
 
@@ -364,19 +406,28 @@ export const applyCommand = new Command()
         }
       }
 
+      /** Emit a single-error JSON failure document (json mode's equivalent of a themed console.error). */
+      const jsonFail = (error: string): void => {
+        console.log(JSON.stringify({ success: false, messages: [], errors: [error] }, null, 2));
+      };
+
       let config: AgentenvConfig;
       let configPath: string | null;
       if (scope.scope) {
         configPath = configFilePath(scope.scope);
         if (!fs.existsSync(configPath)) {
-          console.error(`No agentenv.toml found at ${configPath} (scope ${scope.scope}).`);
+          const error = `No agentenv.toml found at ${configPath} (scope ${scope.scope}).`;
+          if (json) jsonFail(error);
+          else console.error(error);
           process.exitCode = 1;
           return;
         }
       } else {
         configPath = findConfigPath() ?? null;
         if (!configPath) {
-          console.error('No agentenv.toml found. Run `agentenv setup` first.');
+          const error = 'No agentenv.toml found. Run `agentenv setup` first.';
+          if (json) jsonFail(error);
+          else console.error(error);
           process.exitCode = 1;
           return;
         }
@@ -384,17 +435,31 @@ export const applyCommand = new Command()
       try {
         config = loadConfig(configPath);
       } catch (error) {
-        console.error(theme.fail(error instanceof Error ? error.message : String(error)));
+        const message = error instanceof Error ? error.message : String(error);
+        if (json) jsonFail(message);
+        else console.error(theme.fail(message));
         process.exitCode = 1;
         return;
       }
-      printConfigPath(configPath);
+      if (!json) printConfigPath(configPath);
 
       const report = validateConfig(config);
-      if (!reportValidation(report, 'Configuration invalid — not applying.')) {
+      if (report.errors.length > 0) {
+        if (json) {
+          console.log(
+            JSON.stringify(
+              { success: false, messages: [], errors: report.errors, warnings: report.warnings },
+              null,
+              2,
+            ),
+          );
+        } else {
+          reportValidation(report, 'Configuration invalid — not applying.');
+        }
         process.exitCode = 1;
         return;
       }
+      if (!json) reportValidation(report, 'Configuration invalid — not applying.');
 
       const baseDir = resolveScopeDir(config.scope);
       if (dryRun) {
@@ -407,6 +472,21 @@ export const applyCommand = new Command()
         ];
         const agents = [...getEnabledAgents(config)];
         const integrations = enabledIntegrations(config, options);
+        if (json) {
+          const payload: ApplyDryRunJsonResult = {
+            success: true,
+            dryRun: true,
+            configPath,
+            baseDir,
+            misePlan: { enabledToolCount, miseTomlPath: path.join(baseDir, 'mise.toml') },
+            generatedFiles: files.map((file) => file.path),
+            agents,
+            rtkEnabled: config.rtk?.enabled === true,
+            integrations: integrations.map((integration) => integration.getName()),
+          };
+          console.log(JSON.stringify(payload, null, 2));
+          return;
+        }
         console.log(
           `  Tools:          ${enabledToolCount} enabled -> ${path.join(baseDir, 'mise.toml')}`,
         );
@@ -425,16 +505,33 @@ export const applyCommand = new Command()
         applyConfiguration(config, baseDir, {
           skipMiseInstall: options.skipMiseInstall === true,
           tier0Mode,
-          onMiseInstall: {
-            onStart: () => {
-              spinner.stop();
-              console.log(colorizeLine('Installing tools via mise...'));
-            },
-            onOutput: (chunk) => process.stdout.write(chunk),
-            onEnd: () => spinner.start(),
-          },
+          // Streamed mise install progress is human-only chrome — it would
+          // otherwise interleave raw text into the JSON document.
+          onMiseInstall: json
+            ? undefined
+            : {
+                onStart: () => {
+                  spinner.stop();
+                  console.log(colorizeLine('Installing tools via mise...'));
+                },
+                onOutput: (chunk) => process.stdout.write(chunk),
+                onEnd: () => spinner.start(),
+              },
         }),
       );
+
+      if (json) {
+        console.log(
+          JSON.stringify(
+            buildApplyJsonResult(result, { configPath, baseDir, warnings: report.warnings }),
+            null,
+            2,
+          ),
+        );
+        if (!result.success) process.exitCode = 1;
+        return;
+      }
+
       printMessages(result.messages, result.errors);
       if (!result.success) {
         process.exitCode = 1;

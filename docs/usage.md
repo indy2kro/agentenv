@@ -122,6 +122,7 @@ The single pipeline all of `setup`/`configure`/`apply` funnel into. Reads
 | `--dry-run` | Show what would be written/changed without changing anything. |
 | `--shell-fix <mode>` | Override `[tier0].mode` for this run: `auto` (default; the Windows shell fix only writes files with a TTY), `always` (write even without one — pass this when an AI agent runs `apply`, which never has a TTY), or `never`. |
 | `--scope <scope>` | config scope to apply: `project`\|`user` (default: nearest config), matching `update`/`uninstall`/`setup`. |
+| `--json` | Emit one JSON document (`{success, configPath, baseDir, messages, errors, warnings, elapsedMs}`, or the dry-run plan shape with `--dry-run`) instead of the human report; suppresses the banner and streamed mise install output. |
 
 `apply` is idempotent: with no config change it touches nothing and
 reinstalls nothing.
@@ -181,6 +182,7 @@ agentenv update --tools    # only the tools
 agentenv update --scope project|user
 agentenv update --dry-run  # plan only (alias: --check)
 agentenv update --watch    # watch mise.toml and auto-run mise up on change
+agentenv update --json     # one JSON document ({success, messages, errors, elapsedMs}); not with --watch
 ```
 
 ### `agentenv uninstall`
@@ -193,6 +195,7 @@ agentenv uninstall jq fd           # specific tools (config key/binary/mise name
 agentenv uninstall --dry-run       # preview the plan, change nothing
 agentenv uninstall --yes           # skip the confirmation prompt
 agentenv uninstall --scope project|user
+agentenv uninstall --json           # one JSON document ({success, message, toUninstall, alreadyGone})
 ```
 
 `agentenv apply` reinstalls whatever you remove. Non-TTY runs require `--yes`.

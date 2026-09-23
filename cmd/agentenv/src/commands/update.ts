@@ -28,7 +28,7 @@ import {
   verifySummaryLine,
   verifyToolAvailability,
 } from '../toolchain/mise.js';
-import { renderLogo } from '../ui/output.js';
+import { renderLogo, setQuietEnabled } from '../ui/output.js';
 import { printConfigPath, printResult, reportValidation } from '../ui/report.js';
 import { normalizeOutput } from '../utils/output.js';
 
@@ -39,54 +39,83 @@ interface UpdateCommandOptions {
   watch?: boolean;
   dryRun?: boolean;
   check?: boolean;
+  json?: boolean;
 }
 
 async function doUpdate(options: UpdateCommandOptions): Promise<void> {
   const startedAt = Date.now();
+  const json = options.json === true;
+  if (json) setQuietEnabled(true);
+
+  // In --json mode every line that would otherwise print live is collected
+  // instead, so the command emits exactly one JSON document at the end —
+  // the same {success, messages, errors} shape `apply --json` uses.
+  const messages: string[] = [];
+  const errors: string[] = [];
+  const log = (line: string): void => {
+    if (json) messages.push(line);
+    else console.log(line);
+  };
+  const logErr = (line: string): void => {
+    if (json) errors.push(line);
+    else console.error(line);
+  };
+  const finish = (success: boolean, elapsedMs?: number): void => {
+    if (json) console.log(JSON.stringify({ success, messages, errors, elapsedMs }, null, 2));
+  };
+
   if (!isMiseInstalled()) {
-    console.error('agentenv update requires mise, but mise was not found.');
-    for (const line of miseInstallInstructions()) console.error(`  ${line}`);
+    logErr('agentenv update requires mise, but mise was not found.');
+    for (const line of miseInstallInstructions()) logErr(`  ${line}`);
+    finish(false);
     process.exitCode = 1;
     return;
   }
 
   renderLogo();
-  console.log(`Mise: ${getMiseVersion()}\n`);
+  log(`Mise: ${getMiseVersion()}\n`);
 
   let configPath: string | null;
   if (options.scope) {
     configPath = configFilePath(options.scope);
     if (!fs.existsSync(configPath)) {
-      console.error(`No agentenv.toml found at ${configPath} (scope ${options.scope}).`);
+      logErr(`No agentenv.toml found at ${configPath} (scope ${options.scope}).`);
+      finish(false);
       process.exitCode = 1;
       return;
     }
   } else {
     configPath = findConfigPath() ?? null;
     if (!configPath) {
-      console.error('No agentenv.toml found. Run `agentenv setup` first.');
+      logErr('No agentenv.toml found. Run `agentenv setup` first.');
+      finish(false);
       process.exitCode = 1;
       return;
     }
   }
-  printConfigPath(configPath);
+  if (!json) printConfigPath(configPath);
 
   let config: AgentenvConfig;
   try {
     config = loadConfig(configPath);
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
+    logErr(error instanceof Error ? error.message : String(error));
+    finish(false);
     process.exitCode = 1;
     return;
   }
   const report = validateConfig(config);
-  if (!reportValidation(report, 'Configuration invalid — not applying.')) {
+  if (report.errors.length > 0) {
+    if (json) errors.push(...report.errors);
+    else reportValidation(report, 'Configuration invalid — not applying.');
+    finish(false);
     process.exitCode = 1;
     return;
   }
+  if (!json) reportValidation(report, 'Configuration invalid — not applying.');
 
   const dryRun = options.dryRun === true || options.check === true;
-  if (dryRun) console.log('\n[DRY RUN] Printing the update plan; nothing will be changed.\n');
+  if (dryRun) log('\n[DRY RUN] Printing the update plan; nothing will be changed.\n');
 
   const doSelf =
     options.self === true || (options.tools === undefined && options.self === undefined);
@@ -100,27 +129,27 @@ async function doUpdate(options: UpdateCommandOptions): Promise<void> {
     const pathLine = shimsDirOnPath()
       ? `${dir} is on PATH`
       : `would add ${dir} to the global mise config PATH`;
-    console.log(`Shims: ${pathLine}`);
+    log(`Shims: ${pathLine}`);
   } else {
     const shims = ensureGlobalShimsDir(shellFixStatePath());
     if (shims.success) {
-      console.log(`Shims: ${shims.message}`);
+      log(`Shims: ${shims.message}`);
     } else {
-      console.error(`Shims: ${shims.message}`);
+      logErr(`Shims: ${shims.message}`);
       failed = true;
     }
   }
 
   if (doSelf) {
     if (dryRun) {
-      console.log('\nWould run `mise self-update`.');
+      log('\nWould run `mise self-update`.');
     } else {
-      console.log('\nUpdating mise itself...');
+      log('\nUpdating mise itself...');
       const result = await runMiseSelfUpdate();
       if (result.success) {
-        console.log(`  mise self-update: ${result.output || 'already up to date'}`);
+        log(`  mise self-update: ${result.output || 'already up to date'}`);
       } else {
-        console.error(
+        logErr(
           `  mise self-update failed: ${result.output || 'no output'} (some install methods, e.g. winget, do not support self-update)`,
         );
         failed = true;
@@ -130,38 +159,36 @@ async function doUpdate(options: UpdateCommandOptions): Promise<void> {
 
   if (doTools) {
     if (dryRun) {
-      console.log('\nUpgrade plan for mise-managed tools:');
+      log('\nUpgrade plan for mise-managed tools:');
     } else {
-      console.log('\nUpgrading mise-managed tools...');
+      log('\nUpgrading mise-managed tools...');
     }
     const scopeDir = resolveScopeDir(config.scope ?? 'project');
     const miseTomlPath = path.join(scopeDir, 'mise.toml');
     if (!fs.existsSync(miseTomlPath)) {
-      console.error(`  ${miseTomlPath} not found — run \`agentenv apply\` first.`);
+      logErr(`  ${miseTomlPath} not found — run \`agentenv apply\` first.`);
       failed = true;
     } else {
       if (dryRun) {
-        console.log(`  would trust ${miseTomlPath}`);
+        log(`  would trust ${miseTomlPath}`);
       } else {
         const trust = trustMiseToml(miseTomlPath, scopeDir);
-        if (trust.success) console.log(`  ${trust.message}`);
-        else console.error(`  ${trust.message}`);
+        if (trust.success) log(`  ${trust.message}`);
+        else logErr(`  ${trust.message}`);
         if (!trust.success) failed = true;
       }
 
       const targets = getUpgradeableTools(config);
       if (targets.length === 0) {
-        console.log('  No upgradeable tools: everything enabled is pinned to a version.');
+        log('  No upgradeable tools: everything enabled is pinned to a version.');
       } else {
-        console.log(`  mise up ${targets.join(' ')}${dryRun ? ' (would run)' : ''}`);
+        log(`  mise up ${targets.join(' ')}${dryRun ? ' (would run)' : ''}`);
         if (!dryRun) {
           const upgrade = await runMiseUpgrade(targets, scopeDir);
           if (upgrade.success) {
-            console.log(
-              `  ${(upgrade.stdout || upgrade.stderr || '').trim() || 'all tools up to date'}`,
-            );
+            log(`  ${(upgrade.stdout || upgrade.stderr || '').trim() || 'all tools up to date'}`);
           } else {
-            console.error(
+            logErr(
               `  mise up failed (exit ${upgrade.exitCode ?? 'null'}): ${normalizeOutput(upgrade.stderr || upgrade.stdout).trim()}`,
             );
             failed = true;
@@ -172,34 +199,42 @@ async function doUpdate(options: UpdateCommandOptions): Promise<void> {
           cwd: scopeDir,
           miseTomlPath: path.join(scopeDir, 'mise.toml'),
         });
-        console.log(`  ${verifySummaryLine(availability)}`);
-        for (const tool of availability) console.log(`    ${toolAvailabilityLine(tool)}`);
+        log(`  ${verifySummaryLine(availability)}`);
+        for (const tool of availability) log(`    ${toolAvailabilityLine(tool)}`);
         if (verifyHintNeeded(availability)) {
-          console.log();
+          log('');
           for (const line of miseActivationHint().split('\n')) {
-            console.log(`    ${line}`);
+            log(`    ${line}`);
           }
         }
       }
     }
   }
 
+  const elapsedMs = Date.now() - startedAt;
   if (failed) {
     process.exitCode = 1;
-    printResult(
-      'fail',
-      'Update failed',
-      'one or more tools could not be upgraded — see the messages above',
-      Date.now() - startedAt,
-    );
+    finish(false, elapsedMs);
+    if (!json) {
+      printResult(
+        'fail',
+        'Update failed',
+        'one or more tools could not be upgraded — see the messages above',
+        elapsedMs,
+      );
+    }
   } else if (dryRun) {
-    printResult('ok', 'Dry run complete', 'no changes were made', Date.now() - startedAt);
+    finish(true, elapsedMs);
+    if (!json) printResult('ok', 'Dry run complete', 'no changes were made', elapsedMs);
   } else {
-    printResult('ok', 'Update complete!', 'tools are up to date', Date.now() - startedAt);
+    finish(true, elapsedMs);
+    if (!json) printResult('ok', 'Update complete!', 'tools are up to date', elapsedMs);
   }
 
-  // Optional file watching mode
-  if (options.watch && doTools) {
+  // Optional file watching mode. --json prints a single terminal document,
+  // which a live watcher can never provide, so it's rejected earlier
+  // (see updateCommand's action) rather than silently ignored here.
+  if (options.watch && doTools && !json) {
     if (dryRun) {
       console.log('\nSkipping watch mode (dry run).');
     } else {
@@ -276,10 +311,15 @@ export const updateCommand = new Command()
   .option('--watch', 'watch mise.toml for changes and auto-run mise up (optional)')
   .option('--dry-run', 'print the update plan without changing anything')
   .option('--check', 'alias for --dry-run')
+  .option('--json', 'emit a machine-readable JSON document on stdout (not with --watch)')
   .action((options: UpdateCommandOptions, command: Command) => {
     const scope = parseScopeFlag(options.scope);
     if (scope.error) {
       command.error(scope.error);
+      return;
+    }
+    if (options.json && options.watch) {
+      command.error('--json cannot be combined with --watch (a live watcher has no single result)');
       return;
     }
     return doUpdate({ ...options, scope: scope.scope });

@@ -5,6 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import {
   applyConfiguration,
+  buildApplyJsonResult,
   resolveTier0WriteFiles,
   shouldRunMiseInstall,
   userScopeInstructionFiles,
@@ -564,5 +565,32 @@ describe('shouldRunMiseInstall', () => {
 
   it('does not run when --skip-mise-install was passed', () => {
     assert.equal(shouldRunMiseInstall(true, true), false);
+  });
+});
+
+describe('buildApplyJsonResult', () => {
+  it('carries success/messages/errors/elapsedMs through, plus configPath/baseDir/warnings', () => {
+    const json = buildApplyJsonResult(
+      { success: true, messages: ['a', 'b'], errors: [], elapsedMs: 42 },
+      { configPath: '/proj/agentenv.toml', baseDir: '/proj', warnings: ['careful'] },
+    );
+    assert.deepEqual(json, {
+      success: true,
+      configPath: '/proj/agentenv.toml',
+      baseDir: '/proj',
+      messages: ['a', 'b'],
+      errors: [],
+      warnings: ['careful'],
+      elapsedMs: 42,
+    });
+  });
+
+  it('reflects a failed apply', () => {
+    const json = buildApplyJsonResult(
+      { success: false, messages: [], errors: ['boom'] },
+      { configPath: '/proj/agentenv.toml', baseDir: '/proj', warnings: [] },
+    );
+    assert.equal(json.success, false);
+    assert.deepEqual(json.errors, ['boom']);
   });
 });

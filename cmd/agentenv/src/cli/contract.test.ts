@@ -243,10 +243,53 @@ direnv = false
     );
   });
 
-  it('rejects --json on mutating commands as a usage error', () => {
-    assert.equal(run(['apply', '--json'], clean).status, 2);
+  it('rejects --json on setup as a usage error (not part of the --json rollout)', () => {
     assert.equal(run(['setup', '--json'], clean).status, 2);
-    assert.equal(run(['uninstall', '--json'], clean).status, 2);
+  });
+
+  it('apply --json emits a single parseable JSON document, silent on stderr', () => {
+    const result = run(['apply', '--skip-mise-install', '--json'], clean);
+    assert.equal(result.status, 0, result.stderr);
+    const json = JSON.parse(result.stdout);
+    assert.equal(json.success, true);
+    assert.equal(json.configPath, path.join(clean, 'agentenv.toml'));
+    assert.equal(result.stderr, '', `apply --json should be silent on stderr: ${result.stderr}`);
+  });
+
+  it('apply --dry-run --json emits a structured plan instead of the human summary lines', () => {
+    const result = run(['apply', '--dry-run', '--json'], clean);
+    assert.equal(result.status, 0, result.stderr);
+    const json = JSON.parse(result.stdout);
+    assert.equal(json.success, true);
+    assert.equal(json.dryRun, true);
+    assert.ok(Array.isArray(json.generatedFiles));
+    assert.equal(result.stderr, '', `apply --dry-run --json should be silent on stderr`);
+  });
+
+  it('update --json reports the mise-missing gate as JSON instead of a themed error', () => {
+    const result = run(['update', '--json'], clean, noMiseEnv);
+    assert.equal(result.status, 1);
+    const json = JSON.parse(result.stdout);
+    assert.equal(json.success, false);
+    assert.ok(json.errors.some((error: string) => /mise was not found/.test(error)));
+    assert.equal(result.stderr, '', `update --json should be silent on stderr: ${result.stderr}`);
+  });
+
+  it('update rejects --json combined with --watch as a usage error', () => {
+    assert.equal(run(['update', '--json', '--watch'], clean).status, 2);
+  });
+
+  it('uninstall --json reports "Nothing to uninstall" as JSON', () => {
+    const result = run(['uninstall', '--yes', '--json'], agentsonly, noMiseEnv);
+    assert.equal(result.status, 0, result.stderr);
+    const json = JSON.parse(result.stdout);
+    assert.equal(json.success, true);
+    assert.match(json.message, /Nothing to uninstall/);
+    assert.equal(
+      result.stderr,
+      '',
+      `uninstall --json should be silent on stderr: ${result.stderr}`,
+    );
   });
 
   it('rejects an invalid --scope value as a usage error on every scope-taking command', () => {
@@ -334,8 +377,7 @@ direnv = false
     assert.match(unknown.stderr, /Unknown tool\(s\) to uninstall: totally-not-a-tool/);
   });
 
-  it('rejects --json and unknown flags on uninstall as usage errors', () => {
-    assert.equal(run(['uninstall', '--json'], wipe).status, 2);
+  it('rejects unknown flags on uninstall as a usage error', () => {
     assert.equal(run(['uninstall', '--nope'], wipe).status, 2);
   });
 
