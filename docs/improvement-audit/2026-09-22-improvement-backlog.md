@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-09-22
 
-Target: 40 · Found: 46 deduplicated items · Completed: 42/46 (+1 partial)
+Target: 40 · Found: 46 deduplicated items · Completed: 43/46 (+1 partial)
 
 > **How to use this document — read before implementing anything.**
 > As you finish each item, change `- [ ]` to `- [x]`, append ` ✅ <commit-sha>`,
@@ -146,7 +146,7 @@ Themes this round:
   Today the only ways to change the config are the TTY-only wizard and hand-editing TOML. Agents themselves are the likeliest callers of "enable jq here".
 - [ ] **FEAT-08** Layered config: merge the user config beneath project overrides instead of letting the project file shadow it completely — `src/config/schema.ts:406-445`, `src/config/scopes.ts` · effort L · impact low
   A project `agentenv.toml` has to repeat every user-level preference (agents, rtk, custom tools) because only the first file found is used.
-- [ ] **FEAT-09** Detect rtk capabilities by version instead of string-matching the vibe error, and review the 0.49.0 pin — `src/toolchain/mise.ts:81-90`, `src/commands/apply.ts:245-256` · effort M · impact low
+- [x] **FEAT-09** ✅ 1ce384e Detect rtk capabilities by version instead of string-matching the vibe error, and review the 0.49.0 pin — `src/toolchain/mise.ts:81-90`, `src/commands/apply.ts:245-256` · effort M · impact low
   Skipping vibe depends on parsing rtk's error text, and the fixed pin means users never get newer rtk agent support without an agentenv release.
 
 ---
