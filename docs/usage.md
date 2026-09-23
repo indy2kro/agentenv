@@ -127,6 +127,13 @@ The single pipeline all of `setup`/`configure`/`apply` funnel into. Reads
 `apply` is idempotent: with no config change it touches nothing and
 reinstalls nothing.
 
+The first time `apply` modifies a file it didn't create — `~/.claude/settings.json`,
+or a project/user `AGENTS.md`/`CLAUDE.md` that predates agentenv — it saves
+the original content next to it as `<file>.agentenv-backup`, once. Later
+runs never overwrite that backup, so it always holds your true pre-agentenv
+content; delete it (or add `*.agentenv-backup` to `.gitignore`) once you no
+longer need it.
+
 ### `agentenv status`
 
 A read-only report of what's configured vs. what's actually installed — where

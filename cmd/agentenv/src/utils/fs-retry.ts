@@ -82,6 +82,32 @@ export function writeFileWithRetry(
   }
 }
 
+/**
+ * Back up `filePath`'s current content to `<filePath>.agentenv-backup` the
+ * first time agentenv is about to modify a file it did not create — a
+ * user-global file like ~/.claude/settings.json or a pre-existing user-scope
+ * CLAUDE.md/AGENTS.md. Tier 0's shell-fix writes to these same kinds of
+ * files already have an undo path (shell-fix-state.json); the adapters'
+ * writes did not.
+ *
+ * Never overwrites an existing backup — once one exists it holds the user's
+ * true pre-agentenv content, and a later call (a second `apply`) must not
+ * clobber it with agentenv's own already-modified content. A no-op when
+ * `filePath` doesn't exist yet (nothing to back up: this is a fresh file
+ * agentenv is creating, not modifying). Backing up is advisory: a failure
+ * here (e.g. a locked filesystem) must never block the real write.
+ */
+export function backupBeforeFirstEdit(filePath: string): void {
+  try {
+    if (!fs.existsSync(filePath)) return;
+    const backupPath = `${filePath}.agentenv-backup`;
+    if (fs.existsSync(backupPath)) return;
+    fs.copyFileSync(filePath, backupPath);
+  } catch {
+    // Advisory only — never block the real write on a failed backup.
+  }
+}
+
 export interface WriteVerifyResult {
   success: boolean;
   message: string;

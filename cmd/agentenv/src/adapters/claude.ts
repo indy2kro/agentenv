@@ -7,7 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { BaseAdapter, AdapterConfig, AdapterResult } from './base.js';
 import { isAgentInstalled } from './detect.js';
-import { writeFileWithRetry } from '../utils/fs-retry.js';
+import { backupBeforeFirstEdit, writeFileWithRetry } from '../utils/fs-retry.js';
 import { claudeConfigDir } from './agent-dirs.js';
 
 export class ClaudeCodeAdapter extends BaseAdapter {
@@ -133,6 +133,9 @@ export class ClaudeCodeAdapter extends BaseAdapter {
 
       if (!hasRtkHook) {
         settings.hooks.PreToolUse.push(rtkHook);
+        // Preserve the user's pre-agentenv settings.json before the first
+        // edit — this file is user-global and may predate agentenv.
+        backupBeforeFirstEdit(settingsPath);
         // Only write when the hook was actually missing — re-running apply
         // on an already-configured settings.json must not churn the file
         // (bump its mtime / reformat it) for a no-op.

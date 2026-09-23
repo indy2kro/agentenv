@@ -6,7 +6,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { AgentenvConfig, BINARY_MAP, TOOL_DESCRIPTIONS, DEFAULT_CONFIG } from '../config/schema.js';
-import { writeFileWithRetry } from '../utils/fs-retry.js';
+import { backupBeforeFirstEdit, writeFileWithRetry } from '../utils/fs-retry.js';
 
 // Tool categories for organization
 export const TOOL_CATEGORIES: Record<string, string> = {
@@ -418,6 +418,9 @@ export function updateWithMarkers(
       );
       const separator =
         existingContent.length === 0 || existingContent.endsWith(eol) ? eol : eol + eol;
+      // This file predates agentenv (it has no managed markers yet) — back
+      // up the user's original content before appending to it.
+      backupBeforeFirstEdit(filePath);
       writeFileWithRetry(filePath, `${existingContent}${separator}${managedBlock}${eol}`);
       return {
         success: true,

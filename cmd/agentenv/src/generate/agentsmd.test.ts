@@ -13,7 +13,8 @@ describe('managed instruction blocks', () => {
   it('appends a managed block without replacing user content when markers are absent', () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-markers-'));
     const filePath = path.join(directory, 'AGENTS.md');
-    fs.writeFileSync(filePath, '# My instructions\n\nKeep this.\n');
+    const originalContent = '# My instructions\n\nKeep this.\n';
+    fs.writeFileSync(filePath, originalContent);
 
     updateWithMarkers(filePath, `${start}\nmanaged\n${end}\n`, start, end);
 
@@ -21,6 +22,9 @@ describe('managed instruction blocks', () => {
       fs.readFileSync(filePath, 'utf8'),
       '# My instructions\n\nKeep this.\n\n<!-- agentenv-managed-start -->\nmanaged\n<!-- agentenv-managed-end -->\n',
     );
+    // SWEEP-06: this file predated agentenv (no markers), so its original
+    // content is backed up before the first append.
+    assert.equal(fs.readFileSync(`${filePath}.agentenv-backup`, 'utf8'), originalContent);
   });
 
   it('replaces only the existing managed block and preserves surrounding content', () => {

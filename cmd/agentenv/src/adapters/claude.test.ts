@@ -21,6 +21,7 @@ describe('Claude Code adapter', () => {
       }),
     );
 
+    const originalContent = fs.readFileSync(settingsPath, 'utf8');
     try {
       const adapter = new ClaudeCodeAdapter({ enabled: true, baseDir: home, rtkEnabled: true });
       const result = await adapter.initialize();
@@ -29,6 +30,14 @@ describe('Claude Code adapter', () => {
       assert.equal(result.success, true);
       assert.equal(settings.hooks.PreToolUse[0].hooks[0].command, 'existing hook');
       assert.equal(settings.hooks.PreToolUse[1].hooks[0].command, 'rtk hook claude');
+
+      // SWEEP-06: the first edit to this pre-existing user-global file backs
+      // up its original content.
+      assert.equal(fs.readFileSync(`${settingsPath}.agentenv-backup`, 'utf8'), originalContent);
+
+      // A second apply (idempotent, no-op write) must not touch the backup.
+      await new ClaudeCodeAdapter({ enabled: true, baseDir: home, rtkEnabled: true }).initialize();
+      assert.equal(fs.readFileSync(`${settingsPath}.agentenv-backup`, 'utf8'), originalContent);
     } finally {
       if (priorHome === undefined) delete process.env.HOME;
       else process.env.HOME = priorHome;
