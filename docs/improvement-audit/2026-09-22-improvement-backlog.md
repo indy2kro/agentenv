@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-09-22
 
-Target: 40 · Found: 46 deduplicated items · Completed: 35/46 (+1 partial)
+Target: 40 · Found: 46 deduplicated items · Completed: 36/46 (+1 partial)
 
 > **How to use this document — read before implementing anything.**
 > As you finish each item, change `- [ ]` to `- [x]`, append ` ✅ <commit-sha>`,
@@ -93,7 +93,7 @@ Themes this round:
   The error is pushed but `success` stays true, and `apply` only shows adapter errors when `success` is false, so the failure is invisible.
 - [x] **BUG-12** ✅ df725fe The managed block ignores the target file's line endings — `src/generate/agentsmd.ts:361-478` (`updateWithMarkers`) · effort S · impact low
   On Windows, a CRLF `AGENTS.md` gets an LF block appended, which mixes line endings and makes diffs noisy.
-- [ ] **BUG-13** `update --watch` watches the generated `mise.toml` with a config captured at startup, and dies on an editor's atomic-rename save — `src/commands/update.ts:218-268` · effort M · impact low
+- [x] **BUG-13** ✅ 7be51c4 `update --watch` watches the generated `mise.toml` with a config captured at startup, and dies on an editor's atomic-rename save — `src/commands/update.ts:218-268` · effort M · impact low
   It ignores `rename` events and never re-reads `agentenv.toml`, so it stops after the first save in most editors and misses the edits users actually make.
 
 ## UX & affordances   (UX-NN)
