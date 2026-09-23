@@ -18,7 +18,7 @@ jobs:
     strategy:
       matrix:
         os: [windows-latest, macos-latest, ubuntu-latest]
-        node-version: ['22.13.0', '24']
+        node-version: ['22', '24']
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     defaults:
