@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-09-22
 
-Target: 40 · Found: 46 deduplicated items · Completed: 29/46 (+1 partial)
+Target: 40 · Found: 46 deduplicated items · Completed: 31/46 (+1 partial)
 
 > **How to use this document — read before implementing anything.**
 > As you finish each item, change `- [ ]` to `- [x]`, append ` ✅ <commit-sha>`,
@@ -46,9 +46,9 @@ Themes this round:
 
 - [x] **SWEEP-01** ✅ a1933fb [bug] Derive the base dir from the path the config was *found* at, not from `config.scope` (which `mergeWithDefaults` fills with `'project'`) — `src/commands/apply.ts:314`, `update.ts:137,207`, `status.ts:322`, `uninstall.ts:218`, `setup.ts:81`, `config/scopes.ts:36` · effort M · impact high
   A user-scope `~/.config/agentenv/agentenv.toml` without an explicit `scope = "user"` (or `update --scope user`) is loaded from there but applied/upgraded/uninstalled against `process.cwd()`.
-- [ ] **SWEEP-02** [bug] Add timeouts to every external `spawnSync` (mise self-update/up/captured, `rtk init`, `claude plugin`, `gh auth status`, `brew`, `where`/`which`) — `src/toolchain/mise.ts:468,497,597`, `toolchain/rtk.ts:60`, `integrations/superpowers.ts:46`, `toolchain/gh.ts:48`, `shell/detector.ts` · effort M · impact med
+- [x] **SWEEP-02** ✅ 01832a3 [bug] Add timeouts to every external `spawnSync` (mise self-update/up/captured, `rtk init`, `claude plugin`, `gh auth status`, `brew`, `where`/`which`) — `src/toolchain/mise.ts:468,497,597`, `toolchain/rtk.ts:60`, `integrations/superpowers.ts:46`, `toolchain/gh.ts:48`, `shell/detector.ts` · effort M · impact med
   None has a timeout, so a hung network call freezes `status`/`doctor`/`apply` indefinitely.
-- [ ] **SWEEP-03** [bug] Honor agent config-dir overrides (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `XDG_CONFIG_HOME` for copilot/opencode) and drop the `HOME || USERPROFILE || ''` relative fallback — `src/adapters/claude.ts:17`, `codex.ts:20`, `copilot.ts:19`, the `RtkDelegationAdapter` subclasses, `commands/status.ts:35-56` · effort M · impact med
+- [x] **SWEEP-03** ✅ 03eef83 [bug] Honor agent config-dir overrides (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `XDG_CONFIG_HOME` for copilot/opencode) and drop the `HOME || USERPROFILE || ''` relative fallback — `src/adapters/claude.ts:17`, `codex.ts:20`, `copilot.ts:19`, the `RtkDelegationAdapter` subclasses, `commands/status.ts:35-56` · effort M · impact med
   Users who relocate agent config get hooks written where the agent never reads them, and an unset HOME makes adapters write `.claude/` into the cwd.
 - [~] **SWEEP-04** [bug] Check the real `rtk init -g` install locations for global-only agents (gemini_cli, cursor, windsurf, vibe) in both `status` and the adapter's `filesCreated` — `src/commands/status.ts:43-55`, `src/adapters/rtk-delegation.ts:111` · effort M · impact med — **partially done** ✅ 3bedfd2 (gemini_cli, cursor fixed and verified live against a real rtk install; windsurf/vibe left as a TODO in the source — live probe against an older rtk build was inconclusive/contradictory, needs re-verification against the pinned 0.49.0 via `smoke:real` before changing). `adapters/rtk-delegation.ts:111`'s own `expectedPath` still has the same unresolved issue for windsurf/vibe.
   These agents are wired into home-dir config, but both places look for `RTK.md` in the project `baseDir`.
