@@ -40,13 +40,78 @@ export const POSIX_UTILITIES = [
   'less',
 ];
 
-// Well-known paths for Git Bash on Windows
+// Well-known machine-wide paths for Git Bash on Windows
 export const GIT_BASH_PATHS = [
   'C:\\Program Files\\Git\\bin',
   'C:\\Program Files\\Git\\usr\\bin',
   'C:\\Program Files (x86)\\Git\\bin',
   'C:\\Program Files (x86)\\Git\\usr\\bin',
 ];
+
+/**
+ * Candidate Git Bash directories: the well-known machine-wide paths plus
+ * per-user (`%LOCALAPPDATA%\Programs\Git`, the default for a non-admin Git
+ * for Windows install) and scoop install locations, which vary per machine
+ * and so can't be hardcoded in GIT_BASH_PATHS.
+ */
+export function gitBashCandidatePaths(env: NodeJS.ProcessEnv = process.env): string[] {
+  const candidates = [...GIT_BASH_PATHS];
+
+  const localAppData = env.LOCALAPPDATA;
+  if (localAppData) {
+    candidates.push(
+      path.join(localAppData, 'Programs', 'Git', 'bin'),
+      path.join(localAppData, 'Programs', 'Git', 'usr', 'bin'),
+    );
+  }
+
+  const scoopRoot =
+    env.SCOOP || (env.USERPROFILE ? path.join(env.USERPROFILE, 'scoop') : undefined);
+  if (scoopRoot) {
+    candidates.push(
+      path.join(scoopRoot, 'apps', 'git', 'current', 'bin'),
+      path.join(scoopRoot, 'apps', 'git', 'current', 'usr', 'bin'),
+    );
+  }
+
+  return candidates;
+}
+
+/**
+ * Fall back to searching PATH for git.exe when none of the well-known
+ * install locations exist — covers custom install directories the
+ * candidate list can't anticipate. Derives the Git Bash root from git.exe's
+ * location (`<root>\cmd\git.exe` or `<root>\bin\git.exe`) and checks that
+ * root's `bin` and `usr\bin` directories.
+ */
+export function findGitBashOnPath(
+  spawnSync: typeof child_process.spawnSync = child_process.spawnSync,
+): string | undefined {
+  try {
+    const where = spawnSync('cmd.exe', ['/c', 'where', 'git'], { encoding: 'utf8' });
+    if (where.status !== 0 || !where.stdout) {
+      return undefined;
+    }
+    const gitExe = where.stdout
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find((line) => line.length > 0);
+    if (!gitExe) {
+      return undefined;
+    }
+
+    const root = path.dirname(path.dirname(gitExe));
+    for (const sub of ['bin', path.join('usr', 'bin')]) {
+      const candidate = path.join(root, sub);
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export interface ShellInfo {
   currentShell: string;
@@ -92,7 +157,7 @@ export function detectShell(
     // Find Git Bash path (used by the Tier 0 fix even when the current shell
     // is PowerShell/cmd, so agents get pointed at a real POSIX shell).
     // Use path.resolve() to handle paths with spaces properly.
-    for (const gitPath of GIT_BASH_PATHS) {
+    for (const gitPath of gitBashCandidatePaths()) {
       try {
         const resolvedPath = path.resolve(gitPath);
         if (fs.existsSync(resolvedPath)) {
@@ -102,6 +167,12 @@ export function detectShell(
       } catch {
         // Ignore
       }
+    }
+
+    // None of the well-known install locations exist: search PATH itself,
+    // which covers custom install directories.
+    if (!gitBashPath) {
+      gitBashPath = findGitBashOnPath(spawnSync);
     }
   } else if (isMacOS) {
     // On macOS, check for GNU coreutils. detectShell() must stay read-only —
@@ -208,7 +279,7 @@ function checkGitBash(): boolean {
 
     // Check PATH for Git Bash directories (spaces-safe, case-folded on win32)
     const pathEnv = process.env.PATH || '';
-    for (const gitPath of GIT_BASH_PATHS) {
+    for (const gitPath of gitBashCandidatePaths()) {
       if (pathContainsDir(pathEnv, gitPath)) {
         return true;
       }
@@ -744,7 +815,8 @@ export function fixShellConfiguration(
     if (!shellInfo.gitBashPath) {
       return {
         success: true,
-        message: 'Git Bash not found on PATH; install Git for Windows to enable Tier 0 shell fixes',
+        message:
+          'Git Bash not found in common install locations or on PATH; install Git for Windows to enable Tier 0 shell fixes',
       };
     }
 

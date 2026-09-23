@@ -10,7 +10,9 @@ import {
   checkGNUCoreutils,
   checkMissingUtilities,
   detectShell,
+  findGitBashOnPath,
   fixShellConfiguration,
+  gitBashCandidatePaths,
   removeTomlWindowsShellPath,
   revertShellFixes,
   type ShellFixResult,
@@ -526,6 +528,83 @@ describe('detectShell', () => {
     } finally {
       Object.defineProperty(process, 'platform', { value: originalPlatform });
     }
+  });
+});
+
+describe('gitBashCandidatePaths', () => {
+  it('always includes the four machine-wide Program Files locations', () => {
+    const candidates = gitBashCandidatePaths({});
+    assert.ok(candidates.includes('C:\\Program Files\\Git\\bin'));
+    assert.ok(candidates.includes('C:\\Program Files\\Git\\usr\\bin'));
+    assert.ok(candidates.includes('C:\\Program Files (x86)\\Git\\bin'));
+    assert.ok(candidates.includes('C:\\Program Files (x86)\\Git\\usr\\bin'));
+  });
+
+  it('adds the per-user %LOCALAPPDATA%\\Programs\\Git locations when set', () => {
+    const candidates = gitBashCandidatePaths({ LOCALAPPDATA: 'C:\\Users\\me\\AppData\\Local' });
+    assert.ok(
+      candidates.includes(path.join('C:\\Users\\me\\AppData\\Local', 'Programs', 'Git', 'bin')),
+    );
+    assert.ok(
+      candidates.includes(
+        path.join('C:\\Users\\me\\AppData\\Local', 'Programs', 'Git', 'usr', 'bin'),
+      ),
+    );
+  });
+
+  it('adds the scoop install locations from SCOOP, falling back to %USERPROFILE%\\scoop', () => {
+    const withScoop = gitBashCandidatePaths({ SCOOP: 'D:\\scoop' });
+    assert.ok(withScoop.includes(path.join('D:\\scoop', 'apps', 'git', 'current', 'bin')));
+
+    const withUserProfile = gitBashCandidatePaths({ USERPROFILE: 'C:\\Users\\me' });
+    assert.ok(
+      withUserProfile.includes(
+        path.join('C:\\Users\\me', 'scoop', 'apps', 'git', 'current', 'bin'),
+      ),
+    );
+  });
+
+  it('omits per-user and scoop candidates when neither env var is set', () => {
+    const candidates = gitBashCandidatePaths({});
+    assert.equal(candidates.length, 4);
+  });
+});
+
+describe('findGitBashOnPath', () => {
+  it('derives the Git Bash root from `where git` and checks its bin dirs', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-gitbash-'));
+    const gitRoot = path.join(home, 'CustomGit');
+    const usrBin = path.join(gitRoot, 'usr', 'bin');
+    fs.mkdirSync(path.join(gitRoot, 'cmd'), { recursive: true });
+    fs.mkdirSync(usrBin, { recursive: true });
+
+    const fakeSpawnSync: typeof import('child_process').spawnSync = ((
+      cmd: string,
+      args?: string[],
+    ) => {
+      assert.equal(cmd, 'cmd.exe');
+      assert.deepEqual(args, ['/c', 'where', 'git']);
+      return {
+        status: 0,
+        stdout: `${path.join(gitRoot, 'cmd', 'git.exe')}\n`,
+        stderr: '',
+        pid: 0,
+        output: [],
+        signal: null,
+      } as ReturnType<typeof import('child_process').spawnSync>;
+    }) as typeof import('child_process').spawnSync;
+
+    assert.equal(findGitBashOnPath(fakeSpawnSync), usrBin);
+  });
+
+  it('returns undefined when `where git` fails', () => {
+    const fakeSpawnSync: typeof import('child_process').spawnSync = (() => {
+      return { status: 1, stdout: '', stderr: '', pid: 0, output: [], signal: null } as ReturnType<
+        typeof import('child_process').spawnSync
+      >;
+    }) as typeof import('child_process').spawnSync;
+
+    assert.equal(findGitBashOnPath(fakeSpawnSync), undefined);
   });
 });
 
