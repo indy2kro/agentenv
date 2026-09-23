@@ -61,6 +61,12 @@ jobs:
         run: npm run format:check
       - name: Test
         run: npm test
+      # One matrix combination only: coverage is OS/Node-version-invariant in
+      # practice, and gating every combination would just multiply CI time
+      # for the same signal.
+      - name: Test coverage gate
+        if: matrix.os == 'ubuntu-latest' && matrix.node-version == '24'
+        run: npm run test:coverage
       - name: Smoke (full CLI pipeline, stub rtk)
         run: npm run smoke
       - name: Verify CLI surface (version/help/completion)

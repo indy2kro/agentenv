@@ -48,8 +48,9 @@ Windows/macOS/Linux. It never reimplements a dev tool: tool installation is
 All commands run from `cmd/agentenv/`:
 
 ```sh
-npm run build         # tsc -> dist/
-npm test              # build + run every dist/**/*.test.js via node:test
+npm run build          # tsc -> dist/
+npm test               # build + run every dist/**/*.test.js via node:test
+npm run test:coverage  # npm test + a line/branch/function coverage gate (CI: ubuntu + node 24 only)
 npm run lint           # eslint src --max-warnings 0
 npm run lint:fix
 npm run format         # prettier --write src
@@ -65,6 +66,12 @@ npm run smoke:real     # build + node scripts/smoke.mjs --real (real mise + rtk 
   register in `package.json`.
 - To target a single test file directly:
   `npm run build && node --test dist/config/schema.test.js`.
+- `npm run test:coverage` gates on `--test-coverage-lines=80
+  --test-coverage-branches=75 --test-coverage-functions=80` (Node's built-in
+  `--experimental-test-coverage`), aggregate across the whole suite, not
+  per-file. CI runs it once (ubuntu-latest, Node 24 only) — coverage doesn't
+  vary by OS/Node version in practice, so gating every matrix combination
+  would just multiply CI time for the same signal.
 - `npm run prepare` wires Husky; the pre-commit hook runs
   `cd cmd/agentenv && npx lint-staged` (eslint --fix + prettier on staged
   `*.ts`).

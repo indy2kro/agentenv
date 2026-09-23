@@ -27,6 +27,7 @@
     "start": "ts-node src/index.ts",
     "dev": "ts-node-dev src/index.ts",
     "test": "npm run build && cd dist && node --test",
+    "test:coverage": "npm run build && cd dist && node --experimental-test-coverage --test-coverage-lines=80 --test-coverage-branches=75 --test-coverage-functions=80 --test",
     "smoke": "npm run build && node scripts/smoke.mjs",
     "smoke:real": "npm run build && node scripts/smoke.mjs --real",
     "lint": "eslint src --max-warnings 0",
