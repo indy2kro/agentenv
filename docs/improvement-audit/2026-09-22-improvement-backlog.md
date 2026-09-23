@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-09-22
 
-Target: 40 · Found: 46 deduplicated items · Completed: 39/46 (+1 partial)
+Target: 40 · Found: 46 deduplicated items · Completed: 40/46 (+1 partial)
 
 > **How to use this document — read before implementing anything.**
 > As you finish each item, change `- [ ]` to `- [x]`, append ` ✅ <commit-sha>`,
@@ -142,7 +142,7 @@ Themes this round:
   Running `agentenv status` from `repo/src` silently falls through to the user config (or "no config"). git and mise search upward.
 - [x] **FEAT-06** ✅ 4236a1d Show a diff, or changed/unchanged per file, in `apply --dry-run`, including the Tier 0 plan — `src/commands/apply.ts:315-335` · effort M · impact med
   Dry-run only lists target paths, so users can't see what would change in the marker block, `mise.toml` or the user-global Tier 0 edits.
-- [ ] **FEAT-07** Non-interactive config edits: `agentenv add|remove <tool|agent>` (or `agentenv config set tools.x true`) followed by apply — new `src/commands/*.ts`, `src/config/schema.ts` · effort M · impact med
+- [x] **FEAT-07** ✅ a2d1fb1 Non-interactive config edits: `agentenv add|remove <tool|agent>` (or `agentenv config set tools.x true`) followed by apply — new `src/commands/*.ts`, `src/config/schema.ts` · effort M · impact med
   Today the only ways to change the config are the TTY-only wizard and hand-editing TOML. Agents themselves are the likeliest callers of "enable jq here".
 - [ ] **FEAT-08** Layered config: merge the user config beneath project overrides instead of letting the project file shadow it completely — `src/config/schema.ts:406-445`, `src/config/scopes.ts` · effort L · impact low
   A project `agentenv.toml` has to repeat every user-level preference (agents, rtk, custom tools) because only the first file found is used.
