@@ -116,6 +116,39 @@ export interface UnattendedSetupDeps extends SaveAndApplyDeps {
 }
 
 /**
+ * `--agents`/`--superpowers` only take effect when unattendedSetup builds a
+ * fresh default config; reusing an existing agentenv.toml (the common case)
+ * applies it as-is, silently dropping whatever the caller typed unless we
+ * say so here.
+ */
+function ignoredUnattendedFlags(options: SetupCommandOptions): string[] {
+  const ignored: string[] = [];
+  if (options.agents !== undefined) ignored.push('--agents');
+  if (options.superpowers !== undefined) ignored.push('--superpowers');
+  return ignored;
+}
+
+/** --scope only steers unattended (--yes) setup; the interactive wizard has no scope prompt yet. */
+export function interactiveScopeIgnoredWarning(scope: ScopeValue | undefined): string | undefined {
+  if (scope === undefined) return undefined;
+  return (
+    `--scope is ignored by the interactive wizard (only --yes uses it); ` +
+    `run \`agentenv setup --yes --scope ${scope}\` for unattended setup at that scope.`
+  );
+}
+
+function warnIgnoredFlags(options: SetupCommandOptions, file: string): void {
+  const ignored = ignoredUnattendedFlags(options);
+  if (ignored.length === 0) return;
+  console.warn(
+    theme.warn(
+      `Note: reusing the existing config at ${file}; ignoring ${ignored.join(', ')} ` +
+        `(edit the file directly to change ${ignored.length === 1 ? 'it' : 'them'}).`,
+    ),
+  );
+}
+
+/**
  * Unattended, single-command setup: `agentenv setup --yes`. Resolves the
  * configuration from, in priority order:
  *   1. --config <path>  (an existing agentenv.toml to apply verbatim)
@@ -159,12 +192,19 @@ export async function unattendedSetup(
 
     if (fs.existsSync(file)) {
       printConfigPath(file);
-      config = loadConfig(file);
+      try {
+        config = loadConfig(file);
+      } catch (error) {
+        console.error(theme.fail(error instanceof Error ? error.message : String(error)));
+        process.exitCode = 1;
+        return;
+      }
       const report = validateConfig(config);
       if (!reportValidation(report, 'Configuration invalid — not applying.')) {
         process.exitCode = 1;
         return;
       }
+      warnIgnoredFlags(options, file);
     } else if (options.scope === undefined) {
       // No config at the preferred scope and the user didn't ask for a
       // specific one. Re-apply the nearest existing config (project first,
@@ -173,12 +213,19 @@ export async function unattendedSetup(
       if (nearest) {
         printConfigPath(nearest);
         file = nearest;
-        config = loadConfig(nearest);
+        try {
+          config = loadConfig(nearest);
+        } catch (error) {
+          console.error(theme.fail(error instanceof Error ? error.message : String(error)));
+          process.exitCode = 1;
+          return;
+        }
         const report = validateConfig(config);
         if (!reportValidation(report, 'Configuration invalid — not applying.')) {
           process.exitCode = 1;
           return;
         }
+        warnIgnoredFlags(options, file);
       }
     }
 
@@ -250,5 +297,7 @@ export const setupCommand = new Command()
       await unattendedSetup({ ...options, scope: scope.scope });
       return;
     }
+    const scopeWarning = interactiveScopeIgnoredWarning(scope.scope);
+    if (scopeWarning) console.warn(theme.warn(scopeWarning));
     await runConfigWizard();
   });

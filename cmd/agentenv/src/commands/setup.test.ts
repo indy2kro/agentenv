@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { misePrereqCheck, unattendedSetup } from './setup.js';
+import { interactiveScopeIgnoredWarning, misePrereqCheck, unattendedSetup } from './setup.js';
 import { applyConfiguration } from './apply.js';
 import { DEFAULT_CONFIG, saveConfig } from '../config/schema.js';
 
@@ -170,5 +170,122 @@ describe('unattended setup pipeline', () => {
       logs.some((line) => line.includes(userToml)),
       'should print the nearest config path',
     );
+  });
+
+  it('warns that --agents/--superpowers are ignored when reusing an existing config', async () => {
+    const dir = tempDir('agentenv-setup-');
+    const toml = path.join(dir, 'agentenv.toml');
+    saveConfig({ ...DEFAULT_CONFIG, agents: { claude_code: true } }, toml);
+
+    const stubApply: typeof applyConfiguration = async () => ({
+      success: true,
+      messages: [],
+      errors: [],
+    });
+
+    const warnings: string[] = [];
+    const originalLog = console.log;
+    const originalError = console.error;
+    const originalWarn = console.warn;
+    const originalCwd = process.cwd();
+    console.log = () => {};
+    console.error = () => {};
+    console.warn = (message?: unknown) => warnings.push(String(message));
+    try {
+      process.chdir(dir);
+      await unattendedSetup(
+        { yes: true, agents: 'codex_cli', superpowers: 'v7.0.0' },
+        {
+          misePrereqCheckDeps: { isInstalled: () => true, version: () => '3.2.1' },
+          applyConfiguration: stubApply,
+        },
+      );
+    } finally {
+      process.chdir(originalCwd);
+      console.log = originalLog;
+      console.error = originalError;
+      console.warn = originalWarn;
+    }
+
+    assert.ok(warnings.some((line) => line.includes('--agents')));
+    assert.ok(warnings.some((line) => line.includes('--superpowers')));
+  });
+
+  it('does not warn when no unattended flags are passed alongside an existing config', async () => {
+    const dir = tempDir('agentenv-setup-');
+    const toml = path.join(dir, 'agentenv.toml');
+    saveConfig({ ...DEFAULT_CONFIG, agents: { claude_code: true } }, toml);
+
+    const stubApply: typeof applyConfiguration = async () => ({
+      success: true,
+      messages: [],
+      errors: [],
+    });
+
+    const warnings: string[] = [];
+    const originalLog = console.log;
+    const originalError = console.error;
+    const originalWarn = console.warn;
+    const originalCwd = process.cwd();
+    console.log = () => {};
+    console.error = () => {};
+    console.warn = (message?: unknown) => warnings.push(String(message));
+    try {
+      process.chdir(dir);
+      await unattendedSetup(
+        { yes: true },
+        {
+          misePrereqCheckDeps: { isInstalled: () => true, version: () => '3.2.1' },
+          applyConfiguration: stubApply,
+        },
+      );
+    } finally {
+      process.chdir(originalCwd);
+      console.log = originalLog;
+      console.error = originalError;
+      console.warn = originalWarn;
+    }
+
+    assert.deepEqual(warnings, []);
+  });
+
+  it('reports a parse error instead of throwing when the existing config is malformed', async () => {
+    const dir = tempDir('agentenv-setup-');
+    const toml = path.join(dir, 'agentenv.toml');
+    fs.writeFileSync(toml, '[agents\nclaude_code = true');
+
+    const errors: string[] = [];
+    const originalLog = console.log;
+    const originalError = console.error;
+    const originalCwd = process.cwd();
+    console.log = () => {};
+    console.error = (message?: unknown) => errors.push(String(message));
+    try {
+      process.chdir(dir);
+      await unattendedSetup(
+        { yes: true },
+        { misePrereqCheckDeps: { isInstalled: () => true, version: () => '3.2.1' } },
+      );
+    } finally {
+      process.chdir(originalCwd);
+      console.log = originalLog;
+      console.error = originalError;
+    }
+
+    assert.equal(process.exitCode, 1);
+    process.exitCode = 0;
+    assert.ok(errors.some((line) => /Invalid agentenv configuration/.test(line)));
+  });
+});
+
+describe('interactiveScopeIgnoredWarning', () => {
+  it('warns when --scope was passed', () => {
+    const warning = interactiveScopeIgnoredWarning('user');
+    assert.match(warning ?? '', /--scope is ignored by the interactive wizard/);
+    assert.match(warning ?? '', /--scope user/);
+  });
+
+  it('is silent when --scope was not passed', () => {
+    assert.equal(interactiveScopeIgnoredWarning(undefined), undefined);
   });
 });
