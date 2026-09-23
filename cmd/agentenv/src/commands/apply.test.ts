@@ -5,14 +5,18 @@ import * as os from 'os';
 import * as path from 'path';
 import {
   applyConfiguration,
+  buildApplyDryRunPlan,
   buildApplyJsonResult,
   resolveTier0WriteFiles,
   shouldRunMiseInstall,
   userScopeInstructionFiles,
 } from './apply.js';
 import type { AgentenvConfig } from '../config/schema.js';
+import { DEFAULT_CONFIG } from '../config/schema.js';
+import type { GeneratedFile } from '../generate/agentsmd.js';
 import type { ClaudeCliRunner } from '../integrations/superpowers.js';
 import type { RtkInitFn } from '../toolchain/rtk.js';
+import { generateMiseToml } from '../toolchain/mise.js';
 import { successGlyph, failGlyph } from '../ui/theme.js';
 
 interface RtkCall {
@@ -593,4 +597,172 @@ describe('buildApplyJsonResult', () => {
     assert.equal(json.success, false);
     assert.deepEqual(json.errors, ['boom']);
   });
+});
+
+describe('buildApplyDryRunPlan', () => {
+  it('reports mise.toml as create when the file does not exist yet', () => {
+    const dir = tempDir('agentenv-dryrun-mise-');
+    const plan = buildApplyDryRunPlan(
+      DEFAULT_CONFIG,
+      dir,
+      path.join(dir, 'agentenv.toml'),
+      [],
+      ['claude_code'],
+      [],
+    );
+    assert.equal(plan.misePlan.status, 'create');
+    assert.equal(plan.misePlan.miseTomlPath, path.join(dir, 'mise.toml'));
+    assert.ok(plan.misePlan.enabledToolCount > 0);
+  });
+
+  it('reports mise.toml as unchanged when its content already matches, update when it differs', () => {
+    const dir = tempDir('agentenv-dryrun-mise-');
+    const miseTomlPath = path.join(dir, 'mise.toml');
+
+    fs.writeFileSync(miseTomlPath, 'stale content\n');
+    const stale = buildApplyDryRunPlan(
+      DEFAULT_CONFIG,
+      dir,
+      path.join(dir, 'agentenv.toml'),
+      [],
+      ['claude_code'],
+      [],
+    );
+    assert.equal(stale.misePlan.status, 'update');
+
+    // Write the exact content generateMiseToml() would produce for this
+    // config, so the assertion never depends on hand-maintained TOML syntax.
+    fs.writeFileSync(
+      miseTomlPath,
+      generateMiseToml(DEFAULT_CONFIG, DEFAULT_CONFIG.custom_tools ?? []),
+    );
+    const matching = buildApplyDryRunPlan(
+      DEFAULT_CONFIG,
+      dir,
+      path.join(dir, 'agentenv.toml'),
+      [],
+      ['claude_code'],
+      [],
+    );
+    assert.equal(matching.misePlan.status, 'unchanged');
+  });
+
+  it('classifies generated files via planMarkerUpdate: create, update, unchanged', () => {
+    const dir = tempDir('agentenv-dryrun-files-');
+    const markerStart = '<!-- agentenv-managed-start -->';
+    const markerEnd = '<!-- agentenv-managed-end -->';
+
+    const createPath = path.join(dir, 'NEW.md');
+    const updatePath = path.join(dir, 'STALE.md');
+    fs.writeFileSync(updatePath, `intro\n${markerStart}\nold body\n${markerEnd}\noutro\n`);
+    const unchangedPath = path.join(dir, 'SAME.md');
+    const unchangedBody = `${markerStart}\ncurrent body\n${markerEnd}\n`;
+    fs.writeFileSync(unchangedPath, unchangedBody);
+
+    const files: GeneratedFile[] = [
+      { path: createPath, content: `${markerStart}\nnew body\n${markerEnd}\n` },
+      { path: updatePath, content: `intro\n${markerStart}\nnew body\n${markerEnd}\noutro\n` },
+      { path: unchangedPath, content: unchangedBody },
+    ];
+
+    const plan = buildApplyDryRunPlan(
+      DEFAULT_CONFIG,
+      dir,
+      path.join(dir, 'agentenv.toml'),
+      files,
+      ['claude_code'],
+      [],
+    );
+
+    assert.deepEqual(
+      plan.generatedFiles.map((f) => ({ path: f.path, status: f.status })),
+      [
+        { path: createPath, status: 'create' },
+        { path: updatePath, status: 'update' },
+        { path: unchangedPath, status: 'unchanged' },
+      ],
+    );
+  });
+
+  it('reports error status for a file with only one managed marker present', () => {
+    const dir = tempDir('agentenv-dryrun-partial-');
+    const markerStart = '<!-- agentenv-managed-start -->';
+    const markerEnd = '<!-- agentenv-managed-end -->';
+    const partialPath = path.join(dir, 'PARTIAL.md');
+    fs.writeFileSync(partialPath, `intro\n${markerStart}\nonly start\n`);
+
+    const plan = buildApplyDryRunPlan(
+      DEFAULT_CONFIG,
+      dir,
+      path.join(dir, 'agentenv.toml'),
+      [{ path: partialPath, content: `${markerStart}\nbody\n${markerEnd}\n` }],
+      ['claude_code'],
+      [],
+    );
+
+    assert.equal(plan.generatedFiles.length, 1);
+    assert.equal(plan.generatedFiles[0].status, 'error');
+    assert.match(plan.generatedFiles[0].message ?? '', /partial write/);
+  });
+
+  it('carries through agents, rtkEnabled, and integration names', () => {
+    const dir = tempDir('agentenv-dryrun-meta-');
+    const config: AgentenvConfig = {
+      ...DEFAULT_CONFIG,
+      rtk: { ...DEFAULT_CONFIG.rtk, enabled: true },
+    };
+    const plan = buildApplyDryRunPlan(
+      config,
+      dir,
+      path.join(dir, 'agentenv.toml'),
+      [],
+      ['claude_code', 'codex_cli'],
+      [{ getName: () => 'superpowers' }],
+    );
+
+    assert.deepEqual(plan.agents, ['claude_code', 'codex_cli']);
+    assert.equal(plan.rtkEnabled, true);
+    assert.deepEqual(plan.integrations, ['superpowers']);
+  });
+
+  it('leaves tier0 null off Windows', { skip: process.platform === 'win32' }, () => {
+    const dir = tempDir('agentenv-dryrun-tier0-');
+    const plan = buildApplyDryRunPlan(
+      DEFAULT_CONFIG,
+      dir,
+      path.join(dir, 'agentenv.toml'),
+      [],
+      ['claude_code'],
+      [],
+    );
+    assert.equal(plan.tier0, null);
+  });
+
+  it(
+    'populates a per-agent tier0 plan on Windows when Git Bash is found',
+    { skip: process.platform !== 'win32' },
+    () => {
+      const dir = tempDir('agentenv-dryrun-tier0-');
+      const plan = buildApplyDryRunPlan(
+        DEFAULT_CONFIG,
+        dir,
+        path.join(dir, 'agentenv.toml'),
+        [],
+        ['claude_code', 'codex_cli'],
+        [],
+      );
+      // Whether Git Bash is actually found is a real machine fact; either shape
+      // (null, or one entry per requested agent) is valid — assert internal
+      // consistency rather than the specific outcome.
+      if (plan.tier0 !== null) {
+        assert.deepEqual(
+          plan.tier0.map((t) => t.agent),
+          ['claude_code', 'codex_cli'],
+        );
+        for (const entry of plan.tier0) {
+          assert.equal(typeof entry.needsFix, 'boolean');
+        }
+      }
+    },
+  );
 });

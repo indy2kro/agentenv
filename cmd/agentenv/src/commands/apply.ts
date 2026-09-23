@@ -28,10 +28,15 @@ import type { SuperpowersAdapterDeps } from '../integrations/index.js';
 import {
   generateAgentsMd,
   generateInstructionFiles,
+  planMarkerUpdate,
   updateWithMarkers,
 } from '../generate/agentsmd.js';
 import type { GeneratedFile } from '../generate/agentsmd.js';
-import { fixShellConfiguration } from '../shell/detector.js';
+import {
+  checkAgentShellConfiguration,
+  detectShell,
+  fixShellConfiguration,
+} from '../shell/detector.js';
 import { shellFixStatePath } from '../shell/shell-fix-state.js';
 import type { RtkInitFn } from '../toolchain/rtk.js';
 import { isUnsupportedRtkAgentError } from '../toolchain/rtk.js';
@@ -94,16 +99,92 @@ export function buildApplyJsonResult(
   };
 }
 
-export interface ApplyDryRunJsonResult {
-  success: true;
-  dryRun: true;
+export interface DryRunFileStatus {
+  path: string;
+  status: 'create' | 'update' | 'unchanged' | 'error';
+  message?: string;
+}
+
+export interface DryRunTier0Agent {
+  agent: string;
+  needsFix: boolean;
+}
+
+export interface ApplyDryRunPlan {
   configPath: string;
   baseDir: string;
-  misePlan: { enabledToolCount: number; miseTomlPath: string };
-  generatedFiles: string[];
+  misePlan: {
+    miseTomlPath: string;
+    enabledToolCount: number;
+    status: 'create' | 'update' | 'unchanged';
+  };
+  generatedFiles: DryRunFileStatus[];
   agents: string[];
   rtkEnabled: boolean;
   integrations: string[];
+  /** Per-agent Tier 0 shell-fix plan on Windows with Git Bash found; null everywhere else. */
+  tier0: DryRunTier0Agent[] | null;
+}
+
+export interface ApplyDryRunJsonResult extends ApplyDryRunPlan {
+  success: true;
+  dryRun: true;
+}
+
+/**
+ * Compute what `apply` would actually change, without writing anything:
+ * mise.toml's and each generated file's create/update/unchanged status (via
+ * planMarkerUpdate(), the same decision the real write path uses, so they
+ * can never disagree about what counts as a change) and, on Windows with
+ * Git Bash found, the per-agent Tier 0 shell-fix plan.
+ */
+export function buildApplyDryRunPlan(
+  config: AgentenvConfig,
+  baseDir: string,
+  configPath: string,
+  files: GeneratedFile[],
+  agents: string[],
+  integrations: Array<{ getName(): string }>,
+): ApplyDryRunPlan {
+  const enabledToolCount = Object.values(config.tools ?? {}).filter((on) => on === true).length;
+  const miseTomlPath = path.join(baseDir, 'mise.toml');
+  const miseContent = generateMiseToml(config, config.custom_tools ?? []);
+  const miseStatus: 'create' | 'update' | 'unchanged' = !fs.existsSync(miseTomlPath)
+    ? 'create'
+    : fs.readFileSync(miseTomlPath, 'utf-8') === miseContent
+      ? 'unchanged'
+      : 'update';
+
+  const markerStart = config.generate?.marker_start ?? '<!-- agentenv-managed-start -->';
+  const markerEnd = config.generate?.marker_end ?? '<!-- agentenv-managed-end -->';
+  const generatedFiles: DryRunFileStatus[] = files.map((file) => {
+    const plan = planMarkerUpdate(file.path, file.content, markerStart, markerEnd);
+    return plan.status === 'error'
+      ? { path: file.path, status: 'error' as const, message: plan.message }
+      : { path: file.path, status: plan.status };
+  });
+
+  let tier0: DryRunTier0Agent[] | null = null;
+  if (process.platform === 'win32') {
+    const shell = detectShell();
+    if (shell.gitBashPath) {
+      tier0 = agents.map((agent) => ({
+        agent,
+        needsFix: checkAgentShellConfiguration(agent as AgentKey).needsFix,
+      }));
+    }
+  }
+
+  return {
+    configPath,
+    baseDir,
+    misePlan: { miseTomlPath, enabledToolCount, status: miseStatus },
+    generatedFiles,
+    agents,
+    rtkEnabled: config.rtk?.enabled === true,
+    integrations: integrations.map((integration) => integration.getName()),
+    tier0,
+  };
 }
 
 export interface ApplyOptions {
@@ -463,40 +544,47 @@ export const applyCommand = new Command()
 
       const baseDir = resolveScopeDir(config.scope);
       if (dryRun) {
-        const enabledToolCount = Object.values(config.tools ?? {}).filter(
-          (on) => on === true,
-        ).length;
         const files = [
           ...generateInstructionFiles(config, baseDir),
           ...userScopeInstructionFiles(config, baseDir, options),
         ];
         const agents = [...getEnabledAgents(config)];
         const integrations = enabledIntegrations(config, options);
+        const plan = buildApplyDryRunPlan(config, baseDir, configPath, files, agents, integrations);
+
         if (json) {
-          const payload: ApplyDryRunJsonResult = {
-            success: true,
-            dryRun: true,
-            configPath,
-            baseDir,
-            misePlan: { enabledToolCount, miseTomlPath: path.join(baseDir, 'mise.toml') },
-            generatedFiles: files.map((file) => file.path),
-            agents,
-            rtkEnabled: config.rtk?.enabled === true,
-            integrations: integrations.map((integration) => integration.getName()),
-          };
+          const payload: ApplyDryRunJsonResult = { success: true, dryRun: true, ...plan };
           console.log(JSON.stringify(payload, null, 2));
           return;
         }
+
         console.log(
-          `  Tools:          ${enabledToolCount} enabled -> ${path.join(baseDir, 'mise.toml')}`,
+          `  Tools:          ${plan.misePlan.enabledToolCount} enabled -> ${plan.misePlan.miseTomlPath} [${plan.misePlan.status}]`,
         );
-        console.log(`  Generated files: ${files.map((file) => file.path).join(', ') || '(none)'}`);
+        console.log('  Generated files:');
+        if (plan.generatedFiles.length === 0) {
+          console.log('    (none)');
+        } else {
+          for (const file of plan.generatedFiles) {
+            console.log(
+              `    ${file.path} [${file.status}]${file.message ? ` — ${file.message}` : ''}`,
+            );
+          }
+        }
         console.log(
           `  Agents:         ${agents.join(', ') || '(none)'}${config.rtk?.enabled === true ? ' (rtk rewriting on)' : ''}`,
         );
         console.log(
           `  Integrations:   ${integrations.length > 0 ? integrations.map((i) => i.getName()).join(', ') : '(none)'}`,
         );
+        if (plan.tier0) {
+          console.log('  Tier 0 (Windows shell fix):');
+          for (const entry of plan.tier0) {
+            console.log(
+              `    ${entry.agent}: ${entry.needsFix ? 'needs fix' : 'already configured'}`,
+            );
+          }
+        }
         printResult('ok', 'Dry run complete', 'no changes were made', Date.now() - startedAt);
         return;
       }

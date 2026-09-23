@@ -355,6 +355,95 @@ function matchLineEndings(content: string, eol: '\r\n' | '\n'): string {
   return eol === '\r\n' ? normalized.replace(/\n/g, '\r\n') : normalized;
 }
 
+export type MarkerUpdatePlan =
+  | { status: 'create'; content: string }
+  | { status: 'update'; content: string; backupFirst: boolean }
+  | { status: 'unchanged' }
+  | { status: 'error'; message: string };
+
+/**
+ * Decide what updateWithMarkers() would do to `filePath`, without writing
+ * anything (it still reads the existing file, if any). The single source of
+ * truth for both the real write and `apply --dry-run`'s preview (FEAT-06),
+ * so they can never disagree about what counts as a change.
+ */
+export function planMarkerUpdate(
+  filePath: string,
+  newContent: string,
+  markerStart: string,
+  markerEnd: string,
+): MarkerUpdatePlan {
+  if (!fs.existsSync(filePath)) {
+    return { status: 'create', content: newContent };
+  }
+
+  const existingContent = fs.readFileSync(filePath, 'utf-8');
+  const hasStart = existingContent.includes(markerStart);
+  const hasEnd = existingContent.includes(markerEnd);
+
+  // Only one marker present means a crashed/incomplete prior write; treat
+  // the file as broken rather than appending a second block, which the next
+  // pass would otherwise replace from the first start-marker to the later
+  // end-marker — clobbering any user text between them.
+  if (hasStart !== hasEnd) {
+    return {
+      status: 'error',
+      message: `File ${filePath} contains only one managed marker (a partial write); leaving it untouched`,
+    };
+  }
+
+  // Existing files without markers belong to the user. Preserve them and
+  // append only our newly managed block.
+  if (!hasStart) {
+    const newStartIndex = newContent.indexOf(markerStart);
+    const newEndIndex = newContent.indexOf(markerEnd, newStartIndex);
+    if (newStartIndex === -1 || newEndIndex === -1) {
+      return { status: 'error', message: `Markers not found in new content` };
+    }
+
+    const eol = detectLineEnding(existingContent);
+    const managedBlock = matchLineEndings(
+      newContent.substring(newStartIndex, newEndIndex + markerEnd.length),
+      eol,
+    );
+    const separator =
+      existingContent.length === 0 || existingContent.endsWith(eol) ? eol : eol + eol;
+    return {
+      status: 'update',
+      content: `${existingContent}${separator}${managedBlock}${eol}`,
+      backupFirst: true,
+    };
+  }
+
+  // Extract the parts before and after the markers
+  const startIndex = existingContent.indexOf(markerStart);
+  const endIndex = existingContent.indexOf(markerEnd, startIndex);
+  if (startIndex === -1 || endIndex === -1 || startIndex >= endIndex) {
+    return { status: 'error', message: `Invalid marker positions in ${filePath}` };
+  }
+
+  const before = existingContent.substring(0, startIndex);
+  const after = existingContent.substring(endIndex + markerEnd.length);
+
+  // Find the content between markers in the new content
+  const newStartIndex = newContent.indexOf(markerStart);
+  const newEndIndex = newContent.indexOf(markerEnd, newStartIndex);
+  if (newStartIndex === -1 || newEndIndex === -1) {
+    return { status: 'error', message: `Markers not found in new content` };
+  }
+
+  const newMiddle = matchLineEndings(
+    newContent.substring(newStartIndex, newEndIndex + markerEnd.length),
+    detectLineEnding(existingContent),
+  );
+  const updatedContent = before + newMiddle + after;
+
+  if (updatedContent === existingContent) {
+    return { status: 'unchanged' };
+  }
+  return { status: 'update', content: updatedContent, backupFirst: false };
+}
+
 /**
  * Update existing AGENTS.md/CLAUDE.md with new content, preserving user additions
  * Uses marker blocks to only replace the managed sections
@@ -370,115 +459,27 @@ export function updateWithMarkers(
   message: string;
 } {
   try {
-    if (!fs.existsSync(filePath)) {
-      // File doesn't exist, just create it
-      fs.mkdirSync(path.dirname(filePath), { recursive: true });
-      writeFileWithRetry(filePath, newContent);
-      return {
-        success: true,
-        updated: true,
-        message: `Created ${filePath}`,
-      };
-    }
-
-    const existingContent = fs.readFileSync(filePath, 'utf-8');
-
-    const hasStart = existingContent.includes(markerStart);
-    const hasEnd = existingContent.includes(markerEnd);
-
-    // Only one marker present means a crashed/incomplete prior write; treat
-    // the file as broken rather than appending a second block, which the next
-    // pass would otherwise replace from the first start-marker to the later
-    // end-marker — clobbering any user text between them.
-    if (hasStart !== hasEnd) {
-      return {
-        success: false,
-        updated: false,
-        message: `File ${filePath} contains only one managed marker (a partial write); leaving it untouched`,
-      };
-    }
-
-    // Existing files without markers belong to the user. Preserve them and
-    // append only our newly managed block.
-    if (!hasStart) {
-      const newStartIndex = newContent.indexOf(markerStart);
-      const newEndIndex = newContent.indexOf(markerEnd, newStartIndex);
-      if (newStartIndex === -1 || newEndIndex === -1) {
+    const plan = planMarkerUpdate(filePath, newContent, markerStart, markerEnd);
+    switch (plan.status) {
+      case 'error':
+        return { success: false, updated: false, message: plan.message };
+      case 'unchanged':
+        return { success: true, updated: false, message: `No changes needed for ${filePath}` };
+      case 'create':
+        fs.mkdirSync(path.dirname(filePath), { recursive: true });
+        writeFileWithRetry(filePath, plan.content);
+        return { success: true, updated: true, message: `Created ${filePath}` };
+      case 'update':
+        // This file predates agentenv (it had no managed markers yet) —
+        // back up the user's original content before appending to it.
+        if (plan.backupFirst) backupBeforeFirstEdit(filePath);
+        writeFileWithRetry(filePath, plan.content);
         return {
-          success: false,
-          updated: false,
-          message: `Markers not found in new content`,
+          success: true,
+          updated: true,
+          message: plan.backupFirst ? `Added managed block to ${filePath}` : `Updated ${filePath}`,
         };
-      }
-
-      const eol = detectLineEnding(existingContent);
-      const managedBlock = matchLineEndings(
-        newContent.substring(newStartIndex, newEndIndex + markerEnd.length),
-        eol,
-      );
-      const separator =
-        existingContent.length === 0 || existingContent.endsWith(eol) ? eol : eol + eol;
-      // This file predates agentenv (it has no managed markers yet) — back
-      // up the user's original content before appending to it.
-      backupBeforeFirstEdit(filePath);
-      writeFileWithRetry(filePath, `${existingContent}${separator}${managedBlock}${eol}`);
-      return {
-        success: true,
-        updated: true,
-        message: `Added managed block to ${filePath}`,
-      };
     }
-
-    // Extract the parts before and after the markers
-    const startIndex = existingContent.indexOf(markerStart);
-    const endIndex = existingContent.indexOf(markerEnd, startIndex);
-
-    if (startIndex === -1 || endIndex === -1 || startIndex >= endIndex) {
-      return {
-        success: false,
-        updated: false,
-        message: `Invalid marker positions in ${filePath}`,
-      };
-    }
-
-    const before = existingContent.substring(0, startIndex);
-    const after = existingContent.substring(endIndex + markerEnd.length);
-
-    // Find the content between markers in the new content
-    const newStartIndex = newContent.indexOf(markerStart);
-    const newEndIndex = newContent.indexOf(markerEnd, newStartIndex);
-
-    if (newStartIndex === -1 || newEndIndex === -1) {
-      return {
-        success: false,
-        updated: false,
-        message: `Markers not found in new content`,
-      };
-    }
-
-    const newMiddle = matchLineEndings(
-      newContent.substring(newStartIndex, newEndIndex + markerEnd.length),
-      detectLineEnding(existingContent),
-    );
-
-    // Reconstruct the file
-    const updatedContent = before + newMiddle + after;
-
-    // Only write if content actually changed
-    if (updatedContent !== existingContent) {
-      writeFileWithRetry(filePath, updatedContent);
-      return {
-        success: true,
-        updated: true,
-        message: `Updated ${filePath}`,
-      };
-    }
-
-    return {
-      success: true,
-      updated: false,
-      message: `No changes needed for ${filePath}`,
-    };
   } catch (err) {
     return {
       success: false,

@@ -119,7 +119,7 @@ The single pipeline all of `setup`/`configure`/`apply` funnel into. Reads
 | Flag | Meaning |
 |---|---|
 | `--skip-mise-install` | Generate files only — no `mise install`, no verification. For CI dry-runs or when mise isn't available. |
-| `--dry-run` | Show what would be written/changed without changing anything. |
+| `--dry-run` | Show what would be written/changed without changing anything: `mise.toml` and each generated file's `[create]`/`[update]`/`[unchanged]` status, plus the per-agent Tier 0 plan on Windows. |
 | `--shell-fix <mode>` | Override `[tier0].mode` for this run: `auto` (default; the Windows shell fix only writes files with a TTY), `always` (write even without one — pass this when an AI agent runs `apply`, which never has a TTY), or `never`. |
 | `--scope <scope>` | config scope to apply: `project`\|`user` (default: nearest config), matching `update`/`uninstall`/`setup`. |
 | `--json` | Emit one JSON document (`{success, configPath, baseDir, messages, errors, warnings, elapsedMs}`, or the dry-run plan shape with `--dry-run`) instead of the human report; suppresses the banner and streamed mise install output. |

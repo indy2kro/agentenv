@@ -365,6 +365,24 @@ direnv = false
     assert.doesNotMatch(dry.stdout, /wrote/);
   });
 
+  it('apply --dry-run reports [unchanged] for a config already applied (FEAT-06)', () => {
+    // `clean` was applied once in before(); re-previewing it must show every
+    // generated artifact as unchanged, not just list target paths.
+    const dry = run(['apply', '--dry-run'], clean);
+    assert.equal(dry.status, 0);
+    assert.match(dry.stdout, /mise\.toml \[unchanged\]/);
+    assert.match(dry.stdout, /AGENTS\.md \[unchanged\]/);
+    assert.match(dry.stdout, /CLAUDE\.md \[unchanged\]/);
+
+    const json = run(['apply', '--dry-run', '--json'], clean);
+    assert.equal(json.status, 0);
+    const payload = JSON.parse(json.stdout);
+    assert.equal(payload.misePlan.status, 'unchanged');
+    assert.ok(
+      payload.generatedFiles.every((file: { status: string }) => file.status === 'unchanged'),
+    );
+  });
+
   it('exits 1 for uninstall with no config (operational failure)', () => {
     const missing = run(['uninstall'], empty, shellEnv);
     assert.equal(missing.status, 1);
