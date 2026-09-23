@@ -1,4 +1,4 @@
-import { theme } from './theme.js';
+import { asciiGlyphsEnabled, theme } from './theme.js';
 
 let quiet = false;
 
@@ -50,6 +50,16 @@ const RESULT_GLYPHS: Record<ResultSeverity, string> = {
   fail: '❌',
 };
 
+const RESULT_GLYPHS_ASCII: Record<ResultSeverity, string> = {
+  ok: '[ok]',
+  warn: '[warn]',
+  fail: '[FAIL]',
+};
+
+function resultGlyph(severity: ResultSeverity): string {
+  return asciiGlyphsEnabled() ? RESULT_GLYPHS_ASCII[severity] : RESULT_GLYPHS[severity];
+}
+
 function severityColor(text: string, severity: ResultSeverity): string {
   if (severity === 'ok') return theme.ok(text);
   if (severity === 'warn') return theme.warn(text);
@@ -97,7 +107,7 @@ export function displayWidth(text: string): number {
  * and words survive `--no-color`, so the outcome is never color-only.
  */
 export function formatResultBox(result: ResultBoxContent): string {
-  const bodyLines = [`${RESULT_GLYPHS[result.severity]} ${result.headline}`];
+  const bodyLines = [`${resultGlyph(result.severity)} ${result.headline}`];
   if (result.summary !== undefined) bodyLines.push(result.summary);
   const widths = bodyLines.map(displayWidth);
   const contentWidth = Math.max(...widths);

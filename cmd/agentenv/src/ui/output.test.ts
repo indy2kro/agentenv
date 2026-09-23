@@ -1,4 +1,4 @@
-import { describe, it, afterEach } from 'node:test';
+import { describe, it, afterEach, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   displayWidth,
@@ -11,6 +11,21 @@ import {
   shouldPrintBanner,
 } from './output.js';
 import type { ResultBoxContent } from './output.js';
+import { resetAsciiGlyphsCache } from './theme.js';
+
+/** Force the Unicode glyph path deterministically, regardless of this machine's real console. */
+function forceUnicodeGlyphs(): { restore: () => void } {
+  const original = process.env.AGENTENV_ASCII;
+  process.env.AGENTENV_ASCII = '0';
+  resetAsciiGlyphsCache();
+  return {
+    restore: () => {
+      if (original === undefined) delete process.env.AGENTENV_ASCII;
+      else process.env.AGENTENV_ASCII = original;
+      resetAsciiGlyphsCache();
+    },
+  };
+}
 
 describe('output quiet mode', () => {
   afterEach(() => setQuietEnabled(false));
@@ -62,6 +77,12 @@ describe('agentenv logo', () => {
 });
 
 describe('result box', () => {
+  let restoreGlyphs: () => void;
+  before(() => {
+    restoreGlyphs = forceUnicodeGlyphs().restore;
+  });
+  after(() => restoreGlyphs());
+
   it('draws a framed box with the severity glyph, headline and summary', () => {
     const box = formatResultBox({
       severity: 'fail',
@@ -113,5 +134,31 @@ describe('result box', () => {
     assert.equal(resolveResultLine(result, true, false), formatResultBox(result));
     assert.equal(resolveResultLine(result, false, false), 'Update complete!');
     assert.equal(resolveResultLine(result, true, true), 'Update complete!');
+  });
+});
+
+describe('result box ASCII fallback (AGENTENV_ASCII=1)', () => {
+  let restoreGlyphs: () => void;
+  before(() => {
+    const original = process.env.AGENTENV_ASCII;
+    process.env.AGENTENV_ASCII = '1';
+    resetAsciiGlyphsCache();
+    restoreGlyphs = () => {
+      if (original === undefined) delete process.env.AGENTENV_ASCII;
+      else process.env.AGENTENV_ASCII = original;
+      resetAsciiGlyphsCache();
+    };
+  });
+  after(() => restoreGlyphs());
+
+  it('swaps ✅/⚠️/❌ for [ok]/[warn]/[FAIL] and still frames a well-formed box', () => {
+    assert.match(formatResultBox({ severity: 'ok', headline: 'Done' }), /\[ok\] Done/);
+    assert.match(formatResultBox({ severity: 'warn', headline: 'Watch' }), /\[warn\] Watch/);
+    const box = formatResultBox({ severity: 'fail', headline: 'Oops' });
+    assert.match(box, /\[FAIL\] Oops/);
+    assert.ok(box.startsWith('┌'));
+    assert.ok(box.endsWith('┘'));
+    const frame = box.split('\n').map((line) => displayWidth(line));
+    assert.ok(new Set(frame).size === 1, `all rows should share a visual width, got: ${frame}`);
   });
 });

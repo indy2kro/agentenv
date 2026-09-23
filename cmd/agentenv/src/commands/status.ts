@@ -28,7 +28,7 @@ import {
   toolAvailabilityClassification,
 } from '../toolchain/mise.js';
 import type { ToolResolvability } from '../toolchain/mise.js';
-import { colorizeLine, theme } from '../ui/theme.js';
+import { colorizeLine, failGlyph, successGlyph, theme } from '../ui/theme.js';
 import { renderLogo, resolveResultLine, setQuietEnabled } from '../ui/output.js';
 import type { ResultBoxContent } from '../ui/output.js';
 
@@ -621,7 +621,9 @@ export function renderStatus(report: StatusReport): string {
       if (tier0.agentChecks.length > 0) {
         chunks.push('  Agent shell overrides:');
         for (const check of tier0.agentChecks) {
-          chunks.push(colorizeLine(`    ${check.needsFix ? '✗' : '✓'} ${check.label}`));
+          chunks.push(
+            colorizeLine(`    ${check.needsFix ? failGlyph() : successGlyph()} ${check.label}`),
+          );
         }
       }
       if (tier0.needsFix) {
@@ -674,11 +676,11 @@ export function renderStatus(report: StatusReport): string {
         tail = '   <- not managed by mise; install manually';
         break;
       case 'missing':
-        marker = '✗';
+        marker = failGlyph();
         tail = '   <- drift: enabled in config but not on PATH';
         break;
       default:
-        marker = '✓';
+        marker = successGlyph();
         tail = versionTail;
         break;
     }

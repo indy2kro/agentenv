@@ -11,6 +11,7 @@ import { AgentenvConfig, BINARY_MAP, TOOL_KEYS, TOOL_TIERS } from '../config/sch
 import { resolveBinary } from '../adapters/detect.js';
 import { writeFileWithVerify } from '../utils/fs-retry.js';
 import { FALLBACK_REQUIRED_TOOLS, isPlatformUnsupported, requiresFallback } from './fallbacks.js';
+import { failGlyph, successGlyph } from '../ui/theme.js';
 import {
   mergeShellFixEntries,
   readShellFixState,
@@ -919,14 +920,14 @@ export function verifySummaryLine(availability: ToolAvailability[]): string {
 
 /** One line per tool, symbol-prefixed (commands add their own indentation). */
 export function toolAvailabilityLine(tool: ToolAvailability): string {
-  if (tool.status === 'resolvable') return `✓ ${tool.binary} (${tool.key})`;
+  if (tool.status === 'resolvable') return `${successGlyph()} ${tool.binary} (${tool.key})`;
   if (tool.status === 'needs-new-terminal') {
     return `~ ${tool.binary} (${tool.key}) — installed; open a new terminal`;
   }
   if (tool.status === 'manual') {
     return `- ${tool.binary} (${tool.key}) — not managed by mise; install manually`;
   }
-  return `✗ ${tool.binary} (${tool.key}) — not installed (mise install did not produce it)`;
+  return `${failGlyph()} ${tool.binary} (${tool.key}) — not installed (mise install did not produce it)`;
 }
 
 /**

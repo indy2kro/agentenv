@@ -233,6 +233,7 @@ Available to every subcommand (before or after it):
 |---|---|
 | `--no-color` | Force colored output off. (Also honors `NO_COLOR`/`FORCE_COLOR` env vars; auto-detects TTY.) |
 | `-q, --quiet` | Suppress banner/footer chrome; keep the data lines (e.g. "Setup complete!"). |
+| `AGENTENV_ASCII=1` env var | Force ASCII status glyphs (`[ok]`/`[FAIL]`/`[warn]`/`[-]`) instead of `✓`/`✗`/`✅`/`⚠️`/`❌`/`·`. Auto-detected for `TERM=dumb` and (on Windows) a console code page other than 65001; set `AGENTENV_ASCII=0` to force Unicode back on. |
 | `--debug` | On an unhandled error, print the failing command and stack trace. |
 | `-V, --version` / `-h, --help` | Version / help (every subcommand also takes `--help`). |
 

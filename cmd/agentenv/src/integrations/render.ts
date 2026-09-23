@@ -3,17 +3,25 @@
  */
 
 import type { IntegrationAgentState, IntegrationResult } from './base.js';
+import { asciiGlyphsEnabled } from '../ui/theme.js';
 
-const STATE_GLYPH: Record<IntegrationAgentState['state'], string> = {
-  installed: '✓',
-  missing: '✗',
-  unsupported: '·',
-  drifted: '!',
-};
+function stateGlyph(state: IntegrationAgentState['state']): string {
+  const ascii = asciiGlyphsEnabled();
+  switch (state) {
+    case 'installed':
+      return ascii ? '[ok]' : '✓';
+    case 'missing':
+      return ascii ? '[FAIL]' : '✗';
+    case 'unsupported':
+      return ascii ? '[-]' : '·';
+    case 'drifted':
+      return '!'; // already ASCII-safe
+  }
+}
 
 /** Render a single integration/agent pair as a one-line status string. */
 export function integrationStateLine(state: IntegrationAgentState): string {
-  const glyph = STATE_GLYPH[state.state];
+  const glyph = stateGlyph(state.state);
   const detail = state.detail ? ` (${state.detail})` : '';
   return `${glyph} ${state.agent}: ${state.state}${detail}`;
 }
@@ -39,13 +47,20 @@ export function integrationResultLines(result: IntegrationResult): string[] {
 export function ghAuthLine(
   status: 'authenticated' | 'unauthenticated' | 'unknown' | 'not_installed',
 ): string {
+  const ascii = asciiGlyphsEnabled();
   const glyph =
     status === 'authenticated'
-      ? '✓'
+      ? ascii
+        ? '[ok]'
+        : '✓'
       : status === 'unauthenticated'
-        ? '✗'
+        ? ascii
+          ? '[FAIL]'
+          : '✗'
         : status === 'not_installed'
-          ? '·'
+          ? ascii
+            ? '[-]'
+            : '·'
           : '?';
   const label =
     status === 'authenticated'

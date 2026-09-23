@@ -12,6 +12,7 @@ import {
 import type { AgentenvConfig } from '../config/schema.js';
 import type { ClaudeCliRunner } from '../integrations/superpowers.js';
 import type { RtkInitFn } from '../toolchain/rtk.js';
+import { successGlyph, failGlyph } from '../ui/theme.js';
 
 interface RtkCall {
   args: string[];
@@ -363,7 +364,9 @@ describe('apply pipeline', () => {
       'missing superpowers marker',
     );
     assert.ok(
-      result.messages.some((m) => m.startsWith('Superpowers: ✓ claude_code: installed')),
+      result.messages.some((m) =>
+        m.startsWith(`Superpowers: ${successGlyph()} claude_code: installed`),
+      ),
       `missing success message: ${result.messages.join(' | ')}`,
     );
   });
@@ -400,7 +403,7 @@ describe('apply pipeline', () => {
       'must not run plugin marketplace add without allow_hooks',
     );
     assert.ok(
-      result.messages.some((m) => m.startsWith('Superpowers: ✗ claude_code: missing')),
+      result.messages.some((m) => m.startsWith(`Superpowers: ${failGlyph()} claude_code: missing`)),
       `missing missing-state message: ${result.messages.join(' | ')}`,
     );
   });
