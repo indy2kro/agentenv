@@ -302,7 +302,19 @@ export function watchMiseToml(
   debounceMs = 1000,
 ): fs.FSWatcher | undefined {
   const resolvedPath = path.resolve(miseTomlPath);
-  const resolvedDir = path.resolve(scopeDir);
+  // fs.realpathSync.native canonicalizes 8.3-short-name vs. long-name and
+  // casing differences that path.resolve() leaves alone. On Windows, a
+  // mismatch between this and what ReadDirectoryChangesW reports back trips
+  // a known libuv assertion ("Assertion failed: !_wcsnicmp(filename, dir,
+  // dirlen)", src/win/fs-event.c) that aborts the whole process, not just
+  // this watch — seen on GitHub Actions Windows runners, whose temp dir can
+  // resolve to a short-name form (e.g. RUNNER~1).
+  let resolvedDir: string;
+  try {
+    resolvedDir = fs.realpathSync.native(path.resolve(scopeDir));
+  } catch {
+    resolvedDir = path.resolve(scopeDir);
+  }
   const watchedName = path.basename(resolvedPath);
 
   let timeout: NodeJS.Timeout | null = null;
