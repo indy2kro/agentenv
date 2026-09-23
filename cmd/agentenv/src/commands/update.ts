@@ -241,48 +241,79 @@ async function doUpdate(options: UpdateCommandOptions): Promise<void> {
       console.log('\nWatching mise.toml for changes (Ctrl+C to stop)...');
       const scopeDir = resolveScopeDir(config.scope ?? 'project');
       const miseTomlPath = path.join(scopeDir, 'mise.toml');
-      watchMiseToml(miseTomlPath, scopeDir, config);
+      watchMiseToml(miseTomlPath, scopeDir, configPath);
     }
   }
 }
 
 /**
- * Watch mise.toml for changes and trigger mise up when modified.
- * Windows-safe: uses path.resolve() and normalizes paths properly.
+ * Watch mise.toml's directory for changes and trigger mise up when it
+ * changes, re-reading agentenv.toml fresh each time so a `[tools]` edit
+ * made since watch started (via `agentenv apply`, which regenerates
+ * mise.toml) is picked up instead of upgrading whatever was enabled when
+ * `--watch` started.
+ *
+ * Watches the *directory*, not the file itself: most editors save via an
+ * atomic rename (write a temp file, rename over the original), which
+ * replaces the file's inode. A watch on the specific path stops firing
+ * after that rename on several platforms/filesystems — a directory watch
+ * keeps working, since the directory itself is never replaced.
+ *
+ * Returns the underlying watcher so callers (and tests) can close it;
+ * `debounceMs` is overridable so tests don't have to wait out the real
+ * 1000ms debounce.
  */
-function watchMiseToml(miseTomlPath: string, scopeDir: string, config: AgentenvConfig): void {
+export function watchMiseToml(
+  miseTomlPath: string,
+  scopeDir: string,
+  configPath: string,
+  debounceMs = 1000,
+): fs.FSWatcher | undefined {
   const resolvedPath = path.resolve(miseTomlPath);
   const resolvedDir = path.resolve(scopeDir);
-
-  // Normalize the path for Windows (remove redundant segments, etc.)
-  const normalizedPath = path.normalize(resolvedPath);
+  const watchedName = path.basename(resolvedPath);
 
   let timeout: NodeJS.Timeout | null = null;
-  const DEBOUNCE_MS = 1000;
 
   try {
-    const watcher = fs.watch(normalizedPath, (eventType) => {
-      if (eventType === 'change') {
-        if (timeout) clearTimeout(timeout);
-        timeout = setTimeout(async () => {
-          console.log(`\nDetected change in ${normalizedPath}, running mise up...`);
-          const targets = getUpgradeableTools(config);
-          if (targets.length > 0) {
-            const upgrade = await runMiseUpgrade(targets, resolvedDir);
-            if (upgrade.success) {
-              console.log(
-                `  ${(upgrade.stdout || upgrade.stderr || '').trim() || 'all tools up to date'}`,
-              );
-            } else {
-              console.error(
-                `  mise up failed (exit ${upgrade.exitCode ?? 'null'}): ${upgrade.stderr || upgrade.stdout}`,
-              );
-            }
+    const watcher = fs.watch(resolvedDir, (_eventType, filename) => {
+      // A directory watch fires for every file in resolvedDir; only react
+      // to mise.toml itself. When the platform can't report a filename,
+      // don't filter it out — better an extra check than a missed one.
+      if (filename && filename !== watchedName) return;
+
+      if (timeout) clearTimeout(timeout);
+      timeout = setTimeout(async () => {
+        // An atomic-rename save briefly removes the old path before the
+        // new one lands; nothing to do yet if it hasn't landed.
+        if (!fs.existsSync(resolvedPath)) return;
+
+        console.log(`\nDetected change in ${resolvedPath}, running mise up...`);
+        let config: AgentenvConfig;
+        try {
+          config = loadConfig(configPath);
+        } catch (error) {
+          console.error(
+            `  Could not re-read ${configPath}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+          return;
+        }
+        const targets = getUpgradeableTools(config);
+        if (targets.length > 0) {
+          const upgrade = await runMiseUpgrade(targets, resolvedDir);
+          if (upgrade.success) {
+            console.log(
+              `  ${(upgrade.stdout || upgrade.stderr || '').trim() || 'all tools up to date'}`,
+            );
           } else {
-            console.log('  No upgradeable tools: everything enabled is pinned to a version.');
+            console.error(
+              `  mise up failed (exit ${upgrade.exitCode ?? 'null'}): ${upgrade.stderr || upgrade.stdout}`,
+            );
           }
-        }, DEBOUNCE_MS);
-      }
+        } else {
+          console.log('  No upgradeable tools: everything enabled is pinned to a version.');
+        }
+      }, debounceMs);
     });
 
     watcher.on('error', (err) => {
@@ -295,10 +326,13 @@ function watchMiseToml(miseTomlPath: string, scopeDir: string, config: AgentenvC
       watcher.close();
       process.exit(0);
     });
+
+    return watcher;
   } catch (err) {
     console.error(
-      `Failed to watch ${normalizedPath}: ${err instanceof Error ? err.message : String(err)}`,
+      `Failed to watch ${resolvedDir}: ${err instanceof Error ? err.message : String(err)}`,
     );
+    return undefined;
   }
 }
 
