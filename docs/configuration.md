@@ -403,8 +403,11 @@ install hints — never run unpinned or unreviewed (see
   exit `1`. Examples: invalid `scope`, a non-boolean `tools` value (e.g.
   `tools.ripgrep = "false"`), an orphaned/duplicate custom tool, an invalid
   `integrations.superpowers.scope`.
-- **Warnings never block anything**, but are shown. Example: any enabled tool
-  (like `tokei`) that mise can't install on this platform.
+- **Warnings never block anything**, but are shown. Examples: any enabled
+  tool (like `tokei`) that mise can't install on this platform; an unknown
+  top-level table or key anywhere in the file (e.g. `[tool]`, `scop =
+  "user"`, `[rtk] enable = true`), which comes with a "did you mean"
+  suggestion when one is close.
 
 ## Related reading
 

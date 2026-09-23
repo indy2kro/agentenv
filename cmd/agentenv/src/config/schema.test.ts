@@ -146,6 +146,43 @@ describe('configuration validation', () => {
     assert.ok(report.errors.some((error) => error.includes('scope must be "project" or "user"')));
   });
 
+  it('warns (does not error) on an unknown top-level table, with a did-you-mean', () => {
+    const report = validateConfig({ tool: { jq: true } } as never);
+    assert.deepEqual(report.errors, []);
+    assert.ok(
+      report.warnings.some(
+        (warning) => warning.includes('Unknown config key "tool"') && warning.includes('"tools"'),
+      ),
+    );
+  });
+
+  it('warns on a misspelled scope key without a did-you-mean match to a known key', () => {
+    const report = validateConfig({ scop: 'user' } as never);
+    assert.ok(report.warnings.some((warning) => warning.includes('Unknown config key "scop"')));
+  });
+
+  it('warns on a typo inside a known table, e.g. [rtk] enable = true', () => {
+    const report = validateConfig({ rtk: { enable: true } } as never);
+    assert.ok(
+      report.warnings.some(
+        (warning) =>
+          warning.includes('Unknown config key "rtk.enable"') && warning.includes('"rtk.enabled"'),
+      ),
+    );
+  });
+
+  it('surfaces unknown keys through loadConfig, which mergeWithDefaults used to silently drop', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-config-'));
+    const configPath = path.join(directory, 'agentenv.toml');
+    fs.writeFileSync(configPath, '[rtk]\nenable = true\n');
+
+    const config = loadConfig(configPath);
+    const report = validateConfig(config);
+    assert.ok(
+      report.warnings.some((warning) => warning.includes('Unknown config key "rtk.enable"')),
+    );
+  });
+
   it('accepts generate.files limited to AGENTS.md and CLAUDE.md', () => {
     const report = validateConfig({ generate: { files: ['AGENTS.md'] } });
     assert.deepEqual(report, { errors: [], warnings: [] });

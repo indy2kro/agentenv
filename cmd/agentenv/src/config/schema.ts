@@ -596,10 +596,49 @@ function tomlString(value: string): string {
 }
 
 /**
+ * The known top-level keys of AgentenvConfig. Kept as a literal array (not
+ * derived from the interface, which TypeScript erases at runtime) so
+ * validateConfig can flag a typo'd top-level table like `[tool]` or a
+ * misspelled `scop = "user"`.
+ */
+const TOP_LEVEL_CONFIG_KEYS = [
+  'scope',
+  'agents',
+  'tools',
+  'custom_tools',
+  'tool_versions',
+  'rtk',
+  'tier0',
+  'generate',
+  'advanced',
+  'integrations',
+] as const;
+
+/**
+ * Copy any key of `source` not in `known` onto `target`. mergeWithDefaults
+ * otherwise reconstructs each known sub-table field by field, which would
+ * silently drop a typo'd key (e.g. `[rtk] enable = true`) before
+ * validateConfig — which runs on the merged config — ever sees it.
+ */
+function copyUnknownKeys(
+  source: object | undefined,
+  target: Record<string, unknown>,
+  known: readonly string[],
+): void {
+  if (!source) return;
+  for (const key of Object.keys(source)) {
+    if (!known.includes(key)) {
+      target[key] = (source as Record<string, unknown>)[key];
+    }
+  }
+}
+
+/**
  * Merge provided config with defaults (missing properties get default values)
  */
 function mergeWithDefaults(config: AgentenvConfig): AgentenvConfig {
   const result: AgentenvConfig = { ...DEFAULT_CONFIG };
+  copyUnknownKeys(config, result as unknown as Record<string, unknown>, TOP_LEVEL_CONFIG_KEYS);
 
   // Merge scope
   if (config.scope !== undefined) {
@@ -638,6 +677,17 @@ function mergeWithDefaults(config: AgentenvConfig): AgentenvConfig {
         AGENT_KEYS.map((key) => [key, config.rtk?.init?.[key] ?? DEFAULT_CONFIG.rtk?.init?.[key]]),
       ) as NonNullable<RtkConfig['init']>,
     };
+    copyUnknownKeys(config.rtk, result.rtk as unknown as Record<string, unknown>, [
+      'enabled',
+      'init',
+    ]);
+    if (config.rtk.init) {
+      copyUnknownKeys(
+        config.rtk.init,
+        result.rtk.init as unknown as Record<string, unknown>,
+        AGENT_KEYS,
+      );
+    }
   }
 
   // Merge tier0
@@ -647,6 +697,11 @@ function mergeWithDefaults(config: AgentenvConfig): AgentenvConfig {
       git_bash_path: config.tier0.git_bash_path ?? DEFAULT_CONFIG.tier0?.git_bash_path,
       mode: config.tier0.mode ?? DEFAULT_CONFIG.tier0?.mode,
     };
+    copyUnknownKeys(config.tier0, result.tier0 as unknown as Record<string, unknown>, [
+      'check_enabled',
+      'git_bash_path',
+      'mode',
+    ]);
   }
 
   // Merge generate
@@ -656,6 +711,11 @@ function mergeWithDefaults(config: AgentenvConfig): AgentenvConfig {
       marker_end: config.generate.marker_end ?? DEFAULT_CONFIG.generate?.marker_end,
       files: config.generate.files ?? DEFAULT_CONFIG.generate?.files,
     };
+    copyUnknownKeys(config.generate, result.generate as unknown as Record<string, unknown>, [
+      'marker_start',
+      'marker_end',
+      'files',
+    ]);
   }
 
   // Merge integrations
@@ -686,6 +746,18 @@ function mergeWithDefaults(config: AgentenvConfig): AgentenvConfig {
           }
         : DEFAULT_CONFIG.integrations?.superpowers,
     };
+    copyUnknownKeys(
+      config.integrations,
+      result.integrations as unknown as Record<string, unknown>,
+      ['superpowers'],
+    );
+    if (config.integrations.superpowers && result.integrations.superpowers) {
+      copyUnknownKeys(
+        config.integrations.superpowers,
+        result.integrations.superpowers as unknown as Record<string, unknown>,
+        ['enabled', 'source', 'ref', 'scope', 'agents', 'allow_hooks', 'allow_external_requests'],
+      );
+    }
   }
 
   // Merge advanced
@@ -695,6 +767,10 @@ function mergeWithDefaults(config: AgentenvConfig): AgentenvConfig {
       show_diff_preview:
         config.advanced.show_diff_preview ?? DEFAULT_CONFIG.advanced?.show_diff_preview,
     };
+    copyUnknownKeys(config.advanced, result.advanced as unknown as Record<string, unknown>, [
+      'default_mode',
+      'show_diff_preview',
+    ]);
   }
 
   return result;
@@ -752,6 +828,59 @@ function normalizeConfig(config: AgentenvConfig): AgentenvConfig {
   return normalized;
 }
 
+/** Levenshtein edit distance, for did-you-mean suggestions on unknown config keys. */
+function editDistance(a: string, b: string): number {
+  const rows = a.length + 1;
+  const cols = b.length + 1;
+  const dp: number[][] = Array.from({ length: rows }, () => new Array(cols).fill(0));
+  for (let i = 0; i < rows; i++) dp[i][0] = i;
+  for (let j = 0; j < cols; j++) dp[0][j] = j;
+  for (let i = 1; i < rows; i++) {
+    for (let j = 1; j < cols; j++) {
+      dp[i][j] =
+        a[i - 1] === b[j - 1]
+          ? dp[i - 1][j - 1]
+          : 1 + Math.min(dp[i - 1][j - 1], dp[i - 1][j], dp[i][j - 1]);
+    }
+  }
+  return dp[rows - 1][cols - 1];
+}
+
+/** The closest known key to `key`, or undefined when nothing is close enough to be a likely typo. */
+function didYouMean(key: string, known: readonly string[]): string | undefined {
+  let best: string | undefined;
+  let bestDistance = Infinity;
+  for (const candidate of known) {
+    const distance = editDistance(key, candidate);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = candidate;
+    }
+  }
+  return best !== undefined && bestDistance <= Math.max(2, Math.ceil(best.length / 3))
+    ? best
+    : undefined;
+}
+
+/** Warn (with a did-you-mean suggestion where one is close) for any key of `obj` not in `known`. */
+function warnUnknownKeys(
+  obj: object | undefined,
+  known: readonly string[],
+  keyPrefix: string,
+  warnings: string[],
+): void {
+  if (!obj) return;
+  for (const key of Object.keys(obj)) {
+    if (known.includes(key)) continue;
+    const suggestion = didYouMean(key, known);
+    warnings.push(
+      suggestion
+        ? `Unknown config key "${keyPrefix}${key}" (did you mean "${keyPrefix}${suggestion}"?)`
+        : `Unknown config key "${keyPrefix}${key}"`,
+    );
+  }
+}
+
 /**
  * Validate a config and report problems, separating hard errors from warnings.
  * The CLI refuses to proceed when there are errors; warnings are surfaced but
@@ -763,6 +892,20 @@ export function validateConfig(config: AgentenvConfig): {
 } {
   const errors: string[] = [];
   const warnings: string[] = [];
+
+  warnUnknownKeys(config, TOP_LEVEL_CONFIG_KEYS, '', warnings);
+  warnUnknownKeys(config.rtk, ['enabled', 'init'], 'rtk.', warnings);
+  warnUnknownKeys(config.rtk?.init, AGENT_KEYS, 'rtk.init.', warnings);
+  warnUnknownKeys(config.tier0, ['check_enabled', 'git_bash_path', 'mode'], 'tier0.', warnings);
+  warnUnknownKeys(config.generate, ['marker_start', 'marker_end', 'files'], 'generate.', warnings);
+  warnUnknownKeys(config.advanced, ['default_mode', 'show_diff_preview'], 'advanced.', warnings);
+  warnUnknownKeys(config.integrations, ['superpowers'], 'integrations.', warnings);
+  warnUnknownKeys(
+    config.integrations?.superpowers,
+    ['enabled', 'source', 'ref', 'scope', 'agents', 'allow_hooks', 'allow_external_requests'],
+    'integrations.superpowers.',
+    warnings,
+  );
 
   if (config.scope !== undefined && config.scope !== 'project' && config.scope !== 'user') {
     errors.push(`scope must be "project" or "user", got "${String(config.scope)}"`);
