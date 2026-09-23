@@ -73,6 +73,25 @@ function withHome(home: string, run: () => Promise<void>): Promise<void> {
   });
 }
 
+/** Temporarily set (or unset with undefined) a group of env vars for `run`. */
+function withEnv(
+  vars: Record<string, string | undefined>,
+  run: () => Promise<void>,
+): Promise<void> {
+  const prior: Record<string, string | undefined> = {};
+  for (const key of Object.keys(vars)) prior[key] = process.env[key];
+  for (const [key, value] of Object.entries(vars)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  return run().finally(() => {
+    for (const [key, value] of Object.entries(prior)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+}
+
 describe('Codex CLI adapter', () => {
   it('creates config.toml and delegates hooks to `rtk init --codex`', async () => {
     await withHome(tempHome(), async () => {
@@ -138,6 +157,28 @@ describe('Codex CLI adapter', () => {
       assert.ok(result.errors.some((error) => /Failed to create config\.toml/.test(error)));
     });
   });
+
+  it('honors CODEX_HOME over the default ~/.codex (SWEEP-03)', async () => {
+    await withHome(tempHome(), async () => {
+      const home = process.env.HOME as string;
+      const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-codex-relocated-'));
+      await withEnv({ CODEX_HOME: codexHome }, async () => {
+        const rtk = fakeRtkInit();
+        const adapter = new CodexCliAdapter({
+          enabled: true,
+          baseDir: home,
+          rtkEnabled: true,
+          rtkInit: rtk.fn,
+        });
+        assert.equal(adapter.getConfigDir(), codexHome);
+
+        const result = await adapter.initialize();
+        assert.equal(result.success, true);
+        assert.equal(fs.existsSync(path.join(codexHome, 'config.toml')), true);
+        assert.equal(fs.existsSync(path.join(home, '.codex', 'config.toml')), false);
+      });
+    });
+  });
 });
 
 describe('GitHub Copilot adapter', () => {
@@ -175,6 +216,17 @@ describe('GitHub Copilot adapter', () => {
       assert.equal(result.success, true);
       assert.equal(fs.existsSync(path.join(home, '.github', 'copilot-instructions.md')), false);
       assert.equal(rtk.calls.length, 0);
+    });
+  });
+
+  it('honors XDG_CONFIG_HOME over the default ~/.config (SWEEP-03)', async () => {
+    await withHome(tempHome(), async () => {
+      const home = process.env.HOME as string;
+      const xdgHome = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-copilot-xdg-'));
+      await withEnv({ XDG_CONFIG_HOME: xdgHome }, async () => {
+        const adapter = new CopilotAdapter({ enabled: true, baseDir: home, rtkEnabled: false });
+        assert.equal(adapter.getConfigDir(), path.join(xdgHome, 'github-copilot'));
+      });
     });
   });
 });
@@ -223,6 +275,17 @@ describe('OpenCode adapter', () => {
         false,
       );
       assert.equal(rtk.calls.length, 0);
+    });
+  });
+
+  it('honors XDG_CONFIG_HOME over the default ~/.config (SWEEP-03)', async () => {
+    await withHome(tempHome(), async () => {
+      const home = process.env.HOME as string;
+      const xdgHome = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-opencode-xdg-'));
+      await withEnv({ XDG_CONFIG_HOME: xdgHome }, async () => {
+        const adapter = new OpenCodeAdapter({ enabled: true, baseDir: home, rtkEnabled: false });
+        assert.equal(adapter.getConfigDir(), path.join(xdgHome, 'opencode'));
+      });
     });
   });
 });

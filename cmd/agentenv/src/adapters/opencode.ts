@@ -10,14 +10,14 @@ import * as path from 'path';
 import { BaseAdapter, AdapterConfig, AdapterResult } from './base.js';
 import { isAgentInstalled } from './detect.js';
 import { RTK_INIT_FLAGS, resolveRtkInit, rtkMessage } from '../toolchain/rtk.js';
+import { opencodeConfigDir } from './agent-dirs.js';
 
 export class OpenCodeAdapter extends BaseAdapter {
   private configDir: string;
 
   constructor(config: AdapterConfig) {
     super(config);
-    const home = process.env.HOME || process.env.USERPROFILE || '';
-    this.configDir = path.join(home, '.config', 'opencode');
+    this.configDir = opencodeConfigDir();
   }
 
   getName(): string {

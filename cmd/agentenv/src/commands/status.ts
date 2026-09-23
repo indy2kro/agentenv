@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import * as fs from 'fs';
 import * as path from 'path';
 import { isAgentInstalled, resolveBinary } from '../adapters/detect.js';
+import { claudeConfigDir, homeDir, opencodeConfigDir } from '../adapters/agent-dirs.js';
 import {
   BINARY_MAP,
   TOOL_DESCRIPTIONS,
@@ -36,7 +37,7 @@ const AGENT_CONFIG_FILES: Record<AgentKey, { label: string; check: (baseDir: str
   {
     claude_code: {
       label: 'Claude Code',
-      check: () => path.join(homeDir(), '.claude', 'settings.json'),
+      check: () => path.join(claudeConfigDir(), 'settings.json'),
     },
     // Written by `rtk init --codex` in the project dir (project-scoped; not -g).
     codex_cli: { label: 'Codex CLI', check: (baseDir) => path.join(baseDir, 'RTK.md') },
@@ -46,7 +47,7 @@ const AGENT_CONFIG_FILES: Record<AgentKey, { label: string; check: (baseDir: str
     },
     opencode: {
       label: 'OpenCode',
-      check: () => path.join(homeDir(), '.config', 'opencode', 'plugins', 'rtk.ts'),
+      check: () => path.join(opencodeConfigDir(), 'plugins', 'rtk.ts'),
     },
     // `-g --gemini` (verified live against a real rtk install): writes
     // GEMINI.md — not RTK.md — into Gemini's own global config dir.
@@ -54,7 +55,7 @@ const AGENT_CONFIG_FILES: Record<AgentKey, { label: string; check: (baseDir: str
     // `-g --agent cursor` writes into the shared Claude Code anchor, not
     // Cursor's own config dir or baseDir — see adapters/cursor.ts's
     // extraGlobalDirs comment; confirmed live.
-    cursor: { label: 'Cursor', check: () => path.join(homeDir(), '.claude', 'RTK.md') },
+    cursor: { label: 'Cursor', check: () => path.join(claudeConfigDir(), 'RTK.md') },
     // TODO: windsurf/vibe are still checked against baseDir/RTK.md, which a
     // live probe against an older rtk build suggests is also wrong (windsurf
     // wrote a cwd-relative .windsurfrules; vibe isn't
@@ -201,10 +202,6 @@ const defaultSuperpowersStatus: NonNullable<StatusDeps['superpowersStatus']> = a
   const adapter = new SuperpowersAdapter();
   return adapter.status(baseDir, config);
 };
-
-function homeDir(): string {
-  return process.env.HOME || process.env.USERPROFILE || '';
-}
 
 function norm(p: string): string {
   return path.resolve(p).replace(/\\/g, '/').toLowerCase();

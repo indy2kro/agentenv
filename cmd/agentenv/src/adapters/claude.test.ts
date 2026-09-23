@@ -35,6 +35,52 @@ describe('Claude Code adapter', () => {
     }
   });
 
+  it('honors CLAUDE_CONFIG_DIR over the default ~/.claude (SWEEP-03)', async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-claude-'));
+    const configDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-claude-relocated-'));
+    const priorHome = process.env.HOME;
+    const priorOverride = process.env.CLAUDE_CONFIG_DIR;
+    process.env.HOME = home;
+    process.env.CLAUDE_CONFIG_DIR = configDir;
+
+    try {
+      const adapter = new ClaudeCodeAdapter({ enabled: true, baseDir: home, rtkEnabled: true });
+      assert.equal(adapter.getConfigDir(), configDir);
+      assert.equal(adapter.getUserInstructionFile(), path.join(configDir, 'CLAUDE.md'));
+
+      const result = await adapter.initialize();
+      assert.equal(result.success, true);
+      assert.ok(
+        fs.existsSync(path.join(configDir, 'settings.json')),
+        'settings.json should be written under CLAUDE_CONFIG_DIR, not ~/.claude',
+      );
+      assert.equal(fs.existsSync(path.join(home, '.claude', 'settings.json')), false);
+    } finally {
+      if (priorHome === undefined) delete process.env.HOME;
+      else process.env.HOME = priorHome;
+      if (priorOverride === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+      else process.env.CLAUDE_CONFIG_DIR = priorOverride;
+    }
+  });
+
+  it('ignores a relative CLAUDE_CONFIG_DIR rather than silently resolving it against cwd', async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-claude-'));
+    const priorHome = process.env.HOME;
+    const priorOverride = process.env.CLAUDE_CONFIG_DIR;
+    process.env.HOME = home;
+    process.env.CLAUDE_CONFIG_DIR = 'relative-dir';
+
+    try {
+      const adapter = new ClaudeCodeAdapter({ enabled: true, baseDir: home, rtkEnabled: true });
+      assert.equal(adapter.getConfigDir(), path.join(home, '.claude'));
+    } finally {
+      if (priorHome === undefined) delete process.env.HOME;
+      else process.env.HOME = priorHome;
+      if (priorOverride === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+      else process.env.CLAUDE_CONFIG_DIR = priorOverride;
+    }
+  });
+
   it('cleanup removes the RTK hook and a second cleanup is a truthful no-op', async () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-claude-'));
     const priorHome = process.env.HOME;

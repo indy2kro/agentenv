@@ -11,14 +11,14 @@ import { BaseAdapter, AdapterConfig, AdapterResult } from './base.js';
 import { isAgentInstalled } from './detect.js';
 import { RTK_INIT_FLAGS, resolveRtkInit, rtkMessage } from '../toolchain/rtk.js';
 import { writeFileWithRetry } from '../utils/fs-retry.js';
+import { codexConfigDir } from './agent-dirs.js';
 
 export class CodexCliAdapter extends BaseAdapter {
   private configDir: string;
 
   constructor(config: AdapterConfig) {
     super(config);
-    const home = process.env.HOME || process.env.USERPROFILE || '';
-    this.configDir = path.join(home, '.codex');
+    this.configDir = codexConfigDir();
   }
 
   getName(): string {

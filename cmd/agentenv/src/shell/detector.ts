@@ -9,6 +9,7 @@ import * as winPath from 'path/win32';
 import * as child_process from 'child_process';
 import { AGENT_KEYS } from '../config/schema.js';
 import type { AgentKey } from '../config/schema.js';
+import { homeDir } from '../adapters/agent-dirs.js';
 import { getShimsDirValue, pathContainsDir, removeShimsDirValue } from '../toolchain/mise.js';
 import { writeFileWithRetry } from '../utils/fs-retry.js';
 import {
@@ -858,7 +859,7 @@ export function fixShellConfiguration(
     }
 
     const bashExe = bashExecutable(shellInfo.gitBashPath);
-    const home = process.env.HOME || process.env.USERPROFILE || '';
+    const home = homeDir();
     const results = agents.map((agent) => applyAgentShellFix(agent, bashExe, home));
     const written = results.filter(
       (result) => result.action === 'created' || result.action === 'updated',
@@ -934,7 +935,7 @@ export function fixShellConfiguration(
  */
 export function checkAgentShellConfiguration(
   agent: AgentKey,
-  home: string = process.env.HOME || process.env.USERPROFILE || '',
+  home: string = homeDir(),
 ): { isConfigured: boolean; shell?: string; needsFix: boolean } {
   switch (agent) {
     case 'claude_code':

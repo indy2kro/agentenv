@@ -180,6 +180,23 @@ One boolean per supported AI coding agent:
 enabled agent that isn't installed is reported (never fatal) by
 `status`/`doctor`.
 
+### Relocated agent config directories
+
+Each agent's hooks/instructions are written to its own config directory,
+honoring that agent's own relocation env var when set to an absolute path
+(a relative value is ignored, falling back to the default, rather than
+silently resolving against the current directory):
+
+| Agent | Default | Override |
+|---|---|---|
+| `claude_code` | `~/.claude` | `CLAUDE_CONFIG_DIR` |
+| `codex_cli` | `~/.codex` | `CODEX_HOME` |
+| `copilot` | `~/.config/github-copilot` | `XDG_CONFIG_HOME` |
+| `opencode` | `~/.config/opencode` | `XDG_CONFIG_HOME` |
+
+`~` above means `$HOME`/`%USERPROFILE%`, falling back to Node's `os.homedir()`
+when neither is set.
+
 ## `[tools]`
 
 The installable tool catalog. Everything in it is installed by **mise** —

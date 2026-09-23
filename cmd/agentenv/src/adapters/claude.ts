@@ -8,14 +8,14 @@ import * as path from 'path';
 import { BaseAdapter, AdapterConfig, AdapterResult } from './base.js';
 import { isAgentInstalled } from './detect.js';
 import { writeFileWithRetry } from '../utils/fs-retry.js';
+import { claudeConfigDir } from './agent-dirs.js';
 
 export class ClaudeCodeAdapter extends BaseAdapter {
   private configDir: string;
 
   constructor(config: AdapterConfig) {
     super(config);
-    const home = process.env.HOME || process.env.USERPROFILE || '';
-    this.configDir = path.join(home, '.claude');
+    this.configDir = claudeConfigDir();
   }
 
   getName(): string {

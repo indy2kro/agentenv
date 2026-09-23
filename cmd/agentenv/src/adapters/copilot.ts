@@ -10,14 +10,14 @@ import * as path from 'path';
 import { BaseAdapter, AdapterConfig, AdapterResult } from './base.js';
 import { isAgentInstalled } from './detect.js';
 import { RTK_INIT_FLAGS, resolveRtkInit, rtkMessage } from '../toolchain/rtk.js';
+import { copilotConfigDir, homeDir } from './agent-dirs.js';
 
 export class CopilotAdapter extends BaseAdapter {
   private configDir: string;
 
   constructor(config: AdapterConfig) {
     super(config);
-    const home = process.env.HOME || process.env.USERPROFILE || '';
-    this.configDir = path.join(home, '.config', 'github-copilot');
+    this.configDir = copilotConfigDir();
   }
 
   getName(): string {
@@ -29,8 +29,7 @@ export class CopilotAdapter extends BaseAdapter {
   }
 
   getUserInstructionFile(): string {
-    const home = process.env.HOME || process.env.USERPROFILE || '';
-    return path.join(home, '.copilot', 'copilot-instructions.md');
+    return path.join(homeDir(), '.copilot', 'copilot-instructions.md');
   }
 
   isInstalled(): boolean {
