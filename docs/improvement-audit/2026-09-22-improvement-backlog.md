@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-09-22
 
-Target: 40 · Found: 46 deduplicated items · Completed: 37/46 (+1 partial)
+Target: 40 · Found: 46 deduplicated items · Completed: 38/46 (+1 partial)
 
 > **How to use this document — read before implementing anything.**
 > As you finish each item, change `- [ ]` to `- [x]`, append ` ✅ <commit-sha>`,
@@ -140,7 +140,7 @@ Themes this round:
   Seen during this audit: the rtk hook rewrote `rg -g …` / `rg --type …` into GNU `grep` and failed ("grep: unknown option -- g"), and agents have no hint on how to bypass the rewrite. Also worth reporting upstream to rtk.
 - [x] **FEAT-05** ✅ 180c799 Search parent directories for the project `agentenv.toml` — `src/config/scopes.ts:48-54` · effort S · impact med
   Running `agentenv status` from `repo/src` silently falls through to the user config (or "no config"). git and mise search upward.
-- [ ] **FEAT-06** Show a diff, or changed/unchanged per file, in `apply --dry-run`, including the Tier 0 plan — `src/commands/apply.ts:315-335` · effort M · impact med
+- [x] **FEAT-06** ✅ 4236a1d Show a diff, or changed/unchanged per file, in `apply --dry-run`, including the Tier 0 plan — `src/commands/apply.ts:315-335` · effort M · impact med
   Dry-run only lists target paths, so users can't see what would change in the marker block, `mise.toml` or the user-global Tier 0 edits.
 - [ ] **FEAT-07** Non-interactive config edits: `agentenv add|remove <tool|agent>` (or `agentenv config set tools.x true`) followed by apply — new `src/commands/*.ts`, `src/config/schema.ts` · effort M · impact med
   Today the only ways to change the config are the TTY-only wizard and hand-editing TOML. Agents themselves are the likeliest callers of "enable jq here".
