@@ -43,10 +43,12 @@ const defaultClaudeCliRunner: ClaudeCliRunner = (args, cwd) => {
     return { success: false, exitCode: null, stdout: '', stderr: 'claude CLI not found on PATH' };
   }
   try {
+    // `plugin marketplace add`/`plugin install` fetch from GitHub.
     const result = child_process.spawnSync(claudePath, args, {
       cwd,
       encoding: 'utf-8',
       stdio: 'pipe',
+      timeout: 60000,
     });
     return {
       success: result.status === 0,

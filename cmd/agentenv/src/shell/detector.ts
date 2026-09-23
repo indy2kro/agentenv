@@ -88,7 +88,10 @@ export function findGitBashOnPath(
   spawnSync: typeof child_process.spawnSync = child_process.spawnSync,
 ): string | undefined {
   try {
-    const where = spawnSync('cmd.exe', ['/c', 'where', 'git'], { encoding: 'utf8' });
+    const where = spawnSync('cmd.exe', ['/c', 'where', 'git'], {
+      encoding: 'utf8',
+      timeout: 5000,
+    });
     if (where.status !== 0 || !where.stdout) {
       return undefined;
     }
@@ -188,6 +191,7 @@ export function detectShell(
       const result = spawnSync('brew', ['--prefix', 'coreutils'], {
         encoding: 'utf-8',
         stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: 10000,
       });
       if (result.status === 0) {
         const prefix = result.stdout.trim();
@@ -308,11 +312,13 @@ export function checkGNUCoreutils(): boolean {
     const grepResult = child_process.spawnSync('sh', ['-c', 'command -v grep'], {
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 5000,
     });
     const grepPath = grepResult.stdout.trim();
     if (grepPath) {
       const grepCheck = child_process.spawnSync(grepPath, ['-P', '--version'], {
         stdio: 'ignore',
+        timeout: 5000,
       });
       if (grepCheck.status === 0) return true;
     }
@@ -321,10 +327,14 @@ export function checkGNUCoreutils(): boolean {
     const sedResult = child_process.spawnSync('sh', ['-c', 'command -v sed'], {
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 5000,
     });
     const sedPath = sedResult.stdout.trim();
     if (sedPath) {
-      const sedCheck = child_process.spawnSync(sedPath, ['--version'], { stdio: 'ignore' });
+      const sedCheck = child_process.spawnSync(sedPath, ['--version'], {
+        stdio: 'ignore',
+        timeout: 5000,
+      });
       if (sedCheck.status === 0) return true;
     }
 
@@ -345,7 +355,10 @@ function installGNUCoreutilsMacOS(): string | undefined {
 
   try {
     // Check if Homebrew is installed
-    const brewOk = child_process.spawnSync('sh', ['-c', 'command -v brew'], { stdio: 'ignore' });
+    const brewOk = child_process.spawnSync('sh', ['-c', 'command -v brew'], {
+      stdio: 'ignore',
+      timeout: 5000,
+    });
     if (brewOk.status !== 0) {
       return undefined;
     }
@@ -356,9 +369,15 @@ function installGNUCoreutilsMacOS(): string | undefined {
       // Only install when the formula is not already installed
       const listed = child_process.spawnSync('brew', ['list', '--formula', pkg], {
         stdio: 'ignore',
+        timeout: 10000,
       });
       if (listed.status !== 0) {
-        child_process.spawnSync('brew', ['install', '--quiet', pkg], { stdio: 'ignore' });
+        // An actual package install (network + possibly a build), unlike the
+        // read-only probes around it — given more room before we give up.
+        child_process.spawnSync('brew', ['install', '--quiet', pkg], {
+          stdio: 'ignore',
+          timeout: 120000,
+        });
       }
     }
 
@@ -366,6 +385,7 @@ function installGNUCoreutilsMacOS(): string | undefined {
     const result = child_process.spawnSync('brew', ['--prefix', 'coreutils'], {
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 10000,
     });
     if (result.status !== 0) {
       return undefined;
@@ -392,11 +412,17 @@ export function checkMissingUtilities(isPosixCompatible: boolean): string[] {
   for (const util of POSIX_UTILITIES) {
     // `where` reports "not found" via a non-zero exit code (the INFO text goes
     // to stderr), so checking the exit status is what distinguishes "found".
-    const where = child_process.spawnSync('cmd.exe', ['/c', 'where', util], { stdio: 'ignore' });
+    const where = child_process.spawnSync('cmd.exe', ['/c', 'where', util], {
+      stdio: 'ignore',
+      timeout: 5000,
+    });
     if (where.status === 0) {
       continue;
     }
-    const which = child_process.spawnSync('sh', ['-c', `command -v ${util}`], { stdio: 'ignore' });
+    const which = child_process.spawnSync('sh', ['-c', `command -v ${util}`], {
+      stdio: 'ignore',
+      timeout: 5000,
+    });
     if (which.status === 0) {
       continue;
     }

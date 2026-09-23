@@ -470,6 +470,7 @@ export async function runMiseSelfUpdate(): Promise<{
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, MISE_YES: '1' },
+      timeout: 60000,
     });
     const output = (result.stdout || result.stderr || '').trim();
     return { success: result.status === 0, output };
@@ -499,6 +500,7 @@ export async function runMiseUpgrade(
       cwd,
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 120000,
     });
     return {
       success: result.status === 0,
@@ -534,7 +536,12 @@ export function runMiseUninstall(
   stderr: string;
   exitCode: number | null;
 } {
-  const result = runMiseCaptured(['uninstall', '--all', ...tools], { cwd, miseTomlPath });
+  // Deleting installed tool files can take longer than a metadata query.
+  const result = runMiseCaptured(['uninstall', '--all', ...tools], {
+    cwd,
+    miseTomlPath,
+    timeoutMs: 60000,
+  });
   return {
     success: result.status === 0,
     stdout: result.stdout || '',
@@ -552,6 +559,13 @@ export interface RunMiseCapturedOptions {
    * {@link miseSpawnOptions} for why.
    */
   miseTomlPath?: string;
+  /**
+   * Max time to wait before killing a hung `mise` (a stuck network call would
+   * otherwise freeze `status`/`doctor`/`apply` indefinitely). Default 30s
+   * covers this funnel's normal callers (--version/which/trust/ls); callers
+   * expecting more work (e.g. uninstall) pass a longer one.
+   */
+  timeoutMs?: number;
 }
 
 /**
@@ -600,6 +614,7 @@ export function runMiseCaptured(
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'pipe'],
       env,
+      timeout: opts.timeoutMs ?? 30000,
     });
   } catch (err) {
     return {

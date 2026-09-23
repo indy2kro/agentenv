@@ -78,6 +78,7 @@ export function resolveBinary(command: string): string | null {
     const result = child_process.spawnSync(look, [command], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 5000,
     });
     const out = result.stdout ?? '';
     return (

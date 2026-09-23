@@ -48,6 +48,7 @@ export const defaultGhAuthProbe: GhAuthProbeFn = () => {
     const result = child_process.spawnSync(ghPath, ['auth', 'status', '--hostname', 'github.com'], {
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 15000,
     });
     return { status: classifyGhAuthStatus(result.status, result.stderr ?? '') };
   } catch {

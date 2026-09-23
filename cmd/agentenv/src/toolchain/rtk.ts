@@ -89,6 +89,7 @@ const defaultRtkInit: RtkInitFn = (args, cwd) => {
       cwd,
       encoding: 'utf-8',
       stdio: 'pipe',
+      timeout: 30000,
     });
     const ok = result.status === 0;
     return {
