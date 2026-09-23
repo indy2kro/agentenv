@@ -16,6 +16,7 @@ import {
   getEnabledAgents,
   loadConfig,
   resolveIntegrationScope,
+  saveConfig,
   validateConfig,
 } from './schema.js';
 import type { AgentenvConfig, AgentKey, CustomTool } from './schema.js';
@@ -121,6 +122,66 @@ describe('configuration persistence', () => {
     fs.writeFileSync(configPath, content);
     const config = loadConfig(configPath);
     assert.equal(config.tier0?.mode, 'always');
+  });
+});
+
+describe('saveConfig (BUG-09)', () => {
+  it('does not rewrite the file — preserving hand-written comments — when the config is unchanged', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-config-'));
+    const configPath = path.join(directory, 'agentenv.toml');
+    const handWritten = [
+      '# My carefully commented config',
+      'scope = "project"',
+      '',
+      '[agents]',
+      'claude_code = true # my favorite agent',
+      '',
+    ].join('\n');
+    fs.writeFileSync(configPath, handWritten);
+
+    const config = loadConfig(configPath);
+    saveConfig(config, configPath);
+
+    assert.equal(
+      fs.readFileSync(configPath, 'utf8'),
+      handWritten,
+      'saveConfig must leave an unchanged, hand-commented file byte-for-byte untouched',
+    );
+  });
+
+  it('rewrites the file when the config actually changed', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-config-'));
+    const configPath = path.join(directory, 'agentenv.toml');
+    fs.writeFileSync(configPath, '# comment\nscope = "project"\n[agents]\nclaude_code = true\n');
+
+    const config = loadConfig(configPath);
+    assert.equal(config.agents?.copilot, false, 'precondition: copilot starts disabled');
+    config.agents = { ...config.agents, copilot: true };
+    saveConfig(config, configPath);
+
+    const rewritten = fs.readFileSync(configPath, 'utf8');
+    assert.doesNotMatch(rewritten, /# comment/, 'a real change should re-serialize the file');
+    assert.equal(loadConfig(configPath).agents?.copilot, true);
+  });
+
+  it('writes a fresh valid file when the existing one is unparsable', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-config-'));
+    const configPath = path.join(directory, 'agentenv.toml');
+    fs.writeFileSync(configPath, '[agents\nclaude_code = true');
+
+    saveConfig({ ...DEFAULT_CONFIG, agents: { claude_code: true } }, configPath);
+
+    assert.equal(loadConfig(configPath).agents?.claude_code, true);
+  });
+
+  it('writes a brand-new file normally (no existing file to compare against)', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-config-'));
+    const configPath = path.join(directory, 'agentenv.toml');
+
+    saveConfig({ ...DEFAULT_CONFIG, agents: { claude_code: true } }, configPath);
+
+    assert.equal(fs.existsSync(configPath), true);
+    assert.equal(loadConfig(configPath).agents?.claude_code, true);
   });
 });
 

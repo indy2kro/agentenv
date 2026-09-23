@@ -5,6 +5,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { isDeepStrictEqual } from 'util';
 import toml from 'toml';
 import { writeFileWithVerify } from '../utils/fs-retry.js';
 import { userConfigDir } from './scopes.js';
@@ -474,6 +475,19 @@ export function loadConfig(configPath?: string): AgentenvConfig {
  */
 export function saveConfig(config: AgentenvConfig, configPath: string): void {
   try {
+    // Re-serializing an unchanged config from scratch would strip whatever
+    // hand-written comments/formatting the file has (agentenv.toml.example
+    // encourages commenting it) — so when the file already holds this exact
+    // config, leave it untouched instead of overwriting it with our
+    // canonical (comment-free) rendering. An unparsable existing file falls
+    // through to a normal save, which gives the user a valid file back.
+    if (fs.existsSync(configPath)) {
+      try {
+        if (isDeepStrictEqual(loadConfig(configPath), config)) return;
+      } catch {
+        // Fall through to a normal save.
+      }
+    }
     fs.mkdirSync(path.dirname(configPath), { recursive: true });
     const result = writeFileWithVerify(configPath, configToToml(config));
     if (!result.success) throw new Error(result.message);
