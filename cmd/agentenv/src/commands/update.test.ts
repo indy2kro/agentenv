@@ -35,14 +35,30 @@ describe('update verify rendering', () => {
   });
 });
 
-/** Poll `check` until it returns true or `timeoutMs` elapses. */
-// macOS's FSEvents-backed fs.watch() can take noticeably longer than
-// inotify/ReadDirectoryChangesW to report a change, especially on a loaded
-// CI runner — 3000ms cut it close enough to time out there.
-async function waitFor(check: () => boolean, timeoutMs = 8000): Promise<void> {
+/**
+ * Poll `check` until it returns true or `timeoutMs` elapses.
+ *
+ * If `retrigger` is given, it's called again every `retriggerEveryMs` while
+ * still waiting. macOS's FSEvents-backed fs.watch() has been observed to not
+ * just report changes late but to drop a single notification entirely on a
+ * loaded CI runner — no timeout is long enough to wait out an event that
+ * never arrives. Re-doing the filesystem change periodically survives that:
+ * a later, independent notification gets another chance to be delivered.
+ */
+async function waitFor(
+  check: () => boolean,
+  timeoutMs = 8000,
+  retrigger?: () => void,
+  retriggerEveryMs = 500,
+): Promise<void> {
   const start = Date.now();
+  let lastRetrigger = start;
   while (!check()) {
     if (Date.now() - start > timeoutMs) throw new Error('waitFor: timed out');
+    if (retrigger && Date.now() - lastRetrigger >= retriggerEveryMs) {
+      retrigger();
+      lastRetrigger = Date.now();
+    }
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
 }
@@ -343,12 +359,21 @@ describe('watchMiseToml (BUG-13)', () => {
     try {
       // Simulate an editor's atomic-rename save: write a temp file, then
       // rename it over mise.toml — this is what made the old file-specific
-      // watch stop firing.
+      // watch stop firing. Re-issued by waitFor() if the watcher doesn't
+      // react in time, since a dropped (not just delayed) FSEvents
+      // notification means the first attempt may never be observed.
       const tmpPath = `${miseTomlPath}.tmp`;
-      fs.writeFileSync(tmpPath, '[tools]\n# touched\n');
-      fs.renameSync(tmpPath, miseTomlPath);
+      const triggerFirstSave = (): void => {
+        fs.writeFileSync(tmpPath, '[tools]\n# touched\n');
+        fs.renameSync(tmpPath, miseTomlPath);
+      };
+      triggerFirstSave();
 
-      await waitFor(() => logs.some((line) => line.includes('No upgradeable tools')));
+      await waitFor(
+        () => logs.some((line) => line.includes('No upgradeable tools')),
+        8000,
+        triggerFirstSave,
+      );
 
       // Now make agentenv.toml itself unparsable and trigger another save.
       // The only way the watcher can report this is by re-reading the file
@@ -356,10 +381,17 @@ describe('watchMiseToml (BUG-13)', () => {
       // never produce this error.
       fs.writeFileSync(configPath, '[agents\nbroken');
       const tmpPath2 = `${miseTomlPath}.tmp2`;
-      fs.writeFileSync(tmpPath2, '[tools]\n# touched again\n');
-      fs.renameSync(tmpPath2, miseTomlPath);
+      const triggerSecondSave = (): void => {
+        fs.writeFileSync(tmpPath2, '[tools]\n# touched again\n');
+        fs.renameSync(tmpPath2, miseTomlPath);
+      };
+      triggerSecondSave();
 
-      await waitFor(() => errors.some((line) => line.includes('Could not re-read')));
+      await waitFor(
+        () => errors.some((line) => line.includes('Could not re-read')),
+        8000,
+        triggerSecondSave,
+      );
     } finally {
       watcher?.close();
       console.log = originalLog;
