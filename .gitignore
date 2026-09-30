@@ -13,7 +13,16 @@ cmd/agentenv/dist/
 cmd/agentenv/node_modules/
 
 # OS cruft
-
-# OS cruft
 .DS_Store
 Thumbs.db
+
+# Backups agentenv writes before patching a file
+*.agentenv-backup
+
+# Per-machine output of running `agentenv apply` on this repo (dogfooding);
+# agentenv.toml itself is the shared, committed source of truth.
+/mise.toml
+/RTK.md
+/.clinerules
+/.windsurfrules
+/.github/hooks/
