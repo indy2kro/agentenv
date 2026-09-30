@@ -92,12 +92,13 @@ npm run smoke:real     # build + node scripts/smoke.mjs --real (real mise + rtk 
 
 Everything flows from one user-authored file, `agentenv.toml` (schema in
 `src/config/schema.ts`), resolved to either the project root or
-`~/.config/agentenv/` (`src/config/scopes.ts`). This repo dogfoods its own
-project-scope `agentenv.toml` (repo root) to pin the linters `lint-repo`
-runs (`actionlint`, `gitleaks`, `shellcheck`) via mise — it declares no
-`[agents]`, so running `agentenv apply` here also wires the default agents
-(Claude Code, Codex CLI); do that deliberately, not as a side effect of
-testing something else. `agentenv apply`
+`~/.config/agentenv/` (`src/config/scopes.ts`). This repo does not commit
+an `agentenv.toml`: a root-level one is gitignored, so each contributor's
+dogfooding config (and everything `apply` generates from it) stays local.
+The linters `lint-repo` runs (`actionlint`, `gitleaks`, `shellcheck`) are
+pinned in `.github/workflows/ci.yml`. Running `agentenv apply` here wires
+agents into your real `~/.claude`, `~/.codex`, etc.; do that deliberately,
+not as a side effect of testing something else. `agentenv apply`
 (`src/commands/apply.ts`, `applyConfiguration()`) is the single pipeline all
 of `setup`/`configure`/`apply` funnel into, in this fixed order:
 

@@ -26,3 +26,4 @@ Thumbs.db
 /.clinerules
 /.windsurfrules
 /.github/hooks/
+/agentenv.toml
