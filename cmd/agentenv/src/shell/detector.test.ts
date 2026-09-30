@@ -12,8 +12,13 @@ import {
   detectShell,
   findGitBashOnPath,
   fixShellConfiguration,
+  generateGitBashPathAddition,
   gitBashCandidatePaths,
+  gitInstallRoot,
+  preferredGitBashLauncher,
+  readPersistentWindowsPath,
   removeTomlWindowsShellPath,
+  resolveOnWindowsPath,
   revertShellFixes,
   type ShellFixResult,
 } from './detector.js';
@@ -24,7 +29,14 @@ import {
   type ShellFixStateEntry,
 } from './shell-fix-state.js';
 
-const bashExe = 'C:\\Program Files\\Git\\usr\\bin\\bash.exe';
+const bashExe = 'C:\\Program Files\\Git\\bin\\bash.exe';
+const rawBashExe = 'C:\\Program Files\\Git\\usr\\bin\\bash.exe';
+
+/** An existsSync stand-in that only reports the given win32 paths (case-insensitive). */
+function existsOnly(...paths: string[]): (candidate: string) => boolean {
+  const set = new Set(paths.map((p) => p.toLowerCase()));
+  return (candidate) => set.has(candidate.toLowerCase());
+}
 
 function tempHome(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-tier0s-'));
@@ -43,9 +55,94 @@ function persist(results: ShellFixResult[], bashExeValue: string, statePath: str
 }
 
 describe('Tier 0 shell fix', () => {
-  it('resolves bash.exe from both Git Bash directory forms', () => {
-    assert.equal(bashExecutable('C:\\Program Files\\Git\\usr\\bin'), bashExe);
-    assert.equal(bashExecutable('C:\\Program Files\\Git\\bin'), bashExe);
+  it('resolves the bin\\bash.exe launcher from both Git Bash directory forms', () => {
+    const exists = existsOnly(bashExe, rawBashExe);
+    assert.equal(bashExecutable('C:\\Program Files\\Git\\usr\\bin', exists), bashExe);
+    assert.equal(bashExecutable('C:\\Program Files\\Git\\bin', exists), bashExe);
+  });
+
+  it('falls back to the raw usr\\bin\\bash.exe when the launcher is absent', () => {
+    const exists = existsOnly(rawBashExe);
+    assert.equal(bashExecutable('C:\\Program Files\\Git\\usr\\bin', exists), rawBashExe);
+    assert.equal(bashExecutable('C:\\Program Files\\Git\\bin', exists), rawBashExe);
+  });
+
+  it('derives the Git install root from either bin form', () => {
+    assert.equal(gitInstallRoot('C:\\Program Files\\Git\\usr\\bin'), 'C:\\Program Files\\Git');
+    assert.equal(gitInstallRoot('C:\\Program Files\\Git\\bin'), 'C:\\Program Files\\Git');
+    assert.equal(gitInstallRoot('C:\\Program Files\\Git'), undefined);
+  });
+
+  it('builds the mingw64 + usr PATH addition from the Git root', () => {
+    const expected = 'C:\\Program Files\\Git\\mingw64\\bin;C:\\Program Files\\Git\\usr\\bin';
+    assert.equal(generateGitBashPathAddition('C:\\Program Files\\Git\\usr\\bin'), expected);
+    assert.equal(generateGitBashPathAddition('C:\\Program Files\\Git\\bin'), expected);
+    assert.equal(generateGitBashPathAddition('C:\\elsewhere'), '');
+  });
+
+  describe('preferredGitBashLauncher', () => {
+    it('returns the launcher for a raw MSYS bash when the launcher exists', () => {
+      assert.equal(preferredGitBashLauncher(rawBashExe, existsOnly(bashExe)), bashExe);
+      assert.equal(
+        preferredGitBashLauncher('C:/Program Files/Git/usr/bin/bash.exe', existsOnly(bashExe)),
+        bashExe,
+      );
+    });
+
+    it('returns undefined for the launcher itself, or when no launcher exists', () => {
+      assert.equal(preferredGitBashLauncher(bashExe, existsOnly(bashExe)), undefined);
+      assert.equal(preferredGitBashLauncher(rawBashExe, existsOnly()), undefined);
+    });
+  });
+
+  describe('resolveOnWindowsPath', () => {
+    const pathVar = 'C:\\WINDOWS\\system32;"C:\\Tools\\other";;C:\\Git\\usr\\bin';
+
+    it('returns the first PATH entry holding the tool, like cmd/PowerShell', () => {
+      const exists = existsOnly('C:\\Tools\\other\\sed.exe', 'C:\\Git\\usr\\bin\\sed.exe');
+      assert.equal(
+        resolveOnWindowsPath('sed', pathVar, '.COM;.EXE', exists),
+        'C:\\Tools\\other\\sed.exe',
+      );
+    });
+
+    it('honours PATHEXT order within a directory', () => {
+      const exists = existsOnly('C:\\Git\\usr\\bin\\grep.cmd', 'C:\\Git\\usr\\bin\\grep.exe');
+      assert.equal(
+        resolveOnWindowsPath('grep', pathVar, '.EXE;.CMD', exists),
+        'C:\\Git\\usr\\bin\\grep.exe',
+      );
+    });
+
+    it('returns undefined when no entry has the tool', () => {
+      assert.equal(resolveOnWindowsPath('xargs', pathVar, '.EXE', existsOnly()), undefined);
+    });
+  });
+
+  describe('readPersistentWindowsPath', () => {
+    function fakeReg(outputs: Record<string, string>): typeof import('child_process').spawnSync {
+      return ((_cmd: string, args: string[]) => {
+        const out = outputs[args[1]];
+        return out === undefined ? { status: 1, stdout: '' } : { status: 0, stdout: out };
+      }) as unknown as typeof import('child_process').spawnSync;
+    }
+
+    it('joins machine then user PATH and expands %VAR% references', () => {
+      const spawn = fakeReg({
+        'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment':
+          '\r\nHKEY_LOCAL_MACHINE\\...\r\n    Path    REG_EXPAND_SZ    %SystemRoot%\\system32;C:\\Tools\r\n',
+        'HKCU\\Environment': '\r\n    Path    REG_SZ    %USERPROFILE%\\bin;%UNSET%\\x\r\n',
+      });
+      const result = readPersistentWindowsPath(spawn, {
+        SystemRoot: 'C:\\WINDOWS',
+        USERPROFILE: 'C:\\Users\\me',
+      });
+      assert.equal(result, 'C:\\WINDOWS\\system32;C:\\Tools;C:\\Users\\me\\bin;%UNSET%\\x');
+    });
+
+    it('returns undefined when neither key can be read', () => {
+      assert.equal(readPersistentWindowsPath(fakeReg({}), {}), undefined);
+    });
   });
 
   describe('Claude Code', () => {
@@ -102,7 +199,7 @@ describe('Tier 0 shell fix', () => {
 
       assert.equal(result.action, 'created');
       assert.match(content, /\[windows\]/);
-      assert.match(content, /shell_path = "C:\\\\Program Files\\\\Git\\\\usr\\\\bin\\\\bash\.exe"/);
+      assert.ok(content.includes(`shell_path = ${JSON.stringify(bashExe)}`));
     });
 
     it('preserves existing config sections and is idempotent', () => {
@@ -216,6 +313,22 @@ describe('Tier 0 shell fix', () => {
       assert.equal(result.isConfigured, true);
       assert.equal(result.needsFix, false);
       assert.equal(result.shell, bashExe);
+    });
+
+    it('flags a raw MSYS bash as needing the fix when the launcher exists', () => {
+      for (const agent of ['claude_code', 'codex_cli', 'opencode'] as const) {
+        const home = tempHome();
+        applyAgentShellFix(agent, rawBashExe, home);
+        const upgradable = checkAgentShellConfiguration(agent, home, existsOnly(bashExe));
+        assert.equal(upgradable.isConfigured, true, agent);
+        assert.equal(upgradable.needsFix, true, agent);
+        // No launcher to switch to: the raw bash is the best available, so no fix loop.
+        assert.equal(
+          checkAgentShellConfiguration(agent, home, existsOnly()).needsFix,
+          false,
+          agent,
+        );
+      }
     });
 
     it('copilot: always configured with no fix needed (no per-file override exists)', () => {

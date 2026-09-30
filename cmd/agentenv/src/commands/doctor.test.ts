@@ -1,6 +1,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { renderDoctor, filterDoctorSections, wantsDoctorSection, gatherDoctor } from './doctor.js';
+import {
+  agentShellItem,
+  renderDoctor,
+  filterDoctorSections,
+  wantsDoctorSection,
+  gatherDoctor,
+  nativeUnixToolsItem,
+} from './doctor.js';
 import type { DoctorSection, GatherDoctorDeps } from './doctor.js';
 import { LOGO } from '../ui/output.js';
 import { DEFAULT_CONFIG } from '../config/schema.js';
@@ -154,6 +161,11 @@ function baseDeps(overrides: Partial<GatherDoctorDeps> = {}): GatherDoctorDeps {
     toolAvailabilityClassification: () => 'resolvable',
     checkRtkInstallation: () => ({ resolvedPath: null, version: null, gainOk: null }),
     isAgentInstalled: () => true,
+    // Pinned so the win32-only checks never probe the real registry or
+    // agent configs; the Windows tests below opt in explicitly.
+    platform: 'linux',
+    readPersistentPath: () => undefined,
+    checkAgentShellConfiguration: () => ({ isConfigured: false, needsFix: true }),
     ...overrides,
   };
 }
@@ -440,5 +452,133 @@ describe('gatherDoctor — Agents', () => {
     assert.deepEqual(section(sections, 'Agents')?.items, [
       { status: 'warn', label: 'none', detail: 'no agents enabled' },
     ]);
+  });
+});
+
+describe('doctor — Windows shell checks', () => {
+  const gitUsrBin = 'C:\\Program Files\\Git\\usr\\bin';
+  const launcher = 'C:\\Program Files\\Git\\bin\\bash.exe';
+  const rawBash = 'C:\\Program Files\\Git\\usr\\bin\\bash.exe';
+
+  function existsOnly(...paths: string[]): (candidate: string) => boolean {
+    const set = new Set(paths.map((p) => p.toLowerCase()));
+    return (candidate) => set.has(candidate.toLowerCase());
+  }
+
+  it('is ok when every tool resolves to Git for Windows, noting Windows find.exe', () => {
+    const tools = ['grep', 'sed', 'awk', 'xargs', 'diff', 'head', 'tail', 'wc'];
+    const exists = existsOnly(
+      'C:\\WINDOWS\\system32\\find.exe',
+      ...tools.map((tool) => `${gitUsrBin}\\${tool}.exe`),
+    );
+    const item = nativeUnixToolsItem(
+      gitUsrBin,
+      `C:\\WINDOWS\\system32;${gitUsrBin}`,
+      exists,
+      '.EXE',
+    );
+    assert.equal(item.status, 'ok');
+    assert.match(item.detail, /find → Windows find\.exe/);
+  });
+
+  it('warns on shadowed and missing tools and suggests the Git PATH entries', () => {
+    const exists = existsOnly(
+      'C:\\Tools\\other\\sed.exe',
+      'C:\\Tools\\legacy\\grep.exe',
+      `${gitUsrBin}\\sed.exe`,
+    );
+    const item = nativeUnixToolsItem(
+      gitUsrBin,
+      'C:\\WINDOWS\\system32;C:\\Tools\\other;C:\\Tools\\legacy',
+      exists,
+      '.EXE',
+    );
+    assert.equal(item.status, 'warn');
+    assert.ok(item.detail.includes('sed → C:\\Tools\\other\\sed.exe'));
+    assert.ok(item.detail.includes('grep → C:\\Tools\\legacy\\grep.exe'));
+    assert.ok(item.detail.includes('missing: awk, find, xargs'));
+    assert.ok(
+      item.detail.includes(
+        'add C:\\Program Files\\Git\\mingw64\\bin;C:\\Program Files\\Git\\usr\\bin to your user PATH',
+      ),
+    );
+  });
+
+  it('names the shadowing dir instead of re-suggesting Git dirs already on PATH', () => {
+    const tools = ['grep', 'sed', 'awk', 'xargs', 'diff', 'head', 'tail', 'wc', 'find'];
+    const exists = existsOnly(
+      'C:\\Tools\\legacy\\grep.exe',
+      ...tools.map((tool) => `${gitUsrBin}\\${tool}.exe`),
+    );
+    const item = nativeUnixToolsItem(
+      gitUsrBin,
+      `C:\\Tools\\legacy;C:\\Program Files\\Git\\mingw64\\bin;${gitUsrBin}`,
+      exists,
+      '.EXE',
+    );
+    assert.equal(item.status, 'warn');
+    assert.ok(item.detail.includes('come after C:\\Tools\\legacy'));
+    assert.ok(!item.detail.includes('to your user PATH'));
+  });
+
+  it('grades an agent shell: unset, missing file, raw MSYS bash, launcher', () => {
+    const exists = existsOnly(launcher, rawBash);
+    assert.equal(agentShellItem('claude_code', { isConfigured: false }, exists).status, 'warn');
+
+    const gone = agentShellItem(
+      'codex_cli',
+      { isConfigured: true, shell: 'C:\\nope\\bash.exe' },
+      exists,
+    );
+    assert.equal(gone.status, 'warn');
+    assert.match(gone.detail, /does not exist/);
+
+    const raw = agentShellItem('opencode', { isConfigured: true, shell: rawBash }, exists);
+    assert.equal(raw.status, 'warn');
+    assert.match(raw.detail, /raw MSYS bash/);
+    assert.ok(raw.detail.includes(launcher));
+
+    assert.deepEqual(
+      agentShellItem('claude_code', { isConfigured: true, shell: launcher }, exists),
+      { status: 'ok', label: 'claude_code shell', detail: launcher },
+    );
+  });
+
+  it('adds the tools line to System and a shell line per managed agent on win32', () => {
+    const sections = gatherDoctor(
+      undefined,
+      baseDeps({
+        platform: 'win32',
+        detectShell: () => ({
+          currentShell: 'PowerShell',
+          isPosixCompatible: false,
+          isWindows: true,
+          isMacOS: false,
+          isGitBash: false,
+          gitBashPath: gitUsrBin,
+          missingUtilities: [],
+          pathEnvironment: '',
+        }),
+        readPersistentPath: () => 'C:\\WINDOWS\\system32',
+        loadConfig: () => ({
+          ...DEFAULT_CONFIG,
+          agents: { claude_code: true, cursor: true },
+          tools: {},
+        }),
+        checkAgentShellConfiguration: () => ({
+          isConfigured: true,
+          shell: rawBash,
+          needsFix: true,
+        }),
+      }),
+    );
+    const system = section(sections, 'System');
+    assert.ok(system?.items.some((i) => i.label === 'Unix tools in PowerShell/cmd'));
+    const agents = section(sections, 'Agents');
+    // cursor has no Tier 0 shell override, so only claude_code gets a shell line.
+    assert.deepEqual(
+      agents?.items.filter((i) => i.label.endsWith(' shell')).map((i) => i.label),
+      ['claude_code shell'],
+    );
   });
 });

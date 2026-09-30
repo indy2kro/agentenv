@@ -495,17 +495,118 @@ export function getShellConfiguration(shellInfo: ShellInfo): {
 }
 
 /**
- * Generate PATH addition for Git Bash on Windows
+ * The Git for Windows install root for a detected Git Bash directory
+ * (`<root>\bin` or `<root>\usr\bin`), or undefined for any other shape.
+ * Uses win32 path semantics so it is correct regardless of host OS.
+ */
+export function gitInstallRoot(gitBashPath: string): string | undefined {
+  if (winPath.basename(gitBashPath).toLowerCase() !== 'bin') return undefined;
+  const parent = winPath.dirname(gitBashPath);
+  return winPath.basename(parent).toLowerCase() === 'usr' ? winPath.dirname(parent) : parent;
+}
+
+/**
+ * The PATH entries that expose Git for Windows' GNU tools (sed, grep, awk,
+ * xargs, ...) to native Windows shells: `<root>\mingw64\bin;<root>\usr\bin`.
+ * Returns '' when the Git root can't be derived from `gitBashPath`.
  */
 export function generateGitBashPathAddition(gitBashPath: string): string {
-  if (process.platform !== 'win32') {
-    return '';
+  const root = gitInstallRoot(gitBashPath);
+  if (!root) return '';
+  return `${winPath.join(root, 'mingw64', 'bin')};${winPath.join(root, 'usr', 'bin')}`;
+}
+
+/**
+ * GNU tools agents most often reach for in shell commands. On Windows these
+ * only resolve from PowerShell/cmd when Git's `usr\bin` is on PATH, which
+ * Git's installer does not do by default.
+ */
+export const NATIVE_UNIX_TOOLS = [
+  'grep',
+  'sed',
+  'awk',
+  'find',
+  'xargs',
+  'diff',
+  'head',
+  'tail',
+  'wc',
+];
+
+/**
+ * Resolve `tool` the way cmd.exe/PowerShell would: first PATH entry holding
+ * `tool` + a PATHEXT extension wins. `exists` is injectable for tests.
+ */
+export function resolveOnWindowsPath(
+  tool: string,
+  pathVar: string,
+  pathExt: string = '.COM;.EXE;.BAT;.CMD',
+  exists: (candidate: string) => boolean = fs.existsSync,
+): string | undefined {
+  const extensions = pathExt.split(';').filter((ext) => ext.trim() !== '');
+  for (const rawDir of pathVar.split(';')) {
+    const dir = rawDir.trim().replace(/^"(.*)"$/, '$1');
+    if (dir === '') continue;
+    for (const ext of extensions) {
+      const candidate = winPath.join(dir, `${tool}${ext.toLowerCase()}`);
+      if (exists(candidate)) return candidate;
+    }
   }
+  return undefined;
+}
 
-  const binPath = path.join(gitBashPath, '..', 'mingw64', 'bin');
-  const usrBinPath = path.join(gitBashPath, '..', 'usr', 'bin');
+const PERSISTENT_PATH_KEYS = [
+  'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment',
+  'HKCU\\Environment',
+];
 
-  return `${binPath};${usrBinPath}`;
+/**
+ * The persistent machine + user PATH from the registry — what a freshly
+ * started PowerShell/cmd (and any agent launched from one) sees, unlike
+ * process.env.PATH, which already includes Git's dirs when agentenv itself
+ * runs inside Git Bash. `%VAR%` references are expanded from `env`.
+ * Returns undefined when neither key could be read.
+ */
+export function readPersistentWindowsPath(
+  spawnSync: typeof child_process.spawnSync = child_process.spawnSync,
+  env: NodeJS.ProcessEnv = process.env,
+): string | undefined {
+  const parts: string[] = [];
+  for (const key of PERSISTENT_PATH_KEYS) {
+    try {
+      const result = spawnSync('reg', ['query', key, '/v', 'Path'], {
+        encoding: 'utf8',
+        timeout: 5000,
+      });
+      if (result.status !== 0 || typeof result.stdout !== 'string') continue;
+      const match = /^\s*Path\s+REG_(?:EXPAND_)?SZ\s+(.*)$/im.exec(result.stdout);
+      if (match) parts.push(match[1].trim());
+    } catch {
+      // Key unreadable; fall through to the other one
+    }
+  }
+  if (parts.length === 0) return undefined;
+  const lookup = new Map(Object.entries(env).map(([name, value]) => [name.toLowerCase(), value]));
+  return parts
+    .join(';')
+    .replace(/%([^%;]+)%/g, (whole, name: string) => lookup.get(name.toLowerCase()) ?? whole);
+}
+
+/**
+ * When `shell` is Git's raw MSYS bash (`<root>\usr\bin\bash.exe`) and the
+ * `<root>\bin\bash.exe` launcher exists, return the launcher. The raw binary
+ * started as a plain `bash -c` gets neither MSYSTEM nor `/usr/bin` on PATH,
+ * so sed/grep/awk resolve to nothing; the launcher sets both up.
+ */
+export function preferredGitBashLauncher(
+  shell: string,
+  exists: (candidate: string) => boolean = fs.existsSync,
+): string | undefined {
+  const normalized = shell.replace(/\//g, '\\');
+  if (!/\\usr\\bin\\bash\.exe$/i.test(normalized)) return undefined;
+  const root = winPath.dirname(winPath.dirname(winPath.dirname(normalized)));
+  const launcher = winPath.join(root, 'bin', 'bash.exe');
+  return exists(launcher) ? launcher : undefined;
 }
 
 /**
@@ -549,18 +650,21 @@ function priorField(key: string, previous: string | null, set?: string): ShellFi
 /**
  * Resolve the full path to bash.exe from a detected Git Bash directory.
  * Handles both the `usr\bin` form and the plain `bin` form Git for Windows ships.
+ * Prefers the `<root>\bin\bash.exe` launcher, which sets MSYSTEM and puts
+ * `/usr/bin` + `/mingw64/bin` on PATH; the raw `<root>\usr\bin\bash.exe` does
+ * neither for a non-login `bash -c`, so GNU tools go missing. Falls back to
+ * the raw binary only when the launcher isn't there.
  * Uses win32 path semantics so the result is correct regardless of host OS
  * (the tests exercise this on Linux CI).
  */
-export function bashExecutable(gitBashPath: string): string {
-  const parent = winPath.dirname(gitBashPath);
-  if (winPath.basename(gitBashPath).toLowerCase() === 'bin') {
-    if (winPath.basename(parent).toLowerCase() === 'usr') {
-      return winPath.join(gitBashPath, 'bash.exe');
-    }
-    return winPath.join(parent, 'usr', 'bin', 'bash.exe');
-  }
-  return winPath.join(gitBashPath, 'bash.exe');
+export function bashExecutable(
+  gitBashPath: string,
+  exists: (candidate: string) => boolean = fs.existsSync,
+): string {
+  const root = gitInstallRoot(gitBashPath);
+  if (!root) return winPath.join(gitBashPath, 'bash.exe');
+  const launcher = winPath.join(root, 'bin', 'bash.exe');
+  return exists(launcher) ? launcher : winPath.join(root, 'usr', 'bin', 'bash.exe');
 }
 
 /**
@@ -829,15 +933,10 @@ export function fixShellConfiguration(
   results?: ShellFixResult[];
 } {
   if (process.platform === 'win32') {
+    // No early return when agentenv itself runs in Git Bash: the fix targets
+    // each agent's own shell config, which doesn't depend on the shell
+    // agentenv was launched from (see checkAgentShellConfiguration).
     const shellInfo = detectShell();
-
-    if (shellInfo.isPosixCompatible) {
-      return {
-        success: true,
-        message: 'Shell is already POSIX-compatible',
-        gitBashPath: shellInfo.gitBashPath,
-      };
-    }
 
     if (!shellInfo.gitBashPath) {
       return {
@@ -868,7 +967,7 @@ export function fixShellConfiguration(
 
     const message =
       written.length > 0
-        ? `Current shell (${shellInfo.currentShell}) is not POSIX-compatible; pointed agents at Git Bash (${bashExe})`
+        ? `pointed ${written.length} agent shell(s) at Git Bash (${bashExe})`
         : `Git Bash detected at ${bashExe}; agent shell config already up to date`;
 
     return {
@@ -936,16 +1035,17 @@ export function fixShellConfiguration(
 export function checkAgentShellConfiguration(
   agent: AgentKey,
   home: string = homeDir(),
+  exists: (candidate: string) => boolean = fs.existsSync,
 ): { isConfigured: boolean; shell?: string; needsFix: boolean } {
   switch (agent) {
     case 'claude_code':
-      return checkClaudeCodeShell(home);
+      return checkClaudeCodeShell(home, exists);
     case 'codex_cli':
-      return checkCodexShell(home);
+      return checkCodexShell(home, exists);
     case 'copilot':
       return checkCopilotShell();
     case 'opencode':
-      return checkOpenCodeShell(home);
+      return checkOpenCodeShell(home, exists);
     case 'gemini_cli':
     case 'cursor':
     case 'windsurf':
@@ -960,10 +1060,24 @@ function isBashPath(value: unknown): value is string {
 }
 
 /**
+ * A configured shell still needs the Tier 0 fix when it isn't bash at all, or
+ * when it is Git's raw MSYS bash and the launcher exists to replace it (see
+ * preferredGitBashLauncher) — the same value bashExecutable() would write.
+ */
+function shellNeedsFix(shell: string, exists: (candidate: string) => boolean): boolean {
+  return (
+    !shell.toLowerCase().includes('bash') || preferredGitBashLauncher(shell, exists) !== undefined
+  );
+}
+
+/**
  * Check Claude Code shell configuration: reads env.CLAUDE_CODE_GIT_BASH_PATH,
  * the exact field patchClaudeShellFix writes.
  */
-function checkClaudeCodeShell(home: string): {
+function checkClaudeCodeShell(
+  home: string,
+  exists: (candidate: string) => boolean,
+): {
   isConfigured: boolean;
   shell?: string;
   needsFix: boolean;
@@ -981,7 +1095,7 @@ function checkClaudeCodeShell(home: string): {
         return {
           isConfigured: true,
           shell: bashPath,
-          needsFix: !bashPath.toLowerCase().includes('bash'),
+          needsFix: shellNeedsFix(bashPath, exists),
         };
       }
     }
@@ -1024,7 +1138,10 @@ function readTomlWindowsShellPath(content: string): string | undefined {
  * Check Codex CLI shell configuration: reads [windows] shell_path from
  * config.toml, the exact field patchCodexShellFix writes.
  */
-function checkCodexShell(home: string): {
+function checkCodexShell(
+  home: string,
+  exists: (candidate: string) => boolean,
+): {
   isConfigured: boolean;
   shell?: string;
   needsFix: boolean;
@@ -1037,7 +1154,7 @@ function checkCodexShell(home: string): {
         return {
           isConfigured: true,
           shell: shellPath,
-          needsFix: !shellPath.toLowerCase().includes('bash'),
+          needsFix: shellNeedsFix(shellPath, exists),
         };
       }
     }
@@ -1060,7 +1177,10 @@ function checkCopilotShell(): { isConfigured: boolean; shell?: string; needsFix:
  * Check OpenCode shell configuration: reads `shell`, the exact field
  * patchOpenCodeShellFix writes.
  */
-function checkOpenCodeShell(home: string): {
+function checkOpenCodeShell(
+  home: string,
+  exists: (candidate: string) => boolean,
+): {
   isConfigured: boolean;
   shell?: string;
   needsFix: boolean;
@@ -1071,7 +1191,7 @@ function checkOpenCodeShell(home: string): {
       const config = JSON.parse(fs.readFileSync(configPath, 'utf-8')) as Record<string, unknown>;
       const shell = config.shell;
       if (isBashPath(shell)) {
-        return { isConfigured: true, shell, needsFix: !shell.toLowerCase().includes('bash') };
+        return { isConfigured: true, shell, needsFix: shellNeedsFix(shell, exists) };
       }
     }
     return { isConfigured: false, needsFix: true };

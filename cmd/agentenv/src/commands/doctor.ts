@@ -20,7 +20,17 @@ import {
 } from '../config/schema.js';
 import type { AgentKey } from '../config/schema.js';
 import { findConfigPath, userConfigDir } from '../config/scopes.js';
-import { bashExecutable, detectShell } from '../shell/detector.js';
+import {
+  bashExecutable,
+  checkAgentShellConfiguration,
+  detectShell,
+  generateGitBashPathAddition,
+  gitInstallRoot,
+  NATIVE_UNIX_TOOLS,
+  preferredGitBashLauncher,
+  readPersistentWindowsPath,
+  resolveOnWindowsPath,
+} from '../shell/detector.js';
 import {
   getInstalledToolState,
   getMiseVersion,
@@ -150,6 +160,104 @@ export interface GatherDoctorDeps {
   toolAvailabilityClassification?: typeof toolAvailabilityClassification;
   checkRtkInstallation?: typeof checkRtkInstallation;
   isAgentInstalled?: typeof isAgentInstalled;
+  platform?: NodeJS.Platform;
+  readPersistentPath?: () => string | undefined;
+  checkAgentShellConfiguration?: typeof checkAgentShellConfiguration;
+}
+
+/** Agents whose Tier 0 fix writes a per-user shell override (see detector.ts). */
+const SHELL_MANAGED_AGENTS: AgentKey[] = ['claude_code', 'codex_cli', 'opencode'];
+
+const SHELL_FIX_HINT = 'run `agentenv apply --shell-fix always`';
+
+/**
+ * How GNU tools resolve for agents that run commands through PowerShell/cmd
+ * rather than Git Bash, using the persistent PATH a fresh Windows shell gets.
+ * Windows' own find.exe winning is expected (Git's dirs belong after
+ * System32 so cmd keeps working) and only noted, never warned about.
+ */
+export function nativeUnixToolsItem(
+  gitBashPath: string,
+  pathVar: string,
+  exists: (candidate: string) => boolean,
+  pathExt: string | undefined = process.env.PATHEXT,
+): DoctorItem {
+  // win32 semantics on every host, so this is testable off Windows.
+  const winNorm = (p: string): string => path.win32.normalize(p).toLowerCase();
+  const root = gitInstallRoot(gitBashPath);
+  const gitDirs = root
+    ? [
+        path.win32.join(root, 'usr', 'bin'),
+        path.win32.join(root, 'mingw64', 'bin'),
+        path.win32.join(root, 'bin'),
+      ].map(winNorm)
+    : [];
+  const missing: string[] = [];
+  const shadowed: string[] = [];
+  const shadowingDirs = new Set<string>();
+  const notes: string[] = [];
+  for (const tool of NATIVE_UNIX_TOOLS) {
+    const resolved = resolveOnWindowsPath(tool, pathVar, pathExt, exists);
+    if (!resolved) {
+      missing.push(tool);
+      continue;
+    }
+    const dir = winNorm(path.win32.dirname(resolved));
+    if (gitDirs.includes(dir)) continue;
+    if (tool === 'find' && /\\windows\\system32$/.test(dir)) {
+      notes.push('find → Windows find.exe (expected; agents should use fd)');
+      continue;
+    }
+    shadowed.push(`${tool} → ${resolved}`);
+    shadowingDirs.add(path.win32.dirname(resolved));
+  }
+
+  const label = 'Unix tools in PowerShell/cmd';
+  if (missing.length === 0 && shadowed.length === 0) {
+    return {
+      status: 'ok',
+      label,
+      detail: ['resolve to Git for Windows', ...notes].join('; '),
+    };
+  }
+  const problems = [...shadowed, ...(missing.length > 0 ? [`missing: ${missing.join(', ')}`] : [])];
+  const addition = generateGitBashPathAddition(gitBashPath);
+  const onPath = new Set(pathVar.split(';').map((entry) => winNorm(entry.trim())));
+  const gitOnPath = addition !== '' && addition.split(';').every((dir) => onPath.has(winNorm(dir)));
+  let fix: string;
+  if (gitOnPath && shadowingDirs.size > 0) {
+    // Git's dirs are already there, just later: adding them again won't help.
+    fix = `Git's dirs are on PATH but come after ${[...shadowingDirs].join(', ')} — remove or move those entries (system PATH is searched before user PATH)`;
+  } else if (addition) {
+    fix = `add ${addition} to your user PATH (after System32) for agents not routed to Git Bash`;
+  } else {
+    fix = "add Git for Windows' usr\\bin to your user PATH for agents not routed to Git Bash";
+  }
+  return { status: 'warn', label, detail: [...problems, ...notes, fix].join('; ') };
+}
+
+/** Whether an agent's configured shell (Tier 0 override) actually works. */
+export function agentShellItem(
+  agent: AgentKey,
+  info: { isConfigured: boolean; shell?: string },
+  exists: (candidate: string) => boolean,
+): DoctorItem {
+  const label = `${agent} shell`;
+  if (!info.isConfigured || !info.shell) {
+    return { status: 'warn', label, detail: `not pointed at Git Bash — ${SHELL_FIX_HINT}` };
+  }
+  if (!exists(info.shell)) {
+    return { status: 'warn', label, detail: `${info.shell} does not exist — ${SHELL_FIX_HINT}` };
+  }
+  const launcher = preferredGitBashLauncher(info.shell, exists);
+  if (launcher) {
+    return {
+      status: 'warn',
+      label,
+      detail: `${info.shell} is the raw MSYS bash (GNU tools missing from non-login shells); switch to ${launcher} — ${SHELL_FIX_HINT}`,
+    };
+  }
+  return { status: 'ok', label, detail: info.shell };
 }
 
 export function gatherDoctor(sectionFilter?: string, deps: GatherDoctorDeps = {}): DoctorSection[] {
@@ -169,6 +277,9 @@ export function gatherDoctor(sectionFilter?: string, deps: GatherDoctorDeps = {}
     deps.toolAvailabilityClassification ?? toolAvailabilityClassification;
   const checkRtkInstallationFn = deps.checkRtkInstallation ?? checkRtkInstallation;
   const isAgentInstalledFn = deps.isAgentInstalled ?? isAgentInstalled;
+  const platform = deps.platform ?? process.platform;
+  const readPersistentPathFn = deps.readPersistentPath ?? readPersistentWindowsPath;
+  const checkAgentShellFn = deps.checkAgentShellConfiguration ?? checkAgentShellConfiguration;
 
   const sections: DoctorSection[] = [];
   const wants = (label: string): boolean => wantsDoctorSection(sectionFilter, label);
@@ -179,13 +290,14 @@ export function gatherDoctor(sectionFilter?: string, deps: GatherDoctorDeps = {}
     { status: 'ok', label: 'OS', detail: `${process.platform} (${process.arch})` },
   ];
   system.push({ status: 'ok', label: 'Shell', detail: shell.currentShell });
-  if (process.platform === 'win32') {
-    if (shell.gitBashPath && existsSync(bashExecutable(shell.gitBashPath))) {
-      system.push({
-        status: 'ok',
-        label: 'Git Bash',
-        detail: bashExecutable(shell.gitBashPath),
-      });
+  if (platform === 'win32') {
+    const bashExe = shell.gitBashPath ? bashExecutable(shell.gitBashPath, existsSync) : undefined;
+    if (shell.gitBashPath && bashExe && existsSync(bashExe)) {
+      system.push({ status: 'ok', label: 'Git Bash', detail: bashExe });
+      const persistentPath = readPersistentPathFn();
+      if (persistentPath !== undefined) {
+        system.push(nativeUnixToolsItem(shell.gitBashPath, persistentPath, existsSync));
+      }
     } else {
       system.push({
         status: 'fail',
@@ -377,6 +489,11 @@ export function gatherDoctor(sectionFilter?: string, deps: GatherDoctorDeps = {}
           ? ''
           : 'CLI not found on PATH — install it or disable the agent in config',
       });
+      if (platform === 'win32' && SHELL_MANAGED_AGENTS.includes(agent as AgentKey)) {
+        agentItems.push(
+          agentShellItem(agent as AgentKey, checkAgentShellFn(agent as AgentKey), existsSync),
+        );
+      }
     }
   }
   sections.push({
