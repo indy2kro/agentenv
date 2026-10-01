@@ -1,6 +1,5 @@
 import { Command } from 'commander';
 import * as fs from 'fs';
-import * as path from 'path';
 import { confirm } from '@inquirer/prompts';
 import {
   AGENT_KEYS,
@@ -33,6 +32,7 @@ import {
   runMiseCaptured,
   runMiseUninstall,
   type InstalledToolState,
+  miseTomlPathFor,
 } from '../toolchain/mise.js';
 import { normalizeOutput } from '../utils/output.js';
 import { renderLogo, setQuietEnabled } from '../ui/output.js';
@@ -251,7 +251,7 @@ export function buildUnwirePlan(
       )
     : [];
 
-  const miseTomlPath = path.join(baseDir, 'mise.toml');
+  const miseTomlPath = miseTomlPathFor(scope, baseDir);
   const miseToml =
     fullUnwire && deleteMiseToml
       ? { path: miseTomlPath, exists: fs.existsSync(miseTomlPath) }
@@ -567,7 +567,7 @@ export async function doUninstall(options: UninstallCommandOptions): Promise<voi
   }
 
   const scopeDir = resolveScopeDir(config.scope ?? 'project');
-  const miseToml = path.join(scopeDir, 'mise.toml');
+  const miseToml = miseTomlPathFor(config.scope, scopeDir);
   const miseTomlPath = fs.existsSync(miseToml) ? miseToml : undefined;
 
   // 4. Dry run never mutates; single allowlisted probe when mise is present.

@@ -66,7 +66,7 @@ eza = true         # Binary: eza (macOS requires Homebrew or vfox backend)
 miller = true       # Binary: mlr
 
 # Tools that failed validation (Task 3) - disabled by default
-tokei = false       # Requires Rust/cargo toolchain (mise cargo: backend)
+tokei = false       # Not installed via mise (no prebuilt binaries) - install it yourself
 
 # Additional Tier 3 tools
 hyperfine = true    # Binary: hyperfine

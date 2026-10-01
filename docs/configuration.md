@@ -76,7 +76,7 @@ yq          = false
 bat         = false
 eza         = false
 miller      = false
-tokei       = false      # not in mise's registry — needs a custom_tools fallback
+tokei       = false      # not installed via mise (no prebuilt binaries) — install it yourself
 hyperfine   = false
 fzf         = false
 just        = false
@@ -224,7 +224,7 @@ agentenv only writes the `mise.toml`.
 | 3 | `bat` | `bat` | off | `cat` clone with syntax highlighting and git integration |
 | 3 | `eza` | `eza` | off | Modern replacement for `ls` |
 | 3 | `miller` | `mlr` | off | CSV/TSV data processing |
-| 3 | `tokei` | `tokei` | off | Fast code statistics (LOC) — *not in mise's registry* |
+| 3 | `tokei` | `tokei` | off | Fast code statistics (LOC) — *install it yourself; not installed via mise* |
 | 3 | `hyperfine` | `hyperfine` | off | Command-line benchmarking tool |
 | 3 | `fzf` | `fzf` | off | Fuzzy finder with a non-interactive filter mode |
 | 3 | `just` | `just` | off | Command runner for project recipes |
@@ -255,8 +255,10 @@ a `custom_tools` entry). They render with a `-` marker in `agentenv status` and
 a `[warn]` in `agentenv doctor` — never as a failure, because `apply` never
 tries to install them in the first place:
 
-- **`tokei`** — not in mise's registry at all (any platform). Enabling it
-  prints a validation warning suggesting a `custom_tools` fallback.
+- **`tokei`** — its releases ship no prebuilt binaries, so mise could only
+  build it from source with cargo. Install it yourself (`brew install tokei`,
+  `apt install tokei`, `scoop install tokei`, `cargo install tokei`); a copy on
+  PATH is reported as installed, otherwise doctor shows "install manually".
 - **`ripgrep_all`** and **`jless`** — their only mise backends support
   `linux`/`darwin` only; on Windows you must install them manually.
 
@@ -331,7 +333,11 @@ N/A).
 
 `agentenv apply` writes four kinds of generated files from this config:
 
-- `mise.toml` — declares the selected tools + pins.
+- `mise.toml` — declares the selected tools + pins. Project scope writes
+  `<project-root>/mise.toml`. User scope writes mise's global
+  `~/.config/mise/conf.d/agentenv.toml` (honoring `MISE_CONFIG_DIR` /
+  `XDG_CONFIG_HOME`), so the tools resolve from every directory, not only
+  inside `~/.config/agentenv`.
 - `AGENTS.md` — repo-level instructions (the [AGENTS.md](https://agents.md)
   standard) for every enabled agent.
 - `CLAUDE.md` — Claude Code's project instructions.
@@ -432,8 +438,7 @@ install hints — never run unpinned or unreviewed (see
   exit `1`. Examples: invalid `scope`, a non-boolean `tools` value (e.g.
   `tools.ripgrep = "false"`), an orphaned/duplicate custom tool, an invalid
   `integrations.superpowers.scope`.
-- **Warnings never block anything**, but are shown. Examples: any enabled
-  tool (like `tokei`) that mise can't install on this platform; an unknown
+- **Warnings never block anything**, but are shown. Examples: an unknown
   top-level table or key anywhere in the file (e.g. `[tool]`, `scop =
   "user"`, `[rtk] enable = true`), which comes with a "did you mean"
   suggestion when one is close.

@@ -255,10 +255,11 @@ describe('configuration validation', () => {
     assert.ok(report.warnings.some((warning) => warning.includes('README.md')));
   });
 
-  it('flags registry-gap tools as warnings, not errors', () => {
+  it('does not warn about a fallback-only tool (tokei) on config alone', () => {
+    // Whether tokei needs a manual install depends on PATH; the per-tool
+    // verdict in apply/status/doctor reports that, so validation stays quiet.
     const report = validateConfig({ tools: { tokei: true } });
-    assert.equal(report.errors.length, 0);
-    assert.ok(report.warnings.some((warning) => warning.includes('tokei')));
+    assert.deepEqual(report, { errors: [], warnings: [] });
   });
 
   it('warns about an already_installed custom tool with no OS path', () => {

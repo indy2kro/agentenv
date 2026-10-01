@@ -916,7 +916,7 @@ function warnUnknownKeys(
 /**
  * Validate a config and report problems, separating hard errors from warnings.
  * The CLI refuses to proceed when there are errors; warnings are surfaced but
- * non-fatal (e.g. a catalog tool that mise cannot install from its registry).
+ * non-fatal (e.g. an unknown config key).
  */
 export function validateConfig(config: AgentenvConfig): {
   errors: string[];
@@ -1027,15 +1027,9 @@ export function validateConfig(config: AgentenvConfig): {
     }
   }
 
-  // Tools Phase 0 flagged as not resolvable from the mise registry.
-  const registryGapNote: Record<string, string> = {
-    tokei: 'not in the mise registry; add a custom_tools fallback or local toolchain',
-  };
-  for (const [tool, note] of Object.entries(registryGapNote)) {
-    if (tools[tool]) {
-      warnings.push(`${tool}: ${note}`);
-    }
-  }
+  // No static warning for fallback-only tools (tokei): whether one needs
+  // installing depends on PATH, which the per-tool verdict in apply/status/
+  // doctor already checks ("manual" only when it is genuinely absent).
 
   const integrations = (config.integrations ?? {}) as Record<string, IntegrationConfig | undefined>;
   for (const key of Object.keys(integrations)) {

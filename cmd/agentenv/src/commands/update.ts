@@ -27,6 +27,7 @@ import {
   verifyHintNeeded,
   verifySummaryLine,
   verifyToolAvailability,
+  miseTomlPathFor,
 } from '../toolchain/mise.js';
 import { renderLogo, setQuietEnabled } from '../ui/output.js';
 import { printConfigPath, printResult, reportValidation } from '../ui/report.js';
@@ -196,7 +197,7 @@ export async function doUpdate(
       log('\nUpgrading mise-managed tools...');
     }
     const scopeDir = resolveScopeDir(config.scope ?? 'project');
-    const miseTomlPath = path.join(scopeDir, 'mise.toml');
+    const miseTomlPath = miseTomlPathFor(config.scope, scopeDir);
     if (!fs.existsSync(miseTomlPath)) {
       logErr(`  ${miseTomlPath} not found — run \`agentenv apply\` first.`);
       failed = true;
@@ -229,7 +230,7 @@ export async function doUpdate(
 
         const availability = verifyToolAvailabilityFn(config, {
           cwd: scopeDir,
-          miseTomlPath: path.join(scopeDir, 'mise.toml'),
+          miseTomlPath,
         });
         log(`  ${verifySummaryLine(availability)}`);
         for (const tool of availability) log(`    ${toolAvailabilityLine(tool)}`);
@@ -272,7 +273,7 @@ export async function doUpdate(
     } else {
       console.log('\nWatching mise.toml for changes (Ctrl+C to stop)...');
       const scopeDir = resolveScopeDir(config.scope ?? 'project');
-      const miseTomlPath = path.join(scopeDir, 'mise.toml');
+      const miseTomlPath = miseTomlPathFor(config.scope, scopeDir);
       watchMiseTomlFn(miseTomlPath, scopeDir, configPath);
     }
   }

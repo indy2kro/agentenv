@@ -27,6 +27,7 @@ import {
   getMiseVersion,
   shimExists,
   toolAvailabilityClassification,
+  miseTomlPathFor,
 } from '../toolchain/mise.js';
 import type { ToolResolvability } from '../toolchain/mise.js';
 import { colorizeLine, failGlyph, successGlyph, theme } from '../ui/theme.js';
@@ -415,7 +416,7 @@ export async function gatherStatus(deps: StatusDeps = {}): Promise<StatusReport>
   });
 
   const generatedEntries: Array<[string, string, boolean]> = [
-    ['mise.toml', path.join(baseDir, 'mise.toml'), false],
+    ['mise.toml', miseTomlPathFor(config.scope, baseDir), false],
     ['AGENTS.md', path.join(baseDir, 'AGENTS.md'), true],
     ['CLAUDE.md', path.join(baseDir, 'CLAUDE.md'), true],
   ];

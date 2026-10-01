@@ -18,6 +18,7 @@ import {
   miseActivationHint,
   miseGlobalConfigDir,
   miseGlobalConfigPath,
+  miseTomlPathFor,
   miseInstallInstructions,
   miseInstallOutcome,
   miseSpawnOptions,
@@ -51,7 +52,26 @@ describe('mise.toml generation', () => {
       { name: 'otherthing', mise_source: 'github:someorg/otherthing', version: 'v1.0.0' },
     ]);
 
-    assert.match(output, /github:someorg\/otherthing = "v1\.0\.0"/);
+    assert.match(output, /^"github:someorg\/otherthing" = "v1\.0\.0"$/m);
+  });
+
+  it('quotes a mise_source key that is not a bare TOML key (`:`/`/` are invalid unquoted)', () => {
+    const output = generateMiseToml(DEFAULT_CONFIG, [
+      { name: 'x', mise_source: 'aqua:owner/x@sub', version: '1.0"rc' },
+    ]);
+    assert.match(output, /^"aqua:owner\/x@sub" = "1\.0\\"rc"$/m);
+  });
+
+  it('keeps a bare-key mise_source (e.g. a registry short name) unquoted', () => {
+    const output = generateMiseToml(DEFAULT_CONFIG, [{ name: 'node', mise_source: 'node' }]);
+    assert.match(output, /^node = "latest"$/m);
+  });
+
+  it('does not double-quote a mise_source that was hand-quoted as a workaround', () => {
+    const output = generateMiseToml(DEFAULT_CONFIG, [
+      { name: 'o', mise_source: '"github:someorg/otherthing"' },
+    ]);
+    assert.match(output, /^"github:someorg\/otherthing" = "latest"$/m);
   });
 
   it('uses latest when a custom tool version is omitted', () => {
@@ -59,7 +79,7 @@ describe('mise.toml generation', () => {
       { name: 'otherthing', mise_source: 'github:someorg/otherthing' },
     ]);
 
-    assert.match(output, /github:someorg\/otherthing = "latest"/);
+    assert.match(output, /^"github:someorg\/otherthing" = "latest"$/m);
   });
 
   it('honors pinned tool versions in the install planner', () => {
@@ -600,5 +620,28 @@ describe('parseInstalledToolState', () => {
   it('treats "{}" as a valid empty state, not a failure', () => {
     assert.deepEqual(parseInstalledToolState('{}'), {});
     assert.notEqual(parseInstalledToolState('{}'), null);
+  });
+});
+
+describe('miseTomlPathFor', () => {
+  it('keeps project scope at <baseDir>/mise.toml (a local config mise discovers from the repo)', () => {
+    const base = path.join('some', 'project');
+    assert.equal(miseTomlPathFor('project', base), path.join(base, 'mise.toml'));
+    assert.equal(miseTomlPathFor(undefined, base), path.join(base, 'mise.toml'));
+  });
+
+  it("puts user scope in mise's global conf.d so the tools resolve from every directory", () => {
+    const saved = process.env.MISE_CONFIG_DIR;
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-mise-confd-'));
+    process.env.MISE_CONFIG_DIR = dir;
+    try {
+      assert.equal(
+        miseTomlPathFor('user', path.join('ignored', 'agentenv')),
+        path.join(dir, 'conf.d', 'agentenv.toml'),
+      );
+    } finally {
+      if (saved === undefined) delete process.env.MISE_CONFIG_DIR;
+      else process.env.MISE_CONFIG_DIR = saved;
+    }
   });
 });

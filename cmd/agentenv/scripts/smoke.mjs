@@ -136,6 +136,9 @@ const env = {
   USERPROFILE: home,
   XDG_CONFIG_HOME: path.join(home, '.config'),
 };
+// mise's global config dir must follow the sandboxed XDG_CONFIG_HOME too (user
+// scope writes its tool list into <mise config dir>/conf.d).
+delete env.MISE_CONFIG_DIR;
 const applyArgs = ['apply', '--skip-mise-install'];
 if (!REAL) env.AGENTENV_RTK_BIN = stub;
 
@@ -426,9 +429,89 @@ if (REAL) {
     'user-scope apply should write generated files under the user config dir',
   );
   expect(
-    fs.existsSync(path.join(userScopeDir, 'mise.toml')),
-    'user-scope apply should write mise.toml under the user config dir',
+    fs.existsSync(path.join(home, '.config', 'mise', 'conf.d', 'agentenv.toml')),
+    "user-scope apply should write its tool list into mise's global conf.d",
   );
+  expect(
+    !fs.existsSync(path.join(userScopeDir, 'mise.toml')),
+    'user-scope apply must not write a mise.toml that only applies inside the user config dir',
+  );
+
+  // Acceptance: every tool must run *through its shim* (`fd --version` on
+  // PATH, the way an agent calls it) from a directory with no mise.toml. The
+  // `mise which` loop above runs from the project dir and execs the raw
+  // binary, so it can't see a tool list mise only reads in one place: user
+  // scope once wrote ~/.config/agentenv/mise.toml, and every shim elsewhere
+  // failed with "No version is set for shim". Uses the real mise data dir
+  // (tools are installed above) but a sandboxed mise config dir, shims dir
+  // and agentenv config dir, so the real global mise config is never touched.
+  // No agents and no rtk: this run is only about tools.
+  const shimRoot = path.join(temp, 'shim-check');
+  const shimsDir = path.join(shimRoot, 'shims');
+  const elsewhere = path.join(shimRoot, 'elsewhere');
+  const shimUserDir = path.join(shimRoot, 'xdg', 'agentenv');
+  fs.mkdirSync(elsewhere, { recursive: true });
+  fs.mkdirSync(shimUserDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(shimUserDir, 'agentenv.toml'),
+    `scope = "user"
+
+[agents]
+${ALL_AGENTS.replaceAll('= true', '= false')}
+
+[tools]
+${toolsBlock}
+
+[rtk]
+enabled = false
+`,
+  );
+  const shimBasePath = process.env.PATH ?? process.env.Path ?? '';
+  const shimPath = shimsDir + path.delimiter + shimBasePath;
+  const shimEnv = {
+    ...process.env,
+    MISE_YES: '1',
+    XDG_CONFIG_HOME: path.join(shimRoot, 'xdg'),
+    MISE_CONFIG_DIR: path.join(shimRoot, 'mise-config'),
+    MISE_SHIMS_DIR: shimsDir,
+    PATH: shimPath,
+    Path: shimPath,
+  };
+  const shimApply = runAllowingExit(['apply', '--scope', 'user'], elsewhere, shimEnv);
+  expect(
+    shimApply.status === 0,
+    `user-scope apply (with mise install) should exit 0, got ${shimApply.status}:
+${shimApply.stdout}
+${shimApply.stderr}`,
+  );
+  try {
+    execFileSync('mise', ['reshim'], { cwd: elsewhere, env: shimEnv, stdio: 'ignore' });
+  } catch (err) {
+    console.error('smoke FAIL: mise reshim exited non-zero');
+    console.error(err.message);
+    process.exit(1);
+  }
+  for (const tool of INSTALLABLE_TOOLS) {
+    if (EXECUTE_EXCLUDED[tool.miseName]) continue;
+    // `mise which` is the strict check: a Windows shim with no version set
+    // can fall through to another copy of the binary on PATH and "work".
+    for (const [cmd, args, what] of [
+      ['mise', ['which', tool.binary], 'mise which'],
+      [tool.binary, ['--version'], 'shim --version'],
+    ]) {
+      try {
+        execFileSync(cmd, args, { cwd: elsewhere, env: shimEnv, encoding: 'utf-8', stdio: 'pipe' });
+      } catch (err) {
+        console.error(
+          `smoke FAIL: ${what} for "${tool.binary}" failed outside any project (user scope)`,
+        );
+        console.error(`  status: ${err.status}, signal: ${err.signal}`);
+        console.error(`  stdout: ${err.stdout ?? ''}`);
+        console.error(`  stderr: ${err.stderr ?? ''}`);
+        process.exit(1);
+      }
+    }
+  }
 
   // Visibility only, not a pass/fail gate: doctor's tool-availability check
   // depends on the shims_dir agentenv would configure actually being live on

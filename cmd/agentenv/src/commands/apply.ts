@@ -1,6 +1,5 @@
 import { Command } from 'commander';
 import * as fs from 'fs';
-import * as path from 'path';
 import {
   ClaudeCodeAdapter,
   CodexCliAdapter,
@@ -57,6 +56,8 @@ import {
   verifyHintNeeded,
   verifySummaryLine,
   verifyToolAvailability,
+  miseTomlPathFor,
+  removeLegacyUserMiseToml,
 } from '../toolchain/mise.js';
 import { normalizeOutput } from '../utils/output.js';
 import { colorizeLine, theme } from '../ui/theme.js';
@@ -147,7 +148,7 @@ export function buildApplyDryRunPlan(
   integrations: Array<{ getName(): string }>,
 ): ApplyDryRunPlan {
   const enabledToolCount = Object.values(config.tools ?? {}).filter((on) => on === true).length;
-  const miseTomlPath = path.join(baseDir, 'mise.toml');
+  const miseTomlPath = miseTomlPathFor(config.scope, baseDir);
   const miseContent = generateMiseToml(config, config.custom_tools ?? []);
   const miseStatus: 'create' | 'update' | 'unchanged' = !fs.existsSync(miseTomlPath)
     ? 'create'
@@ -345,12 +346,16 @@ export async function applyConfiguration(
 
   // Step 2 — mise.toml (declares the tools).
   const enabledToolCount = Object.values(config.tools ?? {}).filter((on) => on === true).length;
-  const misePath = path.join(baseDir, 'mise.toml');
+  const misePath = miseTomlPathFor(config.scope, baseDir);
   let miseTomlWritten = false;
   try {
     saveMiseToml(generateMiseToml(config, config.custom_tools ?? []), misePath);
     miseTomlWritten = true;
     messages.push(`Tools: wrote ${misePath} (${enabledToolCount} enabled)`);
+    if (config.scope === 'user') {
+      const legacy = removeLegacyUserMiseToml(baseDir);
+      if (legacy) messages.push(`Tools: removed superseded ${legacy}`);
+    }
     const platformSkip = platformUnsupportedHint(config);
     if (platformSkip) messages.push(platformSkip);
   } catch (error) {

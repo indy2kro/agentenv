@@ -8,8 +8,11 @@
  */
 
 /**
- * Tools that have special installation requirements
- * These are marked as "Fallback required" in phase0-windows-findings.md
+ * Tools agentenv never hands to mise. tokei is in the mise registry
+ * (aqua:XAMPPRocky/tokei), but its releases since v13 ship no prebuilt
+ * binaries, so mise can only build it from source via cargo, which needs a
+ * Rust toolchain most machines lack (and takes minutes). Users install it
+ * themselves (brew/apt/scoop/cargo); a copy on PATH is reported as installed.
  */
 export const FALLBACK_REQUIRED_TOOLS = ['tokei'];
 
