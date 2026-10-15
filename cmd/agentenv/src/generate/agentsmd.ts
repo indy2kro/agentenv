@@ -520,16 +520,19 @@ export function updateWithMarkers(
         fs.mkdirSync(path.dirname(filePath), { recursive: true });
         writeFileWithRetry(filePath, plan.content);
         return { success: true, updated: true, message: `Created ${filePath}` };
-      case 'update':
+      case 'update': {
         // This file predates agentenv (it had no managed markers yet) —
         // back up the user's original content before appending to it.
-        if (plan.backupFirst) backupBeforeFirstEdit(filePath);
+        const backup = plan.backupFirst ? backupBeforeFirstEdit(filePath) : null;
         writeFileWithRetry(filePath, plan.content);
         return {
           success: true,
           updated: true,
-          message: plan.backupFirst ? `Added managed block to ${filePath}` : `Updated ${filePath}`,
+          message: plan.backupFirst
+            ? `Added managed block to ${filePath}${backup ? ` (original backed up to ${backup})` : ''}`
+            : `Updated ${filePath}`,
         };
+      }
     }
   } catch (err) {
     return {

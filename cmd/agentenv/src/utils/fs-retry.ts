@@ -128,16 +128,25 @@ export function writeFileWithRetry(
  * `filePath` doesn't exist yet (nothing to back up: this is a fresh file
  * agentenv is creating, not modifying). Backing up is advisory: a failure
  * here (e.g. a locked filesystem) must never block the real write.
+ * Returns the backup path when one was just created (so callers can tell the
+ * user), otherwise null.
  */
-export function backupBeforeFirstEdit(filePath: string): void {
+export function backupBeforeFirstEdit(filePath: string): string | null {
   try {
-    if (!fs.existsSync(filePath)) return;
-    const backupPath = `${filePath}.agentenv-backup`;
-    if (fs.existsSync(backupPath)) return;
+    if (!fs.existsSync(filePath)) return null;
+    const backupPath = backupPathFor(filePath);
+    if (fs.existsSync(backupPath)) return null;
     fs.copyFileSync(filePath, backupPath);
+    return backupPath;
   } catch {
     // Advisory only — never block the real write on a failed backup.
+    return null;
   }
+}
+
+/** Where backupBeforeFirstEdit() keeps the pre-agentenv copy of `filePath`. */
+export function backupPathFor(filePath: string): string {
+  return `${filePath}.agentenv-backup`;
 }
 
 export interface WriteVerifyResult {

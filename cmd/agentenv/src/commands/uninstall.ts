@@ -39,6 +39,7 @@ import {
   miseTomlPathFor,
 } from '../toolchain/mise.js';
 import { normalizeOutput } from '../utils/output.js';
+import { backupPathFor } from '../utils/fs-retry.js';
 import { renderLogo, setQuietEnabled } from '../ui/output.js';
 import { printConfigPath, printResult, reportValidation } from '../ui/report.js';
 
@@ -303,6 +304,16 @@ export async function executeUnwire(
   for (const file of [...plan.agentFiles, ...plan.sharedFiles]) {
     const result = removeMarkerBlock(file.path, plan.markerStart, plan.markerEnd);
     (result.success ? messages : errors).push(result.message);
+  }
+
+  // Tell the user where the pre-agentenv originals are, so they can restore them.
+  for (const file of [...plan.agentFiles, ...plan.sharedFiles]) {
+    const backup = backupPathFor(file.path);
+    if (fs.existsSync(backup)) {
+      messages.push(
+        `Original of ${file.path} was backed up at ${backup}; copy it back to restore it`,
+      );
+    }
   }
 
   if (plan.miseToml) {

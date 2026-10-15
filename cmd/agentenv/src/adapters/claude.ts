@@ -135,13 +135,13 @@ export class ClaudeCodeAdapter extends BaseAdapter {
         settings.hooks.PreToolUse.push(rtkHook);
         // Preserve the user's pre-agentenv settings.json before the first
         // edit — this file is user-global and may predate agentenv.
-        backupBeforeFirstEdit(settingsPath);
+        const backup = backupBeforeFirstEdit(settingsPath);
         // Only write when the hook was actually missing — re-running apply
         // on an already-configured settings.json must not churn the file
         // (bump its mtime / reformat it) for a no-op.
         writeFileWithRetry(settingsPath, JSON.stringify(settings, null, 2));
         result.filesModified.push(settingsPath);
-        result.message = `Added RTK PreToolUse hook to Claude Code settings at ${settingsPath}`;
+        result.message = `Added RTK PreToolUse hook to Claude Code settings at ${settingsPath}${backup ? ` (original backed up to ${backup})` : ''}`;
       } else {
         result.message = `RTK hook already exists in Claude Code settings`;
       }

@@ -392,3 +392,30 @@ describe('generated guidance', () => {
     assert.deepEqual(names({ codex_cli: true }), ['AGENTS.md']);
   });
 });
+
+describe('backup reporting', () => {
+  it('mentions the backup path when the first edit to a pre-existing file creates one', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-backup-msg-'));
+    try {
+      const file = path.join(dir, 'AGENTS.md');
+      fs.writeFileSync(file, 'my own notes\n');
+      const result = updateWithMarkers(
+        file,
+        '<!-- s -->\nx\n<!-- e -->',
+        '<!-- s -->',
+        '<!-- e -->',
+      );
+      assert.equal(result.success, true);
+      assert.match(result.message, /original backed up to .*AGENTS\.md\.agentenv-backup/);
+      const second = updateWithMarkers(
+        file,
+        '<!-- s -->\ny\n<!-- e -->',
+        '<!-- s -->',
+        '<!-- e -->',
+      );
+      assert.doesNotMatch(second.message, /backed up/);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
