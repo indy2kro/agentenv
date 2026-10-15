@@ -15,7 +15,8 @@ export class VibeAdapter extends RtkDelegationAdapter {
       label: 'Mistral Vibe',
       rtkFlags: RTK_INIT_FLAGS.vibe,
       configDir: path.join(homeDir(), '.vibe'),
-      expectedFile: 'RTK.md',
+      // rtk 0.49.0 registers the hook globally in ~/.vibe/hooks.toml (no RTK.md).
+      expectedFile: path.join(homeDir(), '.vibe', 'hooks.toml'),
     });
   }
 }

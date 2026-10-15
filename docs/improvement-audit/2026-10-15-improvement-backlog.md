@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-10-15
 
-Target: 40 · Found: 40 deduplicated items · Completed: 39/40 (BUG-12 open: needs a live probe of the pinned rtk; BUG-11 partial)
+Target: 40 · Found: 40 deduplicated items · Completed: 40/40 (BUG-11 partial: streamed `mise install` has no inactivity timeout)
 
 > **How to use this document — read before implementing anything.**
 > As you finish each item, change `- [ ]` to `- [x]`, append ` ✅ <commit-sha>`,
@@ -89,8 +89,8 @@ Themes this round:
   BUG-07 last round stopped Tier 0 errors from skipping `mise install`. The verify step is still `if (errors.length === 0)`, so one failed shell-fix write hides which tools are actually missing.
 - [x] **BUG-11** (rtk probes done; streamed `mise install` still has no inactivity timeout) The `rtk --version` / `rtk gain` probes have no timeout, and neither does the streamed `mise install` — `src/toolchain/rtk.ts:245-262`, `toolchain/mise.ts:1125-1130` · effort S · impact low
   This is a regression of SWEEP-02 (2026-09-22): the later doctor rtk check added two spawns without a timeout, so a hung rtk freezes `doctor` indefinitely.
-- [ ] **BUG-12** Check windsurf/vibe at the locations `rtk init` actually writes to (leftover from SWEEP-04, 2026-09-22) — `src/commands/status.ts:60-69`, `adapters/rtk-delegation.ts:111` · effort M · impact med
-  Both places still look for `baseDir/RTK.md`, which an earlier live probe suggested is wrong. Re-verify against the pinned rtk with `smoke:real`, then fix both places together.
+- [x] **BUG-12** Check windsurf/vibe at the locations `rtk init` actually writes to (leftover from SWEEP-04, 2026-09-22) — `src/commands/status.ts:60-69`, `adapters/rtk-delegation.ts:111` · effort M · impact med
+  Both places still look for `baseDir/RTK.md`, which an earlier live probe suggested is wrong. Verified against rtk 0.49.0: windsurf writes `.windsurfrules` in the project dir; vibe registers `~/.vibe/hooks.toml`. Status, the adapters and the rtk stub now use those.
 - [x] **BUG-13** The Claude adapter writes a `CLAUDE.md` without managed markers, ignoring `generate.files` and scope — `src/adapters/claude.ts:155-167,238-257` · effort S · impact low
   With `generate.files = ["AGENTS.md"]` it still creates `baseDir/CLAUDE.md`. That copy is stale, has no markers so unwire can't remove it, and in user scope it lands in `~/.config/agentenv`, where no agent reads it.
 - [x] **BUG-14** `generate.marker_start` / `marker_end` are not checked for being non-empty and distinct, and a block left under the old markers is not detected — `src/config/schema.ts:1085-1092`, `generate/agentsmd.ts:410-432` · effort S · impact low

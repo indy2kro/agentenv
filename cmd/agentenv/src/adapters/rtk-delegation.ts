@@ -24,7 +24,7 @@ export interface RtkDelegationOptions {
   label: string;
   rtkFlags: string[];
   configDir: string;
-  /** Basename (within baseDir) whose appearance marks a successful `rtk init`. */
+  /** File (relative to baseDir, or absolute for global installs) whose appearance marks a successful `rtk init`. */
   expectedFile: string;
   /**
    * Directories a global `rtk init` delegation writes into besides `configDir`
@@ -36,11 +36,18 @@ export interface RtkDelegationOptions {
 }
 
 /**
- * Undo an `rtk init` delegation with `rtk init <same flags> --uninstall`, so
- * unwiring an agent removes the hooks/plugin/RTK.md rtk wrote instead of only
- * reporting success. A missing rtk binary is not an error here: there is
+ * Undo an `rtk init` delegation with `rtk init <same flags> --uninstall` where
+ * that is safe (see SCOPED_RTK_UNINSTALLS), otherwise say what to do by hand. A missing rtk binary is not an error here: there is
  * nothing rtk can remove, and uninstalling tools must not require them.
  */
+/** `rtk init` flag sets whose --uninstall is verified to affect only that agent. */
+const SCOPED_RTK_UNINSTALLS = new Set(['--copilot', '-g --agent vibe']);
+
+/** Whether `rtk init <flags> --uninstall` is safe to run for just this agent. */
+export function isScopedRtkUninstall(rtkFlags: string[]): boolean {
+  return SCOPED_RTK_UNINSTALLS.has(rtkFlags.join(' '));
+}
+
 export async function uninstallViaRtk(
   label: string,
   rtkFlags: string[],
@@ -53,6 +60,17 @@ export async function uninstallViaRtk(
     filesModified: [],
     errors: [],
   };
+  // Verified against rtk 0.49.0: only these uninstalls touch just their own
+  // agent. A `-g` uninstall for windsurf (and, by the same code path, the other
+  // global agents) removes the Claude Code hook, RTK.md, the OpenCode plugin
+  // and the Cursor hook too, and project-level --codex/--agent cline uninstalls
+  // are refused by rtk ("Uninstall only works with --global").
+  if (!isScopedRtkUninstall(rtkFlags)) {
+    result.message = rtkFlags.includes('-g')
+      ? `${label}: rtk's global uninstall is not scoped to this agent (it would also remove your other agents' rtk wiring), so nothing was removed; run \`rtk init -g --uninstall\` yourself to remove all rtk wiring`
+      : `${label}: rtk cannot uninstall project-level wiring, so nothing was removed; delete the rtk block from RTK.md/AGENTS.md in the project by hand`;
+    return result;
+  }
   const run = resolveRtkInit(config.rtkInit)([...rtkFlags, '--uninstall'], config.baseDir);
   if (run.success) {
     result.message = `${label}: removed rtk wiring (rtk init ${rtkFlags.join(' ')} --uninstall)`;
@@ -163,7 +181,9 @@ export class RtkDelegationAdapter extends BaseAdapter {
       }
     }
 
-    const expectedPath = path.join(this.config.baseDir, this.opts.expectedFile);
+    const expectedPath = path.isAbsolute(this.opts.expectedFile)
+      ? this.opts.expectedFile
+      : path.join(this.config.baseDir, this.opts.expectedFile);
     const existed = fs.existsSync(expectedPath);
     const run = resolveRtkInit(this.config.rtkInit)(this.opts.rtkFlags, this.config.baseDir);
     if (run.success) {

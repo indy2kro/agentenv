@@ -462,7 +462,7 @@ direnv = false
   it('uninstall --unwire-agents --dry-run previews classified changes without writing', () => {
     const dry = run(['uninstall', '--unwire-agents', '--dry-run'], unwireFixture, shellEnv);
     assert.equal(dry.status, 0, dry.stderr);
-    assert.match(dry.stdout, /codex_cli — would run `rtk init --codex --uninstall`/);
+    assert.match(dry.stdout, /codex_cli — no automatic rtk removal/);
     assert.match(dry.stdout, /AGENTS\.md — delete/);
     assert.match(dry.stdout, /CLAUDE\.md — delete/);
     assert.match(dry.stdout, /Dry run complete/);

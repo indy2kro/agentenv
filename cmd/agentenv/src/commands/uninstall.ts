@@ -23,6 +23,7 @@ import { RTK_INIT_FLAGS } from '../toolchain/rtk.js';
 import type { RtkInitFn } from '../toolchain/rtk.js';
 import { claudeConfigDir } from '../adapters/agent-dirs.js';
 import { ADAPTER_CLASSES } from '../adapters/index.js';
+import { isScopedRtkUninstall } from '../adapters/rtk-delegation.js';
 import {
   generateInstructionFiles,
   planMarkerRemoval,
@@ -284,7 +285,10 @@ export function describeCleanup(agent: AgentKey): string {
   if (agent === 'claude_code') {
     return `would remove the rtk hook from ${path.join(claudeConfigDir(), 'settings.json')}`;
   }
-  return `would run \`rtk init ${RTK_INIT_FLAGS[agent].join(' ')} --uninstall\``;
+  const flags = RTK_INIT_FLAGS[agent];
+  return isScopedRtkUninstall(flags)
+    ? `would run \`rtk init ${flags.join(' ')} --uninstall\``
+    : 'no automatic rtk removal (rtk cannot uninstall this agent alone); see the note printed on unwire';
 }
 
 export async function executeUnwire(

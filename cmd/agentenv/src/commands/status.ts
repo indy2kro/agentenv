@@ -63,16 +63,17 @@ const AGENT_CONFIG_FILES: Record<
   // Cursor's own config dir or baseDir — see adapters/cursor.ts's
   // extraGlobalDirs comment; confirmed live.
   cursor: { label: 'Cursor', check: () => path.join(claudeConfigDir(), 'RTK.md') },
-  // TODO: windsurf/vibe are still checked against baseDir/RTK.md, which a
-  // live probe against an older rtk build suggests is also wrong (windsurf
-  // wrote a cwd-relative .windsurfrules; vibe isn't
-  // supported by that build at all) — but that couldn't be confirmed
-  // against the pinned rtk 0.49.0 from this environment, so left as-is
-  // rather than guessing. Re-verify against smoke:real before changing.
-  windsurf: { label: 'Windsurf', check: (baseDir) => path.join(baseDir, 'RTK.md') },
+  // Verified against rtk 0.49.0: `-g --agent windsurf` writes .windsurfrules into
+  // the project dir (no RTK.md).
+  windsurf: { label: 'Windsurf', check: (baseDir) => path.join(baseDir, '.windsurfrules') },
   // `--agent cline` (project-scoped; not -g) writes RTK.md in baseDir.
   cline: { label: 'Cline CLI', check: (baseDir) => path.join(baseDir, 'RTK.md') },
-  vibe: { label: 'Mistral Vibe', check: (baseDir) => path.join(baseDir, 'RTK.md') },
+  // Verified against rtk 0.49.0: `-g --agent vibe` registers ~/.vibe/hooks.toml.
+  vibe: {
+    label: 'Mistral Vibe',
+    check: () => path.join(homeDir(), '.vibe', 'hooks.toml'),
+    contains: 'rtk',
+  },
 };
 
 export { AGENT_CONFIG_FILES };

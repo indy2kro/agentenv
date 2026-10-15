@@ -201,7 +201,7 @@ describe('RtkDelegationAdapter', () => {
     });
   });
 
-  it('cleanup runs the same rtk init flags with --uninstall', async () => {
+  it('cleanup runs rtk --uninstall for a verified-scoped agent (vibe)', async () => {
     const calls: string[][] = [];
     const adapter = new RtkDelegationAdapter(
       {
@@ -214,10 +214,10 @@ describe('RtkDelegationAdapter', () => {
         },
       },
       {
-        agentKey: 'gemini_cli',
-        label: 'Gemini CLI',
-        rtkFlags: ['--gemini'],
-        configDir: '/tmp/.gemini',
+        agentKey: 'vibe',
+        label: 'Mistral Vibe',
+        rtkFlags: ['-g', '--agent', 'vibe'],
+        configDir: '/tmp/.vibe',
         expectedFile: 'RTK.md',
       },
     );
@@ -225,7 +225,7 @@ describe('RtkDelegationAdapter', () => {
     assert.equal(result.success, true);
     assert.equal(result.filesCreated.length, 0);
     assert.equal(result.filesModified.length, 0);
-    assert.deepEqual(calls, [['--gemini', '--uninstall']]);
+    assert.deepEqual(calls, [['-g', '--agent', 'vibe', '--uninstall']]);
   });
 
   it('cleanup treats a missing rtk binary as nothing to remove, and surfaces real failures', async () => {
@@ -238,16 +238,39 @@ describe('RtkDelegationAdapter', () => {
           rtkInit: () => ({ success: false, message, stdout: '', stderr: 'boom' }),
         },
         {
-          agentKey: 'gemini_cli',
-          label: 'Gemini CLI',
-          rtkFlags: ['--gemini'],
-          configDir: '/tmp/.gemini',
+          agentKey: 'vibe',
+          label: 'Mistral Vibe',
+          rtkFlags: ['-g', '--agent', 'vibe'],
+          configDir: '/tmp/.vibe',
           expectedFile: 'RTK.md',
         },
       );
     assert.equal((await make('rtk binary not found via mise').cleanup()).success, true);
-    const failed = await make('rtk init --gemini --uninstall failed (exit 1)').cleanup();
+    const failed = await make('rtk init -g --agent vibe --uninstall failed (exit 1)').cleanup();
     assert.equal(failed.success, false);
     assert.match(failed.errors[0], /boom/);
+  });
+
+  it('never runs rtk for agents whose uninstall is global or project-refused', async () => {
+    const calls: string[][] = [];
+    const make = (agentKey: 'windsurf' | 'cline', flags: string[]) =>
+      new RtkDelegationAdapter(
+        {
+          enabled: true,
+          baseDir: '/tmp',
+          rtkEnabled: true,
+          rtkInit: (args) => {
+            calls.push(args);
+            return { success: true, message: 'ok', stdout: '', stderr: '' };
+          },
+        },
+        { agentKey, label: agentKey, rtkFlags: flags, configDir: '/tmp/x', expectedFile: 'RTK.md' },
+      );
+    const windsurf = await make('windsurf', ['-g', '--agent', 'windsurf']).cleanup();
+    const cline = await make('cline', ['--agent', 'cline']).cleanup();
+    assert.deepEqual(calls, []);
+    assert.match(windsurf.message, /not scoped to this agent/);
+    assert.match(cline.message, /cannot uninstall project-level wiring/);
+    assert.equal(windsurf.success && cline.success, true);
   });
 });

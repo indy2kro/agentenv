@@ -390,7 +390,7 @@ for (const [label, AdapterCtor, rtkFlags, configDirName] of [
       });
     });
 
-    it('cleanup asks rtk to uninstall its wiring', async () => {
+    it('cleanup only runs rtk uninstall when it is scoped to this agent', async () => {
       const calls: string[][] = [];
       const adapter = new AdapterCtor({
         enabled: true,
@@ -404,8 +404,11 @@ for (const [label, AdapterCtor, rtkFlags, configDirName] of [
       const result = await adapter.cleanup();
       assert.equal(result.success, true);
       assert.equal(result.filesCreated.length, 0);
-      assert.equal(calls.length, 1);
-      assert.equal(calls[0][calls[0].length - 1], '--uninstall');
+      // Only verified-scoped uninstalls (copilot, vibe) invoke rtk; the rest
+      // must not run rtk's agent-unscoped global uninstall.
+      assert.ok(calls.length <= 1);
+      if (calls.length === 1) assert.equal(calls[0][calls[0].length - 1], '--uninstall');
+      else assert.match(result.message, /nothing was removed/);
     });
   });
 }
