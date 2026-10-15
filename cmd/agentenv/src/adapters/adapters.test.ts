@@ -430,3 +430,63 @@ describe('Cursor adapter extraGlobalDirs', () => {
     });
   });
 });
+
+describe('Copilot and OpenCode failure paths', () => {
+  const failingRtk = () => ({
+    success: false,
+    message: 'rtk init failed (exit 1)',
+    stdout: '',
+    stderr: 'boom',
+  });
+
+  for (const [name, Ctor] of [
+    ['GitHub Copilot', CopilotAdapter],
+    ['OpenCode', OpenCodeAdapter],
+  ] as const) {
+    it(`${name}: a failing rtk init fails initialize() with the rtk error`, async () => {
+      await withHome(tempHome(), async () => {
+        const home = process.env.HOME as string;
+        const adapter = new Ctor({
+          enabled: true,
+          baseDir: home,
+          rtkEnabled: true,
+          rtkInit: failingRtk,
+        });
+        const result = await adapter.initialize();
+        assert.equal(result.success, false);
+        assert.ok(result.errors.some((e) => e.includes('boom')));
+      });
+    });
+
+    it(`${name}: a disabled adapter does nothing`, async () => {
+      const rtk = fakeRtkInit();
+      const adapter = new Ctor({
+        enabled: false,
+        baseDir: os.tmpdir(),
+        rtkEnabled: true,
+        rtkInit: rtk.fn,
+      });
+      const result = await adapter.initialize();
+      assert.equal(result.success, true);
+      assert.match(result.message, /not enabled/);
+      assert.equal(rtk.calls.length, 0);
+    });
+
+    it(`${name}: exposes SHELL=bash.exe on Windows only when rtk is enabled`, () => {
+      const original = process.platform;
+      try {
+        Object.defineProperty(process, 'platform', { value: 'win32' });
+        assert.deepEqual(
+          new Ctor({ enabled: true, baseDir: os.tmpdir(), rtkEnabled: true }).getEnvVars(),
+          { SHELL: 'bash.exe' },
+        );
+        assert.deepEqual(
+          new Ctor({ enabled: true, baseDir: os.tmpdir(), rtkEnabled: false }).getEnvVars(),
+          {},
+        );
+      } finally {
+        Object.defineProperty(process, 'platform', { value: original });
+      }
+    });
+  }
+});
