@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import {
+  atomicWriteFileSync,
   backupBeforeFirstEdit,
   writeFileWithRetry,
   writeFileWithVerify,
@@ -98,5 +99,51 @@ describe('backupBeforeFirstEdit', () => {
     const file = path.join(dir, 'does-not-exist.json');
     backupBeforeFirstEdit(file);
     assert.equal(fs.existsSync(`${file}.agentenv-backup`), false);
+  });
+});
+
+describe('atomicWriteFileSync', () => {
+  it('replaces content and leaves no temp files behind', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-atomic-'));
+    try {
+      const file = path.join(dir, 'settings.json');
+      fs.writeFileSync(file, 'old');
+      atomicWriteFileSync(file, 'new');
+      assert.equal(fs.readFileSync(file, 'utf-8'), 'new');
+      assert.deepEqual(fs.readdirSync(dir), ['settings.json']);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('creates a missing file', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-atomic-'));
+    try {
+      const file = path.join(dir, 'new.toml');
+      atomicWriteFileSync(file, 'x');
+      assert.equal(fs.readFileSync(file, 'utf-8'), 'x');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('writes through a symlink instead of replacing it', (t) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-atomic-'));
+    try {
+      const real = path.join(dir, 'real.json');
+      const link = path.join(dir, 'link.json');
+      fs.writeFileSync(real, 'old');
+      try {
+        fs.symlinkSync(real, link);
+      } catch {
+        t.skip('symlinks not permitted here');
+        return;
+      }
+      atomicWriteFileSync(link, 'new');
+      assert.ok(fs.lstatSync(link).isSymbolicLink());
+      assert.equal(fs.readFileSync(real, 'utf-8'), 'new');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
