@@ -418,6 +418,22 @@ export function planMarkerUpdate(
   // Existing files without markers belong to the user. Preserve them and
   // append only our newly managed block.
   if (!hasStart) {
+    // A block written under different markers (the defaults, before the user
+    // customized generate.marker_*) would be left behind and duplicated.
+    const defaultStart = DEFAULT_CONFIG.generate?.marker_start;
+    const defaultEnd = DEFAULT_CONFIG.generate?.marker_end;
+    if (
+      defaultStart &&
+      defaultEnd &&
+      defaultStart !== markerStart &&
+      existingContent.includes(defaultStart) &&
+      existingContent.includes(defaultEnd)
+    ) {
+      return {
+        status: 'error',
+        message: `File ${filePath} already holds a managed block under different markers (${defaultStart}); remove that block or restore generate.marker_start/marker_end so it is not duplicated`,
+      };
+    }
     const newStartIndex = newContent.indexOf(markerStart);
     const newEndIndex = newContent.indexOf(markerEnd, newStartIndex);
     if (newStartIndex === -1 || newEndIndex === -1) {

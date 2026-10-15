@@ -973,3 +973,27 @@ describe('ast_grep binary name', () => {
     assert.equal(BINARY_MAP.ast_grep, 'ast-grep');
   });
 });
+
+describe('generate marker validation', () => {
+  const withMarkers = (start: string, end: string) =>
+    validateConfig({ ...DEFAULT_CONFIG, generate: { marker_start: start, marker_end: end } });
+
+  it('rejects empty markers', () => {
+    assert.ok(
+      withMarkers('', '<!-- end -->').errors.some((e) => /marker_start must not be empty/.test(e)),
+    );
+    assert.ok(
+      withMarkers('<!-- s -->', ' ').errors.some((e) => /marker_end must not be empty/.test(e)),
+    );
+  });
+
+  it('rejects identical markers', () => {
+    assert.ok(
+      withMarkers('<!-- x -->', '<!-- x -->').errors.some((e) => /must be different/.test(e)),
+    );
+  });
+
+  it('accepts distinct custom markers', () => {
+    assert.deepEqual(withMarkers('<!-- s -->', '<!-- e -->').errors, []);
+  });
+});

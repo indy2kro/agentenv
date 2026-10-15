@@ -342,3 +342,27 @@ describe('platform-unsupported tools in generated output', () => {
     },
   );
 });
+
+describe('changed markers', () => {
+  it('refuses to add a second block when one exists under the default markers', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-markers-'));
+    try {
+      const file = path.join(dir, 'AGENTS.md');
+      fs.writeFileSync(
+        file,
+        '<!-- agentenv-managed-start -->\nold\n<!-- agentenv-managed-end -->\n',
+      );
+      const result = updateWithMarkers(
+        file,
+        '<!-- s -->\nnew\n<!-- e -->',
+        '<!-- s -->',
+        '<!-- e -->',
+      );
+      assert.equal(result.success, false);
+      assert.match(result.message, /different markers/);
+      assert.match(fs.readFileSync(file, 'utf-8'), /old/);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

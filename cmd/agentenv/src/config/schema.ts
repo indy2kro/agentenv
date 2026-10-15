@@ -1096,6 +1096,17 @@ export function validateConfig(config: AgentenvConfig): {
     if (generate.marker_end !== undefined && typeof generate.marker_end !== 'string') {
       errors.push('generate.marker_end must be a string');
     }
+    const markerStart = generate.marker_start;
+    const markerEnd = generate.marker_end;
+    if (typeof markerStart === 'string' && markerStart.trim() === '') {
+      errors.push('generate.marker_start must not be empty');
+    }
+    if (typeof markerEnd === 'string' && markerEnd.trim() === '') {
+      errors.push('generate.marker_end must not be empty');
+    }
+    if (typeof markerStart === 'string' && markerStart !== '' && markerStart === markerEnd) {
+      errors.push('generate.marker_start and generate.marker_end must be different');
+    }
     if (generate.files !== undefined && !Array.isArray(generate.files)) {
       errors.push('generate.files must be an array of file names');
     } else if (generate.files) {
