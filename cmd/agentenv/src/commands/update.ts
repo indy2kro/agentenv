@@ -1,3 +1,4 @@
+import { printJson } from '../cli/json.js';
 import { Command } from 'commander';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -94,7 +95,7 @@ export async function doUpdate(
     else console.error(line);
   };
   const finish = (success: boolean, elapsedMs?: number): void => {
-    if (json) console.log(JSON.stringify({ success, messages, errors, elapsedMs }, null, 2));
+    if (json) printJson({ success, messages, errors, elapsedMs });
   };
 
   if (!isMiseInstalledFn()) {

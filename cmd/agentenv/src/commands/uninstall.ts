@@ -1,3 +1,4 @@
+import { printJson } from '../cli/json.js';
 import { Command } from 'commander';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -366,7 +367,7 @@ export interface UninstallJsonResult {
 }
 
 function printUninstallJson(payload: UninstallJsonResult): void {
-  console.log(JSON.stringify(payload, null, 2));
+  printJson(payload);
 }
 
 const filesChangedFrom = (plan: UnwirePlan): string[] =>

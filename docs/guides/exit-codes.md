@@ -86,13 +86,21 @@ invalid config:
   or validation message(s) in `validation.errors`, all other collections
   empty, `exitCode: 1`.
 
-The mutating commands (`apply`, `update`, `uninstall`, `add`, `remove`) emit
-one document on completion: `apply`/`update` use
-`{success, messages, errors, elapsedMs}` (`apply` adds `configPath`, `baseDir`
-and `warnings`), while `uninstall`/`add`/`remove` use `{success, message, ...}`.
-Only `status`, `doctor` and `shell-fix` mirror the exit code as `exitCode`; for
-the others the process exit code is the contract. `setup`/`configure` do not
-accept `--json` yet: it is a usage error and exits `2`.
+The mutating commands (`apply`, `update`, `uninstall`, `add`, `remove`) share
+one envelope, emitted once on completion (or failure):
+
+```json
+{ "schemaVersion": 1, "success": true, "messages": [], "errors": [], "...": "command-specific fields" }
+```
+
+`schemaVersion` is bumped on any breaking change to these documents, and
+`messages`/`errors` are always arrays. `apply` adds `configPath`, `baseDir`,
+`warnings` and `elapsedMs` (also on early failures, as `null`/`[]`);
+`uninstall`/`add`/`remove` keep a convenience `message` string alongside the
+arrays. Only `status`, `doctor` and `shell-fix` mirror the exit code as
+`exitCode`; for the others the process exit code is the contract. `setup` and
+`configure` accept `--json` only with `--yes` once available; today it is a
+usage error and exits `2`.
 
 Example:
 

@@ -1,3 +1,4 @@
+import { printJson } from '../cli/json.js';
 import { Command } from 'commander';
 import * as fs from 'fs';
 import {
@@ -511,8 +512,15 @@ export const applyCommand = new Command()
       }
 
       /** Emit a single-error JSON failure document (json mode's equivalent of a themed console.error). */
-      const jsonFail = (error: string): void => {
-        console.log(JSON.stringify({ success: false, messages: [], errors: [error] }, null, 2));
+      const jsonFail = (error: string, configPath: string | null = null): void => {
+        printJson({
+          success: false,
+          configPath,
+          baseDir: null,
+          messages: [],
+          errors: [error],
+          warnings: [],
+        });
       };
 
       let config: AgentenvConfig;
@@ -540,7 +548,7 @@ export const applyCommand = new Command()
         config = loadConfig(configPath, { layerUserConfig: true });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        if (json) jsonFail(message);
+        if (json) jsonFail(message, configPath);
         else console.error(theme.fail(message));
         process.exitCode = 1;
         return;
@@ -550,13 +558,14 @@ export const applyCommand = new Command()
       const report = validateConfig(config);
       if (report.errors.length > 0) {
         if (json) {
-          console.log(
-            JSON.stringify(
-              { success: false, messages: [], errors: report.errors, warnings: report.warnings },
-              null,
-              2,
-            ),
-          );
+          printJson({
+            success: false,
+            configPath,
+            baseDir: null,
+            messages: [],
+            errors: report.errors,
+            warnings: report.warnings,
+          });
         } else {
           reportValidation(report, 'Configuration invalid — not applying.');
         }
@@ -577,7 +586,7 @@ export const applyCommand = new Command()
 
         if (json) {
           const payload: ApplyDryRunJsonResult = { success: true, dryRun: true, ...plan };
-          console.log(JSON.stringify(payload, null, 2));
+          printJson(payload);
           return;
         }
 
@@ -632,13 +641,7 @@ export const applyCommand = new Command()
       );
 
       if (json) {
-        console.log(
-          JSON.stringify(
-            buildApplyJsonResult(result, { configPath, baseDir, warnings: report.warnings }),
-            null,
-            2,
-          ),
-        );
+        printJson(buildApplyJsonResult(result, { configPath, baseDir, warnings: report.warnings }));
         if (!result.success) process.exitCode = 1;
         return;
       }

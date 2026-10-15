@@ -297,6 +297,24 @@ direnv = false
     assert.equal(json.success, true);
     assert.equal(json.configPath, path.join(clean, 'agentenv.toml'));
     assert.equal(result.stderr, '', `apply --json should be silent on stderr: ${result.stderr}`);
+    // Shared envelope: versioned, with both arrays always present.
+    assert.equal(json.schemaVersion, 1);
+    assert.ok(Array.isArray(json.messages));
+    assert.ok(Array.isArray(json.errors));
+  });
+
+  it('apply --json failure documents carry the same fields as a success document', () => {
+    const result = run(['apply', '--json', '--scope', 'user'], clean, {
+      ...shellEnv,
+      XDG_CONFIG_HOME: path.join(clean, 'no-such-xdg'),
+    });
+    assert.equal(result.status, 1);
+    const json = JSON.parse(result.stdout);
+    assert.equal(json.success, false);
+    assert.equal(json.schemaVersion, 1);
+    for (const field of ['configPath', 'baseDir', 'messages', 'errors', 'warnings']) {
+      assert.ok(field in json, `missing ${field}`);
+    }
   });
 
   it('apply --dry-run --json emits a structured plan instead of the human summary lines', () => {

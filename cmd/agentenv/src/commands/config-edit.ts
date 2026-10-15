@@ -4,6 +4,7 @@
  * so an AI agent can say "enable jq here" without the TTY-only wizard or
  * hand-editing TOML.
  */
+import { printJson } from '../cli/json.js';
 import { Command } from 'commander';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -116,7 +117,7 @@ async function doConfigEdit(
   const verb = enable ? 'add' : 'remove';
 
   const fail = (message: string, exitCode: 1 | 2 = 1): void => {
-    if (json) console.log(JSON.stringify({ success: false, message }, null, 2));
+    if (json) printJson({ success: false, message });
     else console.error(message);
     process.exitCode = exitCode;
   };
@@ -150,8 +151,7 @@ async function doConfigEdit(
   }
   const report = validateConfig(config);
   if (report.errors.length > 0) {
-    if (json)
-      console.log(JSON.stringify({ success: false, message: report.errors.join('; ') }, null, 2));
+    if (json) printJson({ success: false, message: report.errors.join('; ') });
     else reportValidation(report, 'Configuration invalid — not editing.');
     process.exitCode = 1;
     return;
@@ -167,29 +167,20 @@ async function doConfigEdit(
   }
 
   if (plan.changes.length === 0) {
-    if (json)
-      console.log(
-        JSON.stringify({ success: true, message: 'Nothing to change.', configPath }, null, 2),
-      );
+    if (json) printJson({ success: true, message: 'Nothing to change.', configPath });
     else printResult('warn', 'Nothing to change.');
     return;
   }
 
   if (options.dryRun) {
     if (json) {
-      console.log(
-        JSON.stringify(
-          {
-            success: true,
-            message: 'no changes were made',
-            configPath,
-            dryRun: true,
-            changes: plan.changes,
-          },
-          null,
-          2,
-        ),
-      );
+      printJson({
+        success: true,
+        message: 'no changes were made',
+        configPath,
+        dryRun: true,
+        changes: plan.changes,
+      });
     } else {
       console.log(plan.changes.map(changeLine).join('\n'));
       printResult('warn', 'Dry run complete', 'no changes were made', Date.now() - startedAt);
@@ -207,13 +198,7 @@ async function doConfigEdit(
     saveConfig(persisted, configPath);
     const message = `Updated ${plan.changes.length} setting(s)`;
     if (json) {
-      console.log(
-        JSON.stringify(
-          { success: true, message, configPath, changes: plan.changes, applied: false },
-          null,
-          2,
-        ),
-      );
+      printJson({ success: true, message, configPath, changes: plan.changes, applied: false });
     } else {
       console.log(plan.changes.map(changeLine).join('\n'));
       printResult(
@@ -234,7 +219,7 @@ async function doConfigEdit(
       skipPrereqMessage: true,
     });
     const applyJson = buildApplyJsonResult(result, { configPath, baseDir, warnings: [] });
-    console.log(JSON.stringify({ ...applyJson, changes: plan.changes }, null, 2));
+    printJson({ ...applyJson, changes: plan.changes });
     if (!result.success) process.exitCode = 1;
     return;
   }
