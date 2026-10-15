@@ -6,6 +6,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { AgentenvConfig, BINARY_MAP, TOOL_DESCRIPTIONS, DEFAULT_CONFIG } from '../config/schema.js';
+import { PLATFORM_UNSUPPORTED_TOOLS, isPlatformUnsupported } from '../toolchain/fallbacks.js';
 import { backupBeforeFirstEdit, writeFileWithRetry } from '../utils/fs-retry.js';
 
 // Tool categories for organization
@@ -116,7 +117,12 @@ export function generateAgentsMd(config: AgentenvConfig): string {
   lines.push('The following tools are available via agentenv:');
   lines.push('');
 
-  const enabledTools = getEnabledToolsForOutput(config);
+  // A user-scope file is only read on this machine, so tools that can't be
+  // installed here are left out. A project file is committed and shared
+  // across operating systems, so those tools stay listed with a caveat.
+  const enabledTools = getEnabledToolsForOutput(config).filter(
+    (tool) => !isUserScope || !isPlatformUnsupported(tool),
+  );
   const categorizedTools = categorizeTools(
     config.rtk?.enabled ? enabledTools.filter((tool) => tool !== 'rtk') : enabledTools,
   );
@@ -128,7 +134,9 @@ export function generateAgentsMd(config: AgentenvConfig): string {
       for (const tool of tools) {
         const description = TOOL_DESCRIPTIONS[tool] || 'Available via agentenv';
         const binaryName = BINARY_MAP[tool] || tool;
-        lines.push(`- **${tool}** (binary: \`${binaryName}\`): ${description}`);
+        lines.push(
+          `- **${tool}** (binary: \`${binaryName}\`): ${description}${platformCaveat(tool)}`,
+        );
       }
       lines.push('');
     }
@@ -230,6 +238,19 @@ export function generateClaudeMd(config: AgentenvConfig = DEFAULT_CONFIG): strin
   lines.push(markerEnd);
 
   return lines.join('\n');
+}
+
+const PLATFORM_LABELS: Partial<Record<NodeJS.Platform, string>> = {
+  win32: 'Windows',
+  darwin: 'macOS',
+  linux: 'Linux',
+};
+
+/** " (not available on Windows)" for tools with a platform gap, else "". */
+function platformCaveat(tool: string): string {
+  const gaps = PLATFORM_UNSUPPORTED_TOOLS[tool];
+  if (!gaps || gaps.length === 0) return '';
+  return ` (not available on ${gaps.map((p) => PLATFORM_LABELS[p] ?? p).join(', ')})`;
 }
 
 /**

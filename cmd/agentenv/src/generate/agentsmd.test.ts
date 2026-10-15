@@ -323,3 +323,22 @@ describe('generateClaudeMd', () => {
     );
   });
 });
+
+describe('platform-unsupported tools in generated output', () => {
+  const cfg = (scope: 'user' | 'project'): AgentenvConfig =>
+    ({ scope, tools: { ripgrep: true, jless: true } }) as AgentenvConfig;
+
+  it('lists jless with a caveat in a shared project file', () => {
+    const out = generateAgentsMd(cfg('project'));
+    assert.match(out, /\*\*jless\*\*.*\(not available on Windows\)/);
+    assert.doesNotMatch(out, /\*\*ripgrep\*\*.*not available/);
+  });
+
+  it(
+    'omits unsupported tools from a user-scope file on that platform',
+    { skip: process.platform !== 'win32' },
+    () => {
+      assert.doesNotMatch(generateAgentsMd(cfg('user')), /\*\*jless\*\*/);
+    },
+  );
+});
