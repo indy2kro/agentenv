@@ -75,7 +75,7 @@ export async function saveAndApply(
 
   const apply = deps.applyConfiguration ?? applyConfiguration;
   // `file` is always the actual agentenv.toml being applied — including when
-  // findConfigPath()'s upward search (FEAT-05) found it in an ancestor
+  // findConfigPath()'s upward search found it in an ancestor
   // directory — so its own directory is the base dir, not a re-derivation
   // from config.scope that assumes cwd for "project".
   const result = await withSpinner('Applying configuration...', (spinner: Spinner) =>

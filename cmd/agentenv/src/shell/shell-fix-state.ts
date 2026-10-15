@@ -1,5 +1,5 @@
 /**
- * Shell-fix state manifest (FEAT-06).
+ * Shell-fix state manifest.
  *
  * The Tier 0 Windows fix (`detector.ts`) writes per-agent config keys into
  * files agentenv does not own. To make that reversible, every write records

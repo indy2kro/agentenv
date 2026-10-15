@@ -28,7 +28,7 @@ describe('managed instruction blocks', () => {
       fs.readFileSync(filePath, 'utf8'),
       '# My instructions\n\nKeep this.\n\n<!-- agentenv-managed-start -->\nmanaged\n<!-- agentenv-managed-end -->\n',
     );
-    // SWEEP-06: this file predated agentenv (no markers), so its original
+    // this file predated agentenv (no markers), so its original
     // content is backed up before the first append.
     assert.equal(fs.readFileSync(`${filePath}.agentenv-backup`, 'utf8'), originalContent);
   });
@@ -96,7 +96,7 @@ describe('managed instruction blocks', () => {
   });
 });
 
-describe('removeMarkerBlock (FEAT-03 unwire)', () => {
+describe('removeMarkerBlock (unwire)', () => {
   it('deletes the file when it holds only the agentenv-managed block', () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-unwire-'));
     const filePath = path.join(directory, 'AGENTS.md');

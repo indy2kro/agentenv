@@ -129,7 +129,7 @@ describe('unattended setup pipeline', () => {
     assert.match(toml, /\[integrations\.superpowers\]/);
   });
 
-  it('re-applies the nearest user config instead of writing a fresh project config (UX-04)', async () => {
+  it('re-applies the nearest user config instead of writing a fresh project config', async () => {
     const projectDir = tempDir('agentenv-project-');
     const xdgDir = tempDir('agentenv-xdg-');
     const userToml = path.join(xdgDir, 'agentenv', 'agentenv.toml');
@@ -178,7 +178,7 @@ describe('unattended setup pipeline', () => {
     );
   });
 
-  it('applies a project config found in a parent directory to that directory, not cwd (FEAT-05)', async () => {
+  it('applies a project config found in a parent directory to that directory, not cwd', async () => {
     const projectRoot = tempDir('agentenv-project-');
     const nestedCwd = path.join(projectRoot, 'src', 'commands');
     fs.mkdirSync(nestedCwd, { recursive: true });

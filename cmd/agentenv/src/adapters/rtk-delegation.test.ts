@@ -96,7 +96,7 @@ describe('RtkDelegationAdapter', () => {
     assert.deepEqual(rtk.calls, []);
   });
 
-  describe('proactive version capability check (FEAT-09)', () => {
+  describe('proactive version capability check', () => {
     it('skips the real rtk init call when a verified minimum version rules the agent out', async () => {
       const home = tempDir('agentenv-rtk-deleg-vercap-');
       const rtk = fakeRtkInit();

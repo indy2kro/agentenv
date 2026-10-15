@@ -31,7 +31,7 @@ describe('Claude Code adapter', () => {
       assert.equal(settings.hooks.PreToolUse[0].hooks[0].command, 'existing hook');
       assert.equal(settings.hooks.PreToolUse[1].hooks[0].command, 'rtk hook claude');
 
-      // SWEEP-06: the first edit to this pre-existing user-global file backs
+      // the first edit to this pre-existing user-global file backs
       // up its original content.
       assert.equal(fs.readFileSync(`${settingsPath}.agentenv-backup`, 'utf8'), originalContent);
 
@@ -44,7 +44,7 @@ describe('Claude Code adapter', () => {
     }
   });
 
-  it('honors CLAUDE_CONFIG_DIR over the default ~/.claude (SWEEP-03)', async () => {
+  it('honors CLAUDE_CONFIG_DIR over the default ~/.claude', async () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-claude-'));
     const configDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-claude-relocated-'));
     const priorHome = process.env.HOME;

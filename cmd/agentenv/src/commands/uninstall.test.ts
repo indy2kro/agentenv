@@ -143,7 +143,7 @@ describe('renderUninstallSummary', () => {
   });
 });
 
-describe('parseAgentList (FEAT-03 --unwire-agents)', () => {
+describe('parseAgentList (--unwire-agents)', () => {
   it('parses and dedupes a comma-separated list of valid agent keys', () => {
     const result = parseAgentList('claude_code, codex_cli,claude_code');
     assert.deepEqual(result.agents, ['claude_code', 'codex_cli']);
@@ -163,7 +163,7 @@ describe('parseAgentList (FEAT-03 --unwire-agents)', () => {
   });
 });
 
-describe('buildUnwirePlan (FEAT-03)', () => {
+describe('buildUnwirePlan', () => {
   it('project scope, full unwire: classifies shared AGENTS.md/CLAUDE.md, leaves agentFiles empty', () => {
     const dir = tempDir('agentenv-unwire-plan-');
     fs.writeFileSync(path.join(dir, 'AGENTS.md'), `${start}\nold\n${end}\n`);
@@ -228,7 +228,7 @@ describe('buildUnwirePlan (FEAT-03)', () => {
   });
 });
 
-describe('executeUnwire (FEAT-03)', () => {
+describe('executeUnwire', () => {
   it('runs cleanup() for each targeted agent and reports its message', async () => {
     const dir = tempDir('agentenv-unwire-exec-');
     const plan = buildUnwirePlan(DEFAULT_CONFIG, dir, 'project', ['codex_cli'], false, false);

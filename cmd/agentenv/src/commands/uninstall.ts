@@ -271,7 +271,7 @@ export interface UnwireResult {
  * the managed block from each planned file, then delete mise.toml if
  * planned. Files are re-read fresh via removeMarkerBlock() rather than
  * trusting the plan's precomputed status, matching apply's dry-run/execute
- * split (FEAT-06) — the plan is a preview, never a cached write.
+ * split — the plan is a preview, never a cached write.
  */
 export async function executeUnwire(baseDir: string, plan: UnwirePlan): Promise<UnwireResult> {
   const messages: string[] = [];
@@ -348,7 +348,7 @@ const filesChangedFrom = (plan: UnwirePlan): string[] =>
     .map((f) => f.path);
 
 /**
- * The `--unwire-agents` path (FEAT-03): calls each targeted agent's
+ * The `--unwire-agents` path: calls each targeted agent's
  * `cleanup()`, removes the agentenv-managed block from its user-scope
  * instruction file, and — on a full unwire (no specific agents named) —
  * also strips the shared project/user AGENTS.md/CLAUDE.md and, with

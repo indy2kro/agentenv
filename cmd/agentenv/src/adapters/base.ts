@@ -14,7 +14,7 @@ export interface AdapterConfig {
   rtkInit?: RtkInitFn;
   /**
    * Injectable rtk-version probe (RtkDelegationAdapter's proactive
-   * capability check, FEAT-09); defaults to the real `rtk --version`/`mise
+   * capability check); defaults to the real `rtk --version`/`mise
    * which rtk` probe.
    */
   checkRtkInstallation?: typeof checkRtkInstallation;

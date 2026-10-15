@@ -30,7 +30,7 @@ export interface RtkDelegationOptions {
    * Directories a global `rtk init` delegation writes into besides `configDir`
    * (e.g. Cursor's `-g` install writes the shared RTK.md anchor into Claude
    * Code's `~/.claude`, and on Windows `rtk` errors instead of creating that
-   * directory itself if it isn't already there — see FEAT-06 follow-up).
+   * directory itself if it isn't already there).
    */
   extraGlobalDirs?: string[];
 }

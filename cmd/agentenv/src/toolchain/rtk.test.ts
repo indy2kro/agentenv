@@ -59,7 +59,7 @@ describe('isUnsupportedRtkAgentError', () => {
     );
   });
 
-  it('also recognizes the version-verified-unsupported synthetic message (FEAT-09)', () => {
+  it('also recognizes the version-verified-unsupported synthetic message', () => {
     assert.equal(
       isUnsupportedRtkAgentError(
         ['rtk 0.42.4 does not yet support "vibe" as an --agent value'],
@@ -70,7 +70,7 @@ describe('isUnsupportedRtkAgentError', () => {
   });
 });
 
-describe('parseRtkVersion (FEAT-09)', () => {
+describe('parseRtkVersion', () => {
   it('extracts the leading X.Y.Z from rtk --version output', () => {
     assert.deepEqual(parseRtkVersion('rtk 0.42.4'), [0, 42, 4]);
     assert.deepEqual(parseRtkVersion('0.49.0'), [0, 49, 0]);
@@ -83,7 +83,7 @@ describe('parseRtkVersion (FEAT-09)', () => {
   });
 });
 
-describe('compareRtkVersions (FEAT-09)', () => {
+describe('compareRtkVersions', () => {
   it('compares major, then minor, then patch', () => {
     assert.equal(compareRtkVersions([0, 42, 4], [0, 49, 0]), -1);
     assert.equal(compareRtkVersions([0, 49, 0], [0, 42, 4]), 1);
@@ -92,7 +92,7 @@ describe('compareRtkVersions (FEAT-09)', () => {
   });
 });
 
-describe('isRtkAgentSupportedByVersion (FEAT-09)', () => {
+describe('isRtkAgentSupportedByVersion', () => {
   it('returns null (unknown) for an agent with no verified minimum, e.g. vibe today', () => {
     assert.equal(RTK_AGENT_MIN_VERSIONS.vibe, undefined);
     assert.equal(isRtkAgentSupportedByVersion('vibe', '0.42.4'), null);

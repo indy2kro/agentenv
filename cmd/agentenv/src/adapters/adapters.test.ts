@@ -158,7 +158,7 @@ describe('Codex CLI adapter', () => {
     });
   });
 
-  it('honors CODEX_HOME over the default ~/.codex (SWEEP-03)', async () => {
+  it('honors CODEX_HOME over the default ~/.codex', async () => {
     await withHome(tempHome(), async () => {
       const home = process.env.HOME as string;
       const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-codex-relocated-'));
@@ -219,7 +219,7 @@ describe('GitHub Copilot adapter', () => {
     });
   });
 
-  it('honors XDG_CONFIG_HOME over the default ~/.config (SWEEP-03)', async () => {
+  it('honors XDG_CONFIG_HOME over the default ~/.config', async () => {
     await withHome(tempHome(), async () => {
       const home = process.env.HOME as string;
       const xdgHome = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-copilot-xdg-'));
@@ -278,7 +278,7 @@ describe('OpenCode adapter', () => {
     });
   });
 
-  it('honors XDG_CONFIG_HOME over the default ~/.config (SWEEP-03)', async () => {
+  it('honors XDG_CONFIG_HOME over the default ~/.config', async () => {
     await withHome(tempHome(), async () => {
       const home = process.env.HOME as string;
       const xdgHome = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-opencode-xdg-'));

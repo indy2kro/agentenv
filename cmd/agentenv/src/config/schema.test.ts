@@ -125,7 +125,7 @@ describe('configuration persistence', () => {
   });
 });
 
-describe('saveConfig (BUG-09)', () => {
+describe('saveConfig', () => {
   it('does not rewrite the file — preserving hand-written comments — when the config is unchanged', () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-config-'));
     const configPath = path.join(directory, 'agentenv.toml');
@@ -856,7 +856,7 @@ describe('loadConfig user-scope resolution', () => {
   });
 });
 
-describe('loadConfig layerUserConfig (FEAT-08)', () => {
+describe('loadConfig layerUserConfig', () => {
   function withUserConfig(userToml: string, fn: (userConfigDir: string) => void): void {
     const originalXdg = process.env.XDG_CONFIG_HOME;
     const xdg = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-xdg-'));

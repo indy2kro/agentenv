@@ -216,11 +216,11 @@ function scopeFromConfigPath(configPath: string): 'project' | 'user' {
 
 /**
  * The directory a project-scoped config's mise.toml/AGENTS.md/etc. actually
- * live in. findConfigPath() now searches parent directories (FEAT-05), so
+ * live in. findConfigPath() now searches parent directories, so
  * that directory is no longer always process.cwd() — resolveScopeDir('project')
  * only knows about cwd, so a project config found in an ancestor directory
  * must use its own dirname instead, the same "derive from where the file was
- * found" fix SWEEP-01 applied to config.scope itself.
+ * found" fix applied to config.scope itself.
  */
 function resolveBaseDir(
   configPath: string,

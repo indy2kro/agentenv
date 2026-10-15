@@ -96,7 +96,7 @@ describe('SuperpowersAdapter', () => {
     assert.equal(result.agents[0].state, 'missing');
   });
 
-  it('detects "missing" (not "unsupported") when the claude CLI itself is not on PATH (UX-05)', async () => {
+  it('detects "missing" (not "unsupported") when the claude CLI itself is not on PATH', async () => {
     const { runner } = fakeRunner(() => ({
       success: false,
       exitCode: null,

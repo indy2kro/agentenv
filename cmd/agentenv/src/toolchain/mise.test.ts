@@ -504,7 +504,7 @@ describe('toolAvailabilityClassification', () => {
 
   it('marks a fallback tool manual when absent but resolvable when on PATH', () => {
     // tokei is never handed to mise, but `apt install tokei` on Linux puts it
-    // on PATH — then it IS installed, just not via mise (BUG-16): report it
+    // on PATH — then it IS installed, just not via mise: report it
     // as resolvable instead of nagging the user to install what they have.
     assert.equal(
       toolAvailabilityClassification('tokei', 'tokei', empty, resolvable(null), noShim),

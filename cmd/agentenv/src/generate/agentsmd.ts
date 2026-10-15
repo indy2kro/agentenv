@@ -387,7 +387,7 @@ export type MarkerUpdatePlan =
 /**
  * Decide what updateWithMarkers() would do to `filePath`, without writing
  * anything (it still reads the existing file, if any). The single source of
- * truth for both the real write and `apply --dry-run`'s preview (FEAT-06),
+ * truth for both the real write and `apply --dry-run`'s preview,
  * so they can never disagree about what counts as a change.
  */
 export function planMarkerUpdate(
@@ -521,7 +521,7 @@ export type MarkerRemovalPlan =
 
 /**
  * Decide what removeMarkerBlock() would do to `filePath` — the read half of
- * an unwire (FEAT-03), mirroring planMarkerUpdate()'s role for apply. A file
+ * an unwire, mirroring planMarkerUpdate()'s role for apply. A file
  * that contains only the managed block (nothing else before/after it, once
  * whitespace is trimmed) is deleted outright rather than left as an empty
  * shell; a file with user content around the block keeps that content and
@@ -571,7 +571,7 @@ export function planMarkerRemoval(
 
 /**
  * Remove the agentenv-managed block from `filePath` (the write half of an
- * unwire, FEAT-03). Deletes the file when it held only the managed block;
+ * unwire). Deletes the file when it held only the managed block;
  * otherwise strips just the block and preserves the surrounding user
  * content. A file with no markers, or that doesn't exist, is left untouched.
  */

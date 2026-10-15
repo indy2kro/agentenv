@@ -414,7 +414,7 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
 export interface LoadConfigOptions {
   /**
    * Merge a discovered user-scope config in beneath a project-scope one,
-   * instead of the project file shadowing it completely (FEAT-08) — a
+   * instead of the project file shadowing it completely — a
    * project config only needs to state what it wants to override; anything
    * it leaves out falls through to the user config, then to DEFAULT_CONFIG.
    * Off by default, so every existing single-file caller — including the
@@ -669,8 +669,8 @@ function copyUnknownKeys(
  * field `config` sets wins, everything it leaves unset falls through to
  * `base`'s value. Passing a config already merged with DEFAULT_CONFIG as
  * `base` (rather than DEFAULT_CONFIG itself) is what layers a project
- * config over a user config instead of over hardcoded defaults (FEAT-09 —
- * loadConfig()'s `layerUserConfig` option).
+ * config over a user config instead of over hardcoded defaults
+ * (loadConfig()'s `layerUserConfig` option).
  */
 function mergeWithDefaults(
   config: AgentenvConfig,

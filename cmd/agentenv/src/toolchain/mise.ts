@@ -80,7 +80,7 @@ export interface MiseTool {
  * of reproducing the upstream failure on every user machine.
  */
 export const PINNED_TOOL_VERSIONS: Record<string, string> = {
-  // FEAT-09 pin review (2026-09-23): a real (non-mise, bare-PATH) rtk 0.42.4
+  // Pin review (2026-09-23): a real (non-mise, bare-PATH) rtk 0.42.4
   // binary on this machine confirms vibe is still unsupported (`rtk init
   // --agent`'s enum has no "vibe" entry) — see toolchain/rtk.ts's
   // RTK_AGENT_MIN_VERSIONS doc comment. That doesn't establish whether the

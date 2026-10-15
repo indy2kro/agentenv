@@ -216,7 +216,7 @@ describe('gatherStatus', () => {
     assert.ok(!('integrationDetails' in json));
   });
 
-  it('derives baseDir from where a project config was actually found, not resolveScopeDir(scope) (FEAT-05)', async () => {
+  it('derives baseDir from where a project config was actually found, not resolveScopeDir(scope)', async () => {
     // findConfigPath now searches parent directories, so a project config
     // discovered from e.g. `repo/src/commands` no longer lives at cwd — the
     // real fix here is that baseDir must follow the config's own directory,
