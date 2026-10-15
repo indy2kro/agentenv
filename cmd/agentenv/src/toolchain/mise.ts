@@ -9,7 +9,7 @@ import * as path from 'path';
 import * as child_process from 'child_process';
 import { AgentenvConfig, BINARY_MAP, TOOL_KEYS, TOOL_TIERS } from '../config/schema.js';
 import { resolveBinary } from '../adapters/detect.js';
-import { writeFileWithVerify } from '../utils/fs-retry.js';
+import { writeFileWithRetry, writeFileWithVerify } from '../utils/fs-retry.js';
 import { FALLBACK_REQUIRED_TOOLS, isPlatformUnsupported, requiresFallback } from './fallbacks.js';
 import { failGlyph, successGlyph } from '../ui/theme.js';
 import {
@@ -377,7 +377,7 @@ export function ensureGlobalShimsDir(statePath?: string): {
     const existing = fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf-8') : '';
     const updated = upsertShimsDir(existing, dir);
     if (updated !== existing) {
-      fs.writeFileSync(configPath, updated);
+      writeFileWithRetry(configPath, updated);
       if (statePath) {
         recordShimsDirState(configPath, existing, tomlPath(dir), statePath);
       }

@@ -9,6 +9,7 @@
 
 import * as child_process from 'child_process';
 import * as fs from 'fs';
+import { writeFileWithRetry } from '../utils/fs-retry.js';
 import * as path from 'path';
 import { resolveBinary } from '../adapters/detect.js';
 import { AGENT_KEYS, resolveIntegrationScope } from '../config/schema.js';
@@ -90,7 +91,12 @@ export class SuperpowersAdapter implements IntegrationAdapter {
 
   constructor(deps: SuperpowersAdapterDeps = {}) {
     this.runClaudeCli = deps.runClaudeCli ?? defaultClaudeCliRunner;
-    this.fsImpl = deps.fs ?? fs;
+    this.fsImpl = deps.fs ?? {
+      existsSync: (p) => fs.existsSync(p),
+      readFileSync: (p, enc) => fs.readFileSync(p, enc),
+      writeFileSync: (p, c) => writeFileWithRetry(p, c),
+      mkdirSync: (p, o) => void fs.mkdirSync(p, o),
+    };
   }
 
   getName(): string {
