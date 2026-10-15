@@ -7,6 +7,7 @@
  */
 
 import { Argument, Command } from 'commander';
+import { AGENT_KEYS, TOOL_KEYS } from '../config/schema.js';
 
 export const COMPLETION_SHELLS = ['bash', 'zsh', 'fish', 'powershell'] as const;
 export type CompletionShell = (typeof COMPLETION_SHELLS)[number];
@@ -20,13 +21,30 @@ export interface CompletionCommandModel {
   description: string;
   /** Command flags plus the program-level globals (always suggested). */
   flags: string[];
+  /** Positional argument values worth suggesting (tool/agent keys for add/remove/uninstall). */
+  positionals: string[];
 }
 
 export interface CompletionModel {
   program: string;
   globalFlags: string[];
   commands: CompletionCommandModel[];
+  /** Fixed value sets for flags that take one (e.g. `--scope` → project, user). */
+  flagValues: Record<string, string[]>;
 }
+
+/** Fixed flag values; kept next to the model so the scripts and tests share one source. */
+const FLAG_VALUES: Record<string, string[]> = {
+  '--scope': ['project', 'user'],
+  '--shell-fix': ['auto', 'always', 'never'],
+};
+
+/** Positional values per command, drawn from the config's own key lists. */
+const POSITIONAL_VALUES: Record<string, string[]> = {
+  add: [...AGENT_KEYS, ...TOOL_KEYS],
+  remove: [...AGENT_KEYS, ...TOOL_KEYS],
+  uninstall: [...TOOL_KEYS],
+};
 
 function optionWords(options: Command['options']): string[] {
   const words: string[] = [];
@@ -48,8 +66,9 @@ export function buildCompletionModel(root: Command): CompletionModel {
     aliases: command.aliases(),
     description: oneLine(command.description()),
     flags: [...new Set([...optionWords(command.options), ...globalFlags])],
+    positionals: POSITIONAL_VALUES[command.name()] ?? [],
   }));
-  return { program: root.name(), globalFlags, commands };
+  return { program: root.name(), globalFlags, commands, flagValues: FLAG_VALUES };
 }
 
 function commandWords(model: CompletionModel): string[] {
@@ -60,8 +79,14 @@ export function generateBash(model: CompletionModel): string {
   const cases = model.commands
     .flatMap((command) =>
       [command.name, ...command.aliases].map(
-        (name) => `    ${name}) flags="${command.flags.join(' ')}" ;;`,
+        (name) => `    ${name}) flags="${[...command.flags, ...command.positionals].join(' ')}" ;;`,
       ),
+    )
+    .join('\n');
+  const valueCases = Object.entries(model.flagValues)
+    .map(
+      ([flag, values]) =>
+        `    ${flag}) COMPREPLY=( $(compgen -W "${values.join(' ')}" -- "\${cur}") ); return 0 ;;`,
     )
     .join('\n');
   return `#!/usr/bin/env bash
@@ -75,6 +100,9 @@ _${model.program}_completions() {
     COMPREPLY=( $(compgen -W "${COMPLETION_SHELLS.join(' ')}" -- "\${cur}") )
     return 0
   fi
+  case "\${prev}" in
+${valueCases}
+  esac
   if [ "\${COMP_CWORD}" -eq 1 ]; then
     COMPREPLY=( $(compgen -W "${commandWords(model).join(' ')} ${model.globalFlags.join(' ')}" -- "\${cur}") )
     return 0
@@ -108,9 +136,12 @@ export function generateZsh(model: CompletionModel): string {
   const cases = model.commands
     .flatMap((command) =>
       [command.name, ...command.aliases].map(
-        (name) => `    ${name}) flags=(${command.flags.join(' ')}) ;;`,
+        (name) => `    ${name}) flags=(${[...command.flags, ...command.positionals].join(' ')}) ;;`,
       ),
     )
+    .join('\n');
+  const valueCases = Object.entries(model.flagValues)
+    .map(([flag, values]) => `    ${flag}) compadd -- ${values.join(' ')}; return ;;`)
     .join('\n');
   return `#compdef ${model.program}
 # Zsh completion for ${model.program}. Load with: source <(${model.program} completion zsh)
@@ -131,6 +162,9 @@ ${shellEntries}
     _describe -t shells '${model.program} completion shell' shells
     return
   fi
+  case "\${words[CURRENT-1]}" in
+${valueCases}
+  esac
   local -a flags
   case "\${words[2]}" in
 ${cases}
@@ -175,6 +209,14 @@ export function generateFish(model: CompletionModel): string {
     lines.push(
       `complete -c ${model.program} -n '__fish_seen_subcommand_from ${seen}' ${fishWordFlags(command.flags)}`,
     );
+    if (command.positionals.length > 0) {
+      lines.push(
+        `complete -c ${model.program} -n '__fish_seen_subcommand_from ${seen}' -a '${command.positionals.join(' ')}'`,
+      );
+    }
+  }
+  for (const [flag, values] of Object.entries(model.flagValues)) {
+    lines.push(`complete -c ${model.program} -l ${flag.slice(2)} -x -a '${values.join(' ')}'`);
   }
   return `${lines.join('\n')}\n`;
 }
@@ -193,9 +235,13 @@ export function generatePowerShell(model: CompletionModel): string {
   const cases = model.commands
     .flatMap((command) =>
       [command.name, ...command.aliases].map(
-        (name) => `    '${name}' = @(${command.flags.map((flag) => `'${flag}'`).join(', ')})`,
+        (name) =>
+          `    '${name}' = @(${[...command.flags, ...command.positionals].map((flag) => `'${flag}'`).join(', ')})`,
       ),
     )
+    .join('\n');
+  const flagValueEntries = Object.entries(model.flagValues)
+    .map(([flag, values]) => `    '${flag}' = @(${values.map((value) => `'${value}'`).join(', ')})`)
     .join('\n');
 
   return `# PowerShell completion for ${model.program}. Load with: ${model.program} completion powershell | Out-String | Invoke-Expression
@@ -207,8 +253,15 @@ Register-ArgumentCompleter -Native -CommandName '${psEscape(model.program)}' -Sc
   $byCommand = @{
 ${cases}
   }
+  $flagValues = @{
+${flagValueEntries}
+  }
   $elements = @($commandAst.CommandElements | ForEach-Object { $_.ToString() })
-  $candidates = if ($elements.Count -gt 1 -and $elements[1] -eq 'completion') {
+  $prevIndex = if ($wordToComplete) { $elements.Count - 2 } else { $elements.Count - 1 }
+  $prev = if ($prevIndex -ge 0) { $elements[$prevIndex] } else { '' }
+  $candidates = if ($flagValues.ContainsKey($prev)) {
+    $flagValues[$prev]
+  } elseif ($elements.Count -gt 1 -and $elements[1] -eq 'completion') {
     $shells + $globals
   } elseif ($elements.Count -gt 1 -and $byCommand.ContainsKey($elements[1])) {
     $byCommand[$elements[1]] + $globals
