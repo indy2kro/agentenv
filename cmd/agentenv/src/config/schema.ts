@@ -337,7 +337,7 @@ export const BINARY_MAP: Record<string, string> = {
   fd: 'fd',
   jq: 'jq',
   rtk: 'rtk',
-  ast_grep: 'sg',
+  ast_grep: 'ast-grep',
   git_delta: 'delta',
   gh: 'gh',
   difftastic: 'difft',

@@ -958,3 +958,9 @@ describe('loadConfig layerUserConfig (FEAT-08)', () => {
     }
   });
 });
+
+describe('ast_grep binary name', () => {
+  it('uses ast-grep, since `sg` is shadow-utils set-group on Linux', () => {
+    assert.equal(BINARY_MAP.ast_grep, 'ast-grep');
+  });
+});

@@ -56,7 +56,7 @@ describe('resolveToolArgs', () => {
   const targets = [
     { key: 'ripgrep', miseName: 'ripgrep', binary: 'rg' },
     { key: 'git_delta', miseName: 'delta', binary: 'delta' },
-    { key: 'ast_grep', miseName: 'ast-grep', binary: 'sg' },
+    { key: 'ast_grep', miseName: 'ast-grep', binary: 'ast-grep' },
   ];
 
   it('resolves key, binary, and miseName forms', () => {
