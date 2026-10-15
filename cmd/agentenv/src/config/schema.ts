@@ -467,10 +467,14 @@ export function loadConfig(configPath?: string, options: LoadConfigOptions = {})
       ) {
         try {
           base = mergeWithDefaults(normalizeConfig(readAndParseToml(userConfigPath)));
-        } catch {
+        } catch (userErr) {
           // A broken/unreadable user config must not block a valid project
           // config from loading — fall back to DEFAULT_CONFIG, same as if
-          // no user config existed at all.
+          // no user config existed at all. Say so on stderr, though, so the
+          // user knows their user-level preferences are not being applied.
+          console.warn(
+            `warning: ignoring unreadable user config ${userConfigPath}: ${userErr instanceof Error ? userErr.message : String(userErr)}`,
+          );
         }
       }
     }

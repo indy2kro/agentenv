@@ -919,10 +919,19 @@ describe('loadConfig layerUserConfig', () => {
       const configPath = path.join(directory, 'agentenv.toml');
       fs.writeFileSync(configPath, 'scope = "project"\n[agents]\nclaude_code = true\n');
 
-      const config = loadConfig(configPath, { layerUserConfig: true });
+      const warnings: string[] = [];
+      const originalWarn = console.warn;
+      console.warn = (message?: unknown) => warnings.push(String(message));
+      let config: ReturnType<typeof loadConfig>;
+      try {
+        config = loadConfig(configPath, { layerUserConfig: true });
+      } finally {
+        console.warn = originalWarn;
+      }
 
       assert.equal(config.agents?.claude_code, true);
       assert.equal(config.agents?.copilot, false); // DEFAULT_CONFIG fallback, not a thrown error.
+      assert.ok(warnings.some((w) => w.includes('ignoring unreadable user config')));
     });
   });
 
