@@ -11,7 +11,7 @@ import * as child_process from 'child_process';
 import * as fs from 'fs';
 import { writeFileWithRetry } from '../utils/fs-retry.js';
 import * as path from 'path';
-import { resolveBinary } from '../adapters/detect.js';
+import { needsWindowsShell, resolveBinary } from '../adapters/detect.js';
 import { AGENT_KEYS, resolveIntegrationScope } from '../config/schema.js';
 import type { AgentKey, IntegrationConfig } from '../config/schema.js';
 import type { IntegrationAdapter, IntegrationAgentState, IntegrationResult } from './base.js';
@@ -45,12 +45,22 @@ const defaultClaudeCliRunner: ClaudeCliRunner = (args, cwd) => {
   }
   try {
     // `plugin marketplace add`/`plugin install` fetch from GitHub.
-    const result = child_process.spawnSync(claudePath, args, {
-      cwd,
-      encoding: 'utf-8',
-      stdio: 'pipe',
-      timeout: 60000,
-    });
+    // npm installs claude as a .cmd on Windows, which Node refuses to spawn
+    // directly; run it through the shell with the (fixed, agentenv-built)
+    // arguments quoted.
+    const viaShell = needsWindowsShell(claudePath);
+    const quote = (value: string): string => (/[\s"&|<>^]/.test(value) ? `"${value}"` : value);
+    const result = child_process.spawnSync(
+      viaShell ? quote(claudePath) : claudePath,
+      viaShell ? args.map(quote) : args,
+      {
+        cwd,
+        encoding: 'utf-8',
+        stdio: 'pipe',
+        timeout: 60000,
+        shell: viaShell,
+      },
+    );
     return {
       success: result.status === 0,
       exitCode: result.status,

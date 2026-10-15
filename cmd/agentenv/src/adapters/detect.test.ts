@@ -7,6 +7,8 @@ import {
   AGENT_COMMANDS,
   detectInstalledAgents,
   isAgentInstalled,
+  needsWindowsShell,
+  pickLookupResult,
   resolveBinary,
 } from './detect.js';
 import { AGENT_KEYS } from '../config/schema.js';
@@ -74,5 +76,24 @@ describe('agent catalog: detection', () => {
 
   it('isAgentInstalled returns false for a missing binary', () => {
     assert.equal(isAgentInstalled('gemini_cli', fakeDetect([])), false);
+  });
+});
+
+describe('Windows binary lookup', () => {
+  it("prefers an executable extension over npm's extensionless shim", () => {
+    const out = ['C:\\npm\\claude', 'C:\\npm\\claude.cmd', ''].join('\r\n');
+    assert.equal(pickLookupResult(out, true), 'C:\\npm\\claude.cmd');
+  });
+
+  it('keeps the first line on other platforms and when nothing has an extension', () => {
+    assert.equal(pickLookupResult('/usr/bin/a\n/opt/a\n', false), '/usr/bin/a');
+    assert.equal(pickLookupResult('C:\\x\\tool\n', true), 'C:\\x\\tool');
+    assert.equal(pickLookupResult('', true), null);
+  });
+
+  it('needs a shell only for .cmd/.bat on Windows', () => {
+    assert.equal(needsWindowsShell('C:\\npm\\claude.cmd', 'win32'), true);
+    assert.equal(needsWindowsShell('C:\\bin\\claude.exe', 'win32'), false);
+    assert.equal(needsWindowsShell('/x/claude.cmd', 'linux'), false);
   });
 });
