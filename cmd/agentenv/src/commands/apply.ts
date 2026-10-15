@@ -388,7 +388,7 @@ export async function applyConfiguration(
       );
     }
 
-    if (errors.length === 0) {
+    if (install.success) {
       const availability = verifyToolAvailability(config, {
         cwd: baseDir,
         miseTomlPath: misePath,
