@@ -487,7 +487,8 @@ export function loadConfig(configPath?: string, options: LoadConfigOptions = {})
 /**
  * Save configuration to agentenv.toml file
  */
-export function saveConfig(config: AgentenvConfig, configPath: string): void {
+/** Returns true when the file was written, false when it already held this config. */
+export function saveConfig(config: AgentenvConfig, configPath: string): boolean {
   try {
     // Re-serializing an unchanged config from scratch would strip whatever
     // hand-written comments/formatting the file has (agentenv.toml.example
@@ -497,7 +498,7 @@ export function saveConfig(config: AgentenvConfig, configPath: string): void {
     // through to a normal save, which gives the user a valid file back.
     if (fs.existsSync(configPath)) {
       try {
-        if (isDeepStrictEqual(loadConfig(configPath), config)) return;
+        if (isDeepStrictEqual(loadConfig(configPath), config)) return false;
       } catch {
         // Fall through to a normal save.
       }
@@ -505,6 +506,7 @@ export function saveConfig(config: AgentenvConfig, configPath: string): void {
     fs.mkdirSync(path.dirname(configPath), { recursive: true });
     const result = writeFileWithVerify(configPath, configToToml(config));
     if (!result.success) throw new Error(result.message);
+    return true;
   } catch (err) {
     throw new Error(`Failed to save config: ${err}`, { cause: err });
   }

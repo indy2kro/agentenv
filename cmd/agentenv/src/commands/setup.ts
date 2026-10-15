@@ -77,11 +77,11 @@ export async function saveAndApply(
   if (toSave === null) {
     console.log(`Using existing configuration: ${file} (left unchanged)\n`);
   } else {
-    if (fs.existsSync(file)) {
-      console.log(`Note: ${file} already exists — setup is idempotent and updates it in place.\n`);
-    }
-    saveConfig(toSave, file);
-    console.log(`Saved configuration: ${file}\n`);
+    const existed = fs.existsSync(file);
+    const changed = saveConfig(toSave, file);
+    if (!changed) console.log(`Configuration already up to date: ${file} (left unchanged)\n`);
+    else if (existed) console.log(`Updated configuration: ${file}\n`);
+    else console.log(`Saved configuration: ${file}\n`);
   }
 
   const apply = deps.applyConfiguration ?? applyConfiguration;
@@ -130,7 +130,7 @@ export interface UnattendedSetupDeps extends SaveAndApplyDeps {
 }
 
 /**
- * `--agents`/`--superpowers` only take effect when unattendedSetup builds a
+ * `--agents`/`--superpowers`/`--no-rtk`/`--no-tier2` only take effect when unattendedSetup builds a
  * fresh default config; reusing an existing agentenv.toml (the common case)
  * applies it as-is, silently dropping whatever the caller typed unless we
  * say so here.
@@ -139,6 +139,8 @@ function ignoredUnattendedFlags(options: SetupCommandOptions): string[] {
   const ignored: string[] = [];
   if (options.agents !== undefined) ignored.push('--agents');
   if (options.superpowers !== undefined) ignored.push('--superpowers');
+  if (options.rtk === false) ignored.push('--no-rtk');
+  if (options.tier2 === false) ignored.push('--no-tier2');
   return ignored;
 }
 
@@ -255,7 +257,7 @@ export async function unattendedSetup(
           agents = parseAgentsInput(options.agents);
         } catch (error) {
           console.error(theme.fail(error instanceof Error ? error.message : String(error)));
-          process.exitCode = 1;
+          process.exitCode = 2; // usage error: unknown agent name
           return;
         }
       } else {

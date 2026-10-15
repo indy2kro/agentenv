@@ -270,7 +270,7 @@ describe('unattended setup pipeline', () => {
     try {
       process.chdir(dir);
       await unattendedSetup(
-        { yes: true, agents: 'codex_cli', superpowers: 'v7.0.0' },
+        { yes: true, agents: 'codex_cli', superpowers: 'v7.0.0', rtk: false, tier2: false },
         {
           misePrereqCheckDeps: { isInstalled: () => true, version: () => '3.2.1' },
           applyConfiguration: stubApply,
@@ -285,6 +285,8 @@ describe('unattended setup pipeline', () => {
 
     assert.ok(warnings.some((line) => line.includes('--agents')));
     assert.ok(warnings.some((line) => line.includes('--superpowers')));
+    assert.ok(warnings.some((line) => line.includes('--no-rtk')));
+    assert.ok(warnings.some((line) => line.includes('--no-tier2')));
   });
 
   it('does not warn when no unattended flags are passed alongside an existing config', async () => {
@@ -363,5 +365,41 @@ describe('interactiveScopeIgnoredWarning', () => {
 
   it('is silent when --scope was not passed', () => {
     assert.equal(interactiveScopeIgnoredWarning(undefined), undefined);
+  });
+});
+
+describe('unattended setup argument errors', () => {
+  it('exits 2 (usage error) for an unknown agent name', async () => {
+    const dir = tempDir('agentenv-badagent-');
+    const xdgDir = tempDir('agentenv-badagent-xdg-');
+    const originalXdg = process.env.XDG_CONFIG_HOME;
+    const stubApply: typeof applyConfiguration = async () => {
+      throw new Error('apply must not run for a usage error');
+    };
+    const originalLog = console.log;
+    const originalError = console.error;
+    const originalCwd = process.cwd();
+    const originalExit = process.exitCode;
+    console.log = () => {};
+    console.error = () => {};
+    try {
+      process.env.XDG_CONFIG_HOME = xdgDir;
+      process.chdir(dir);
+      await unattendedSetup(
+        { yes: true, agents: 'not_an_agent' },
+        {
+          misePrereqCheckDeps: { isInstalled: () => true, version: () => '3.2.1' },
+          applyConfiguration: stubApply,
+        },
+      );
+      assert.equal(process.exitCode, 2);
+    } finally {
+      if (originalXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = originalXdg;
+      process.exitCode = originalExit;
+      process.chdir(originalCwd);
+      console.log = originalLog;
+      console.error = originalError;
+    }
   });
 });
