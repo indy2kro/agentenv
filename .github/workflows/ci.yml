@@ -67,6 +67,9 @@ jobs:
       - name: Test coverage gate
         if: matrix.os == 'ubuntu-latest' && matrix.node-version == '24'
         run: npm run test:coverage
+      - name: Per-file coverage floors
+        if: matrix.os == 'ubuntu-latest' && matrix.node-version == '24'
+        run: npm run test:coverage:files
       - name: Smoke (full CLI pipeline, stub rtk)
         run: npm run smoke
       - name: Verify CLI surface (version/help/completion)
