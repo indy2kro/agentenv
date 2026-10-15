@@ -242,6 +242,30 @@ describe('gatherStatus', () => {
     assert.equal(report.baseDir, path.join('C:', 'repo'));
   });
 
+  it('reports a Claude Code settings.json without the rtk hook as drift, not configured', async () => {
+    const report = await gatherStatus({
+      findConfigPath: () => '/tmp/agentenv.toml',
+      loadConfig: () => ({ ...noopConfig, rtk: { enabled: true } }),
+      resolveScopeDir: () => '/tmp',
+      validateConfig: () => ({ errors: [], warnings: [] }),
+      getEnabledAgents: () => ['claude_code'],
+      isAgentInstalled: () => true,
+      detectShell: () =>
+        ({
+          isWindows: false,
+          isPosixCompatible: true,
+          currentShell: 'bash',
+          missingUtilities: [],
+        }) as never,
+      fileExists: () => true,
+      fileContains: () => false,
+      hasManagedMarker: () => true,
+    });
+    const agent = report.agents.find((a) => a.key === 'claude_code');
+    assert.equal(agent?.configured, false);
+    assert.equal(agent?.drift, true);
+  });
+
   it('puts a load failure into validation.errors and keeps the path', async () => {
     const report = await gatherStatus({
       findConfigPath: () => '/tmp/agentenv.toml',
