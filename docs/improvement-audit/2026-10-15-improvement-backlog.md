@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-10-15
 
-Target: 40 · Found: 40 deduplicated items · Completed: 40/40 (BUG-11 partial: streamed `mise install` has no inactivity timeout)
+Target: 40 · Found: 40 deduplicated items · Completed: 40/40 (BUG-11: rtk probes fixed; the `mise install` inactivity timeout was deliberately dropped)
 
 > **How to use this document — read before implementing anything.**
 > As you finish each item, change `- [ ]` to `- [x]`, append ` ✅ <commit-sha>`,
@@ -87,7 +87,7 @@ Themes this round:
   `~/.claude/settings.json`, `~/.codex/config.toml` and the agent shell configs are rewritten in place. An interrupted apply (Ctrl-C, crash, antivirus lock mid-write) can leave a truncated file that the agent then refuses to load.
 - [x] **BUG-10** Tool verification is still skipped after a Tier 0 or trust error — `src/commands/apply.ts:391` · effort S · impact low
   BUG-07 last round stopped Tier 0 errors from skipping `mise install`. The verify step is still `if (errors.length === 0)`, so one failed shell-fix write hides which tools are actually missing.
-- [x] **BUG-11** (rtk probes done; streamed `mise install` still has no inactivity timeout) The `rtk --version` / `rtk gain` probes have no timeout, and neither does the streamed `mise install` — `src/toolchain/rtk.ts:245-262`, `toolchain/mise.ts:1125-1130` · effort S · impact low
+- [x] **BUG-11** (rtk probes done; the streamed `mise install` timeout was deliberately not added: killing a slow-but-working install is riskier than waiting) The `rtk --version` / `rtk gain` probes have no timeout, and neither does the streamed `mise install` — `src/toolchain/rtk.ts:245-262`, `toolchain/mise.ts:1125-1130` · effort S · impact low
   This is a regression of SWEEP-02 (2026-09-22): the later doctor rtk check added two spawns without a timeout, so a hung rtk freezes `doctor` indefinitely.
 - [x] **BUG-12** Check windsurf/vibe at the locations `rtk init` actually writes to (leftover from SWEEP-04, 2026-09-22) — `src/commands/status.ts:60-69`, `adapters/rtk-delegation.ts:111` · effort M · impact med
   Both places still look for `baseDir/RTK.md`, which an earlier live probe suggested is wrong. Verified against rtk 0.49.0: windsurf writes `.windsurfrules` in the project dir; vibe registers `~/.vibe/hooks.toml`. Status, the adapters and the rtk stub now use those.
