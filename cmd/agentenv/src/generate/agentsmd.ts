@@ -215,15 +215,17 @@ export function generateClaudeMd(config: AgentenvConfig = DEFAULT_CONFIG): strin
   lines.push('');
   lines.push('## General Instructions');
   lines.push('');
-  lines.push('Please see [AGENTS.md](./AGENTS.md) for the complete list of AI agent instructions.');
+  // Claude Code loads `@path` imports but does not follow markdown links.
+  lines.push('@AGENTS.md');
   lines.push('');
   lines.push('The instructions in AGENTS.md apply to Claude Code as well.');
   lines.push('');
   lines.push('## Claude Code Specific Notes');
   lines.push('');
   lines.push('- AGENTS.md is the source of truth for tool availability and usage instructions');
-  lines.push('- All tools listed in AGENTS.md are available for use');
-  lines.push('- RTK hooks are configured to optimize command execution');
+  if (config.rtk?.enabled === true) {
+    lines.push('- RTK hooks are configured to optimize command execution');
+  }
   lines.push('');
   lines.push(markerEnd);
 

@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import {
+  generateClaudeMd,
   generateAgentsMd,
   generateInstructionFiles,
   removeMarkerBlock,
@@ -301,5 +302,24 @@ describe('generateInstructionFiles (config.generate.files)', () => {
       '/base',
     );
     assert.deepEqual(files, []);
+  });
+});
+
+describe('generateClaudeMd', () => {
+  it('imports AGENTS.md with an @import, not a markdown link', () => {
+    const out = generateClaudeMd({ rtk: { enabled: false } } as AgentenvConfig);
+    assert.match(out, /^@AGENTS\.md$/m);
+    assert.doesNotMatch(out, /\]\(\.\/AGENTS\.md\)/);
+  });
+
+  it('only claims RTK hooks when rtk is enabled', () => {
+    assert.doesNotMatch(
+      generateClaudeMd({ rtk: { enabled: false } } as AgentenvConfig),
+      /RTK hooks are configured/,
+    );
+    assert.match(
+      generateClaudeMd({ rtk: { enabled: true } } as AgentenvConfig),
+      /RTK hooks are configured/,
+    );
   });
 });
