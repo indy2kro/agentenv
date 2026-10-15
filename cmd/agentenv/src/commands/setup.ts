@@ -144,15 +144,6 @@ function ignoredUnattendedFlags(options: SetupCommandOptions): string[] {
   return ignored;
 }
 
-/** --scope only steers unattended (--yes) setup; the interactive wizard has no scope prompt yet. */
-export function interactiveScopeIgnoredWarning(scope: ScopeValue | undefined): string | undefined {
-  if (scope === undefined) return undefined;
-  return (
-    `--scope is ignored by the interactive wizard (only --yes uses it); ` +
-    `run \`agentenv setup --yes --scope ${scope}\` for unattended setup at that scope.`
-  );
-}
-
 function warnIgnoredFlags(options: SetupCommandOptions, file: string): void {
   const ignored = ignoredUnattendedFlags(options);
   if (ignored.length === 0) return;
@@ -304,7 +295,10 @@ export const setupCommand = new Command()
   )
   .option('-y, --yes', 'unattended: use detected agents + defaults, or an existing config')
   .option('-a, --agents <agents>', 'comma-separated agents to configure (unattended)')
-  .option('--scope <scope>', 'configuration scope: project|user (default: project)')
+  .option(
+    '--scope <scope>',
+    'configuration scope: project|user (default: project; preselects the wizard prompt without --yes)',
+  )
   .option('--no-tier2', 'skip Tier 2 tools (unattended)')
   .option('--no-rtk', 'disable rtk command rewriting (unattended)')
   .option(
@@ -322,7 +316,5 @@ export const setupCommand = new Command()
       await unattendedSetup({ ...options, scope: scope.scope });
       return;
     }
-    const scopeWarning = interactiveScopeIgnoredWarning(scope.scope);
-    if (scopeWarning) console.warn(theme.warn(scopeWarning));
-    await runConfigWizard();
+    await runConfigWizard({ scope: scope.scope });
   });

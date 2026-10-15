@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { interactiveScopeIgnoredWarning, misePrereqCheck, unattendedSetup } from './setup.js';
+import { misePrereqCheck, unattendedSetup } from './setup.js';
 import { applyConfiguration } from './apply.js';
 import { DEFAULT_CONFIG, saveConfig } from '../config/schema.js';
 
@@ -353,18 +353,6 @@ describe('unattended setup pipeline', () => {
     assert.equal(process.exitCode, 1);
     process.exitCode = 0;
     assert.ok(errors.some((line) => /Invalid agentenv configuration/.test(line)));
-  });
-});
-
-describe('interactiveScopeIgnoredWarning', () => {
-  it('warns when --scope was passed', () => {
-    const warning = interactiveScopeIgnoredWarning('user');
-    assert.match(warning ?? '', /--scope is ignored by the interactive wizard/);
-    assert.match(warning ?? '', /--scope user/);
-  });
-
-  it('is silent when --scope was not passed', () => {
-    assert.equal(interactiveScopeIgnoredWarning(undefined), undefined);
   });
 });
 

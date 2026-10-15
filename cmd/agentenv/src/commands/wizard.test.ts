@@ -1,4 +1,6 @@
 import { describe, it } from 'node:test';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import assert from 'node:assert/strict';
 import type { checkbox, confirm, input, select } from '@inquirer/prompts';
 import { runConfigWizard } from './wizard.js';
@@ -317,5 +319,51 @@ describe('runConfigWizard — Superpowers integration', () => {
     );
 
     assert.equal(savedConfig?.integrations?.superpowers?.enabled, false);
+  });
+});
+
+describe('runConfigWizard — scope prompt', () => {
+  const runCapturingScopeDefault = async (
+    overrides: Partial<WizardDeps>,
+  ): Promise<{ scopeDefault: unknown; savedFile: string | undefined }> => {
+    let scopeDefault: unknown;
+    let savedFile: string | undefined;
+    const { deps } = fakePrompts(HAPPY_PATH_ANSWERS);
+    const select = (async (opts: { message: string; default?: unknown }) => {
+      if (opts.message === 'Scope:') {
+        scopeDefault = opts.default;
+        return opts.default;
+      }
+      return (HAPPY_PATH_ANSWERS as Record<string, unknown>)[opts.message];
+    }) as unknown as typeof import('@inquirer/prompts').select;
+    await withCapturedOutput(() =>
+      runConfigWizard(
+        baseDeps({
+          ...deps,
+          select,
+          saveAndApply: async (_config, file) => {
+            savedFile = file;
+          },
+          ...overrides,
+        }),
+      ),
+    );
+    return { scopeDefault, savedFile };
+  };
+
+  it('preselects the scope given by `setup --scope`', async () => {
+    const { scopeDefault } = await runCapturingScopeDefault({ scope: 'user' });
+    assert.equal(scopeDefault, 'user');
+  });
+
+  it('defaults to project when there is no existing config and no flag', async () => {
+    const { scopeDefault } = await runCapturingScopeDefault({});
+    assert.equal(scopeDefault, 'project');
+  });
+
+  it('saves over the project config that was found, even in an ancestor directory', async () => {
+    const found = path.join(os.tmpdir(), 'ancestor', 'agentenv.toml');
+    const { savedFile } = await runCapturingScopeDefault({ findConfigPath: () => found });
+    assert.equal(savedFile, found);
   });
 });
