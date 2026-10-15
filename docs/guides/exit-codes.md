@@ -1,8 +1,9 @@
 # Exit codes and machine-readable output
 
 `agentenv` is safe to drive from scripts: every command exits `0`, `1`, or
-`2` with a stable meaning, three commands (`status`, `doctor`, `shell-fix`)
-can emit a single JSON document on stdout, and a global `-q/--quiet` strips
+`2` with a stable meaning, most commands (`status`, `doctor`, `shell-fix`,
+`apply`, `update`, `uninstall`, `add`, `remove`) can emit a single JSON
+document on stdout, and a global `-q/--quiet` strips
 banner chrome while keeping the data lines.
 
 ## The exit-code contract
@@ -27,6 +28,7 @@ successful informational exits, not errors.
 | `status` | no validation errors AND no drift (see below) | config missing or invalid, or drift detected |
 | `update` | tools/runtime updated to latest | an update step failed, including a failed shims precondition |
 | `uninstall` | targets removed from the mise store (or nothing to remove — "Nothing to uninstall."); `--dry-run` previews and exits `0` | no config found, unknown tool argument, mise missing with real targets, a failed `mise ls --json`/`mise uninstall`, or a non-TTY run without `--yes` |
+| `add` / `remove` | the config was edited (and applied unless `--no-apply`), or there was nothing to change | no config found, invalid config, or the apply step failed. An unknown tool/agent key is a usage error (`2`) |
 | `doctor` | no `fail` items | any `fail` item (`warn` items do not flip the code) |
 | `shell-fix` | the manifest was shown, or `--revert` restored every recorded file (a no-op manifest also exits `0`) | `--revert` left at least one file untouched because you changed the value after agentenv wrote it |
 
@@ -60,9 +62,10 @@ successful informational exits, not errors.
 - a `custom_tools` entry marked `already_installed` has its OS-specific path
   missing on disk (status flags it as `MISSING on disk`).
 
-## `--json` (`status`, `doctor`, and `shell-fix` only)
+## `--json`
 
-`--json` is available on the read-only reporting commands. When set, the
+`--json` is available on `status`, `doctor`, `shell-fix`, `apply`, `update`,
+`uninstall`, `add` and `remove`. When set, the
 command emits a **single JSON document on stdout and nothing else** (diagnostics
 stay on stderr, which is silent on success), skips banner/color, and implies
 quiet mode. The process exit code still applies — it is set by the same logic
@@ -83,9 +86,13 @@ invalid config:
   or validation message(s) in `validation.errors`, all other collections
   empty, `exitCode: 1`.
 
-Passing `--json` to `setup`/`configure`/`apply`/`update`/`uninstall` is a usage
-error: it hits commander's unknown-option handling and exits `2`. The
-mutating commands' meaningful contract is the exit code, not a parsed body.
+The mutating commands (`apply`, `update`, `uninstall`, `add`, `remove`) emit
+one document on completion: `apply`/`update` use
+`{success, messages, errors, elapsedMs}` (`apply` adds `configPath`, `baseDir`
+and `warnings`), while `uninstall`/`add`/`remove` use `{success, message, ...}`.
+Only `status`, `doctor` and `shell-fix` mirror the exit code as `exitCode`; for
+the others the process exit code is the contract. `setup`/`configure` do not
+accept `--json` yet: it is a usage error and exits `2`.
 
 Example:
 
