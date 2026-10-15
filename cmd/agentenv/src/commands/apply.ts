@@ -1,3 +1,4 @@
+import { printJson } from '../cli/json.js';
 import { Command } from 'commander';
 import * as fs from 'fs';
 import {
@@ -18,7 +19,7 @@ import {
   configFilePath,
   findConfigPath,
   parseScopeFlag,
-  resolveScopeDir,
+  baseDirForConfig,
 } from '../config/scopes.js';
 import type { ScopeValue } from '../config/scopes.js';
 import type { AgentenvConfig } from '../config/schema.js';
@@ -40,8 +41,10 @@ import { shellFixStatePath } from '../shell/shell-fix-state.js';
 import type { RtkInitFn } from '../toolchain/rtk.js';
 import { isUnsupportedRtkAgentError } from '../toolchain/rtk.js';
 import {
+  ensureDirOnWindowsUserPath,
   ensureGlobalShimsDir,
   eulaPreflightHint,
+  shimsDir,
   generateMiseToml,
   isMiseInstalled,
   miseActivationHint,
@@ -63,6 +66,7 @@ import { normalizeOutput } from '../utils/output.js';
 import { colorizeLine, theme } from '../ui/theme.js';
 import { renderLogo, setQuietEnabled } from '../ui/output.js';
 import { printConfigPath, printMessages, printResult, reportValidation } from '../ui/report.js';
+import type { TimelineEntry } from '../ui/report.js';
 import { withSpinner } from '../ui/spinner.js';
 import type { Spinner } from '../ui/spinner.js';
 
@@ -72,6 +76,8 @@ export interface ApplyResult {
   errors: string[];
   /** Wall-clock milliseconds the apply took, for the end-of-run timing line. */
   elapsedMs?: number;
+  /** Messages and errors in the order the steps produced them (for human output). */
+  timeline?: TimelineEntry[];
 }
 
 export interface ApplyJsonResult {
@@ -207,6 +213,8 @@ export interface ApplyOptions {
    * flag). Takes precedence over the config file when set.
    */
   tier0Mode?: 'auto' | 'always' | 'never';
+  /** Add the mise shims dir to the Windows user PATH (`apply --fix-path`). */
+  fixPath?: boolean;
   /** Injectable Superpowers adapter dependencies (tests pass a claude stub). */
   superpowersDeps?: SuperpowersAdapterDeps;
   /**
@@ -308,8 +316,17 @@ export async function applyConfiguration(
   options: ApplyOptions = {},
 ): Promise<ApplyResult> {
   const startedAt = Date.now();
-  const messages: string[] = [];
-  const errors: string[] = [];
+  const timeline: TimelineEntry[] = [];
+  const track = (list: string[], kind: TimelineEntry['kind']): string[] => {
+    const push = list.push.bind(list);
+    list.push = (...items: string[]): number => {
+      for (const text of items) timeline.push({ kind, text });
+      return push(...items);
+    };
+    return list;
+  };
+  const messages = track([], 'message');
+  const errors = track([], 'error');
 
   // Step 0 — self-diagnose the prerequisite before touching anything, so a
   // missing mise fails loudly with install instructions instead of half
@@ -319,7 +336,7 @@ export async function applyConfiguration(
       errors.push('Prerequisite check failed: mise is not installed.');
       errors.push("agentenv uses mise to install and manage this project's tools.");
       errors.push(...miseInstallInstructions());
-      return { success: false, messages, errors, elapsedMs: Date.now() - startedAt };
+      return { success: false, messages, errors, elapsedMs: Date.now() - startedAt, timeline };
     }
     if (!options.skipPrereqMessage) {
       messages.push(prereqMessage());
@@ -368,6 +385,10 @@ export async function applyConfiguration(
   if (shouldRunMiseInstall(miseTomlWritten, options.skipMiseInstall === true)) {
     const shims = ensureGlobalShimsDir(shellFixStatePath());
     (shims.success ? messages : errors).push(shims.message);
+    if (options.fixPath) {
+      const fixed = ensureDirOnWindowsUserPath(shimsDir());
+      (fixed.success ? messages : errors).push(fixed.message);
+    }
 
     const trust = trustMiseToml(misePath, baseDir);
     (trust.success ? messages : errors).push(trust.message);
@@ -388,7 +409,7 @@ export async function applyConfiguration(
       );
     }
 
-    if (errors.length === 0) {
+    if (install.success) {
       const availability = verifyToolAvailability(config, {
         cwd: baseDir,
         miseTomlPath: misePath,
@@ -443,7 +464,13 @@ export async function applyConfiguration(
     for (const error of result.errors) errors.push(`Superpowers: ${error}`);
   }
 
-  return { success: errors.length === 0, messages, errors, elapsedMs: Date.now() - startedAt };
+  return {
+    success: errors.length === 0,
+    messages,
+    errors,
+    elapsedMs: Date.now() - startedAt,
+    timeline,
+  };
 }
 
 export const applyCommand = new Command()
@@ -456,6 +483,7 @@ export const applyCommand = new Command()
     'Tier 0 Windows shell fix: auto (default; only writes files with a TTY) | always (write even without a TTY — for an agent running apply) | never',
   )
   .option('--scope <scope>', 'config scope to apply: project|user (default: nearest config)')
+  .option('--fix-path', 'Windows: add the mise shims directory to your user PATH (opt-in)')
   .option('--json', 'emit a machine-readable JSON document on stdout')
   .action(
     async (
@@ -465,6 +493,7 @@ export const applyCommand = new Command()
         shellFix?: string;
         scope?: ScopeValue;
         json?: boolean;
+        fixPath?: boolean;
       },
       command: Command,
     ) => {
@@ -493,8 +522,15 @@ export const applyCommand = new Command()
       }
 
       /** Emit a single-error JSON failure document (json mode's equivalent of a themed console.error). */
-      const jsonFail = (error: string): void => {
-        console.log(JSON.stringify({ success: false, messages: [], errors: [error] }, null, 2));
+      const jsonFail = (error: string, configPath: string | null = null): void => {
+        printJson({
+          success: false,
+          configPath,
+          baseDir: null,
+          messages: [],
+          errors: [error],
+          warnings: [],
+        });
       };
 
       let config: AgentenvConfig;
@@ -522,7 +558,7 @@ export const applyCommand = new Command()
         config = loadConfig(configPath, { layerUserConfig: true });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        if (json) jsonFail(message);
+        if (json) jsonFail(message, configPath);
         else console.error(theme.fail(message));
         process.exitCode = 1;
         return;
@@ -532,13 +568,14 @@ export const applyCommand = new Command()
       const report = validateConfig(config);
       if (report.errors.length > 0) {
         if (json) {
-          console.log(
-            JSON.stringify(
-              { success: false, messages: [], errors: report.errors, warnings: report.warnings },
-              null,
-              2,
-            ),
-          );
+          printJson({
+            success: false,
+            configPath,
+            baseDir: null,
+            messages: [],
+            errors: report.errors,
+            warnings: report.warnings,
+          });
         } else {
           reportValidation(report, 'Configuration invalid — not applying.');
         }
@@ -547,7 +584,7 @@ export const applyCommand = new Command()
       }
       if (!json) reportValidation(report, 'Configuration invalid — not applying.');
 
-      const baseDir = resolveScopeDir(config.scope);
+      const baseDir = baseDirForConfig(configPath, config.scope);
       if (dryRun) {
         const files = [
           ...generateInstructionFiles(config, baseDir),
@@ -559,7 +596,7 @@ export const applyCommand = new Command()
 
         if (json) {
           const payload: ApplyDryRunJsonResult = { success: true, dryRun: true, ...plan };
-          console.log(JSON.stringify(payload, null, 2));
+          printJson(payload);
           return;
         }
 
@@ -598,6 +635,7 @@ export const applyCommand = new Command()
         applyConfiguration(config, baseDir, {
           skipMiseInstall: options.skipMiseInstall === true,
           tier0Mode,
+          fixPath: options.fixPath === true,
           // Streamed mise install progress is human-only chrome — it would
           // otherwise interleave raw text into the JSON document.
           onMiseInstall: json
@@ -614,18 +652,12 @@ export const applyCommand = new Command()
       );
 
       if (json) {
-        console.log(
-          JSON.stringify(
-            buildApplyJsonResult(result, { configPath, baseDir, warnings: report.warnings }),
-            null,
-            2,
-          ),
-        );
+        printJson(buildApplyJsonResult(result, { configPath, baseDir, warnings: report.warnings }));
         if (!result.success) process.exitCode = 1;
         return;
       }
 
-      printMessages(result.messages, result.errors);
+      printMessages(result.messages, result.errors, result.timeline);
       if (!result.success) {
         process.exitCode = 1;
         printResult(

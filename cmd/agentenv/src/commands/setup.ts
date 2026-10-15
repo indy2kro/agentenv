@@ -15,8 +15,9 @@ import {
   miseInstallInstructions,
   prereqLine,
 } from '../toolchain/mise.js';
-import { colorizeLine, theme } from '../ui/theme.js';
-import { renderLogo } from '../ui/output.js';
+import { colorizeLine, setColorEnabled, theme } from '../ui/theme.js';
+import { renderLogo, setQuietEnabled } from '../ui/output.js';
+import { printJson } from '../cli/json.js';
 import { printConfigPath, printMessages, printResult, reportValidation } from '../ui/report.js';
 import { withSpinner } from '../ui/spinner.js';
 import type { Spinner } from '../ui/spinner.js';
@@ -59,6 +60,14 @@ export interface SaveAndApplyDeps {
   startedAt?: number;
   /** Generate files only — no `mise install`, no verification. */
   skipMiseInstall?: boolean;
+  /**
+   * What to write to `file`, when it differs from the (possibly user-layered)
+   * `config` being applied. `null` means the file is already what the user
+   * wants: don't touch it, so its comments and layering survive.
+   */
+  persistConfig?: AgentenvConfig | null;
+  /** JSON mode: don't stream raw mise output onto stdout (it would corrupt the document). */
+  json?: boolean;
 }
 
 /** Save the config and apply it, mirroring the shared setup tail. */
@@ -67,15 +76,20 @@ export async function saveAndApply(
   file: string,
   deps: SaveAndApplyDeps = {},
 ): Promise<void> {
-  if (fs.existsSync(file)) {
-    console.log(`Note: ${file} already exists — setup is idempotent and updates it in place.\n`);
+  const toSave = deps.persistConfig === undefined ? config : deps.persistConfig;
+  if (toSave === null) {
+    console.log(`Using existing configuration: ${file} (left unchanged)\n`);
+  } else {
+    const existed = fs.existsSync(file);
+    const changed = saveConfig(toSave, file);
+    if (!changed) console.log(`Configuration already up to date: ${file} (left unchanged)\n`);
+    else if (existed) console.log(`Updated configuration: ${file}\n`);
+    else console.log(`Saved configuration: ${file}\n`);
   }
-  saveConfig(config, file);
-  console.log(`Saved configuration: ${file}\n`);
 
   const apply = deps.applyConfiguration ?? applyConfiguration;
   // `file` is always the actual agentenv.toml being applied — including when
-  // findConfigPath()'s upward search (FEAT-05) found it in an ancestor
+  // findConfigPath()'s upward search found it in an ancestor
   // directory — so its own directory is the base dir, not a re-derivation
   // from config.scope that assumes cwd for "project".
   const result = await withSpinner('Applying configuration...', (spinner: Spinner) =>
@@ -83,17 +97,19 @@ export async function saveAndApply(
     apply(config, path.dirname(file), {
       skipPrereqMessage: true,
       skipMiseInstall: deps.skipMiseInstall,
-      onMiseInstall: {
-        onStart: () => {
-          spinner.stop();
-          console.log(colorizeLine('Installing tools via mise...'));
-        },
-        onOutput: (chunk) => process.stdout.write(chunk),
-        onEnd: () => spinner.start(),
-      },
+      onMiseInstall: deps.json
+        ? undefined
+        : {
+            onStart: () => {
+              spinner.stop();
+              console.log(colorizeLine('Installing tools via mise...'));
+            },
+            onOutput: (chunk) => process.stdout.write(chunk),
+            onEnd: () => spinner.start(),
+          },
     }),
   );
-  printMessages(result.messages, result.errors);
+  printMessages(result.messages, result.errors, result.timeline);
   const elapsedMs = deps.startedAt === undefined ? result.elapsedMs : Date.now() - deps.startedAt;
   if (!result.success) {
     process.exitCode = 1;
@@ -112,6 +128,7 @@ interface SetupCommandOptions {
   rtk?: boolean;
   config?: string;
   superpowers?: string | boolean;
+  json?: boolean;
 }
 
 export interface UnattendedSetupDeps extends SaveAndApplyDeps {
@@ -119,7 +136,7 @@ export interface UnattendedSetupDeps extends SaveAndApplyDeps {
 }
 
 /**
- * `--agents`/`--superpowers` only take effect when unattendedSetup builds a
+ * `--agents`/`--superpowers`/`--no-rtk`/`--no-tier2` only take effect when unattendedSetup builds a
  * fresh default config; reusing an existing agentenv.toml (the common case)
  * applies it as-is, silently dropping whatever the caller typed unless we
  * say so here.
@@ -128,16 +145,9 @@ function ignoredUnattendedFlags(options: SetupCommandOptions): string[] {
   const ignored: string[] = [];
   if (options.agents !== undefined) ignored.push('--agents');
   if (options.superpowers !== undefined) ignored.push('--superpowers');
+  if (options.rtk === false) ignored.push('--no-rtk');
+  if (options.tier2 === false) ignored.push('--no-tier2');
   return ignored;
-}
-
-/** --scope only steers unattended (--yes) setup; the interactive wizard has no scope prompt yet. */
-export function interactiveScopeIgnoredWarning(scope: ScopeValue | undefined): string | undefined {
-  if (scope === undefined) return undefined;
-  return (
-    `--scope is ignored by the interactive wizard (only --yes uses it); ` +
-    `run \`agentenv setup --yes --scope ${scope}\` for unattended setup at that scope.`
-  );
 }
 
 function warnIgnoredFlags(options: SetupCommandOptions, file: string): void {
@@ -173,6 +183,7 @@ export async function unattendedSetup(
 
   let config: AgentenvConfig | undefined;
   let file: string;
+  let reusedExisting = false;
 
   if (options.config) {
     try {
@@ -188,7 +199,9 @@ export async function unattendedSetup(
       process.exitCode = 1;
       return;
     }
-    file = configFilePath(config.scope ?? 'project');
+    // Apply the given file in place (never copy it over cwd/agentenv.toml).
+    file = path.resolve(options.config);
+    reusedExisting = true;
   } else {
     const scope: ScopeValue = options.scope ?? 'project';
     file = configFilePath(scope);
@@ -208,6 +221,7 @@ export async function unattendedSetup(
         return;
       }
       warnIgnoredFlags(options, file);
+      reusedExisting = true;
     } else if (options.scope === undefined) {
       // No config at the preferred scope and the user didn't ask for a
       // specific one. Re-apply the nearest existing config (project first,
@@ -229,6 +243,7 @@ export async function unattendedSetup(
           return;
         }
         warnIgnoredFlags(options, file);
+        reusedExisting = true;
       }
     }
 
@@ -239,7 +254,7 @@ export async function unattendedSetup(
           agents = parseAgentsInput(options.agents);
         } catch (error) {
           console.error(theme.fail(error instanceof Error ? error.message : String(error)));
-          process.exitCode = 1;
+          process.exitCode = 2; // usage error: unknown agent name
           return;
         }
       } else {
@@ -271,7 +286,47 @@ export async function unattendedSetup(
     }
   }
 
-  await saveAndApply(config, file, { ...deps, startedAt });
+  await saveAndApply(config, file, {
+    ...deps,
+    startedAt,
+    ...(reusedExisting ? { persistConfig: null } : {}),
+  });
+}
+
+/**
+ * `setup --yes --json`: run the normal unattended flow with chrome off and
+ * its console output captured, then emit one JSON envelope. Raw mise output
+ * is not streamed (it would corrupt the document).
+ */
+export async function unattendedSetupJson(
+  options: SetupCommandOptions,
+  deps: UnattendedSetupDeps = {},
+): Promise<void> {
+  setQuietEnabled(true);
+  setColorEnabled(false);
+  const messages: string[] = [];
+  const errors: string[] = [];
+  const original = { log: console.log, warn: console.warn, error: console.error };
+  const capture = (sink: string[]) => (message?: unknown) => {
+    for (const line of String(message ?? '').split(/\r?\n/)) {
+      if (line.trim() !== '') sink.push(line);
+    }
+  };
+  console.log = capture(messages);
+  console.warn = capture(messages);
+  console.error = capture(errors);
+  const priorExitCode = process.exitCode;
+  process.exitCode = undefined;
+  try {
+    await unattendedSetup(options, { ...deps, json: true });
+  } finally {
+    console.log = original.log;
+    console.warn = original.warn;
+    console.error = original.error;
+  }
+  const failed = process.exitCode !== undefined && process.exitCode !== 0;
+  printJson({ success: !failed, messages, errors });
+  if (!failed) process.exitCode = priorExitCode;
 }
 
 export const setupCommand = new Command()
@@ -282,7 +337,10 @@ export const setupCommand = new Command()
   )
   .option('-y, --yes', 'unattended: use detected agents + defaults, or an existing config')
   .option('-a, --agents <agents>', 'comma-separated agents to configure (unattended)')
-  .option('--scope <scope>', 'configuration scope: project|user (default: project)')
+  .option(
+    '--scope <scope>',
+    'configuration scope: project|user (default: project; preselects the wizard prompt without --yes)',
+  )
   .option('--no-tier2', 'skip Tier 2 tools (unattended)')
   .option('--no-rtk', 'disable rtk command rewriting (unattended)')
   .option(
@@ -290,17 +348,24 @@ export const setupCommand = new Command()
     'enable the Superpowers integration (unattended); optional github tag/branch/commit ref',
   )
   .option('--config <path>', 'path to an existing agentenv.toml to apply (unattended)')
+  .option('--json', 'emit one machine-readable JSON document on stdout (requires --yes)')
   .action(async (options: SetupCommandOptions, command: Command) => {
     const scope = parseScopeFlag(options.scope);
     if (scope.error) {
       command.error(scope.error);
       return;
     }
+    if (options.json && !options.yes) {
+      command.error('--json requires --yes (the interactive wizard cannot produce JSON)');
+      return;
+    }
+    if (options.yes && options.json) {
+      await unattendedSetupJson({ ...options, scope: scope.scope });
+      return;
+    }
     if (options.yes) {
       await unattendedSetup({ ...options, scope: scope.scope });
       return;
     }
-    const scopeWarning = interactiveScopeIgnoredWarning(scope.scope);
-    if (scopeWarning) console.warn(theme.warn(scopeWarning));
-    await runConfigWizard();
+    await runConfigWizard({ scope: scope.scope });
   });

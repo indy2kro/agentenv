@@ -113,7 +113,7 @@ function happyDeps(overrides: UpdateDeps = {}): UpdateDeps {
   };
 }
 
-describe('doUpdate (SWEEP-09)', () => {
+describe('doUpdate', () => {
   it('reports mise-missing as a themed error and exits 1, without touching config resolution', async () => {
     const { errors } = await withCapturedConsole(() =>
       doUpdate({}, { isMiseInstalled: () => false }),
@@ -303,7 +303,7 @@ describe('doUpdate (SWEEP-09)', () => {
   });
 });
 
-describe('watchMiseToml (BUG-13)', () => {
+describe('watchMiseToml', () => {
   it('detects an atomic-rename save (editor-style) and re-reads agentenv.toml fresh each time', async () => {
     // realpathSync: watchMiseToml() itself canonicalizes the directory it
     // hands to fs.watch() (fixes a Windows libuv crash on a short-name
@@ -316,7 +316,7 @@ describe('watchMiseToml (BUG-13)', () => {
     const configPath = path.join(dir, 'agentenv.toml');
     const miseTomlPath = path.join(dir, 'mise.toml');
     // loadConfig() now layers a user-scope config beneath this project one
-    // (FEAT-08) — this machine's real ~/.config/agentenv/agentenv.toml (if
+    // — this machine's real ~/.config/agentenv/agentenv.toml (if
     // any) must be scrubbed out, or its real enabled tools would leak into
     // getUpgradeableTools() and break the "No upgradeable tools" assertion.
     const emptyHome = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-watch-home-'));

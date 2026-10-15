@@ -96,7 +96,7 @@ describe('RtkDelegationAdapter', () => {
     assert.deepEqual(rtk.calls, []);
   });
 
-  describe('proactive version capability check (FEAT-09)', () => {
+  describe('proactive version capability check', () => {
     it('skips the real rtk init call when a verified minimum version rules the agent out', async () => {
       const home = tempDir('agentenv-rtk-deleg-vercap-');
       const rtk = fakeRtkInit();
@@ -201,14 +201,23 @@ describe('RtkDelegationAdapter', () => {
     });
   });
 
-  it('cleanup is a no-op', async () => {
+  it('cleanup runs rtk --uninstall for a verified-scoped agent (vibe)', async () => {
+    const calls: string[][] = [];
     const adapter = new RtkDelegationAdapter(
-      { enabled: true, baseDir: '/tmp', rtkEnabled: true },
       {
-        agentKey: 'gemini_cli',
-        label: 'Gemini CLI',
-        rtkFlags: ['--gemini'],
-        configDir: '/tmp/.gemini',
+        enabled: true,
+        baseDir: '/tmp',
+        rtkEnabled: true,
+        rtkInit: (args) => {
+          calls.push(args);
+          return { success: true, message: 'ok', stdout: '', stderr: '' };
+        },
+      },
+      {
+        agentKey: 'vibe',
+        label: 'Mistral Vibe',
+        rtkFlags: ['-g', '--agent', 'vibe'],
+        configDir: '/tmp/.vibe',
         expectedFile: 'RTK.md',
       },
     );
@@ -216,5 +225,52 @@ describe('RtkDelegationAdapter', () => {
     assert.equal(result.success, true);
     assert.equal(result.filesCreated.length, 0);
     assert.equal(result.filesModified.length, 0);
+    assert.deepEqual(calls, [['-g', '--agent', 'vibe', '--uninstall']]);
+  });
+
+  it('cleanup treats a missing rtk binary as nothing to remove, and surfaces real failures', async () => {
+    const make = (message: string) =>
+      new RtkDelegationAdapter(
+        {
+          enabled: true,
+          baseDir: '/tmp',
+          rtkEnabled: true,
+          rtkInit: () => ({ success: false, message, stdout: '', stderr: 'boom' }),
+        },
+        {
+          agentKey: 'vibe',
+          label: 'Mistral Vibe',
+          rtkFlags: ['-g', '--agent', 'vibe'],
+          configDir: '/tmp/.vibe',
+          expectedFile: 'RTK.md',
+        },
+      );
+    assert.equal((await make('rtk binary not found via mise').cleanup()).success, true);
+    const failed = await make('rtk init -g --agent vibe --uninstall failed (exit 1)').cleanup();
+    assert.equal(failed.success, false);
+    assert.match(failed.errors[0], /boom/);
+  });
+
+  it('never runs rtk for agents whose uninstall is global or project-refused', async () => {
+    const calls: string[][] = [];
+    const make = (agentKey: 'windsurf' | 'cline', flags: string[]) =>
+      new RtkDelegationAdapter(
+        {
+          enabled: true,
+          baseDir: '/tmp',
+          rtkEnabled: true,
+          rtkInit: (args) => {
+            calls.push(args);
+            return { success: true, message: 'ok', stdout: '', stderr: '' };
+          },
+        },
+        { agentKey, label: agentKey, rtkFlags: flags, configDir: '/tmp/x', expectedFile: 'RTK.md' },
+      );
+    const windsurf = await make('windsurf', ['-g', '--agent', 'windsurf']).cleanup();
+    const cline = await make('cline', ['--agent', 'cline']).cleanup();
+    assert.deepEqual(calls, []);
+    assert.match(windsurf.message, /not scoped to this agent/);
+    assert.match(cline.message, /cannot uninstall project-level wiring/);
+    assert.equal(windsurf.success && cline.success, true);
   });
 });

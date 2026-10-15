@@ -125,7 +125,7 @@ describe('configuration persistence', () => {
   });
 });
 
-describe('saveConfig (BUG-09)', () => {
+describe('saveConfig', () => {
   it('does not rewrite the file — preserving hand-written comments — when the config is unchanged', () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-config-'));
     const configPath = path.join(directory, 'agentenv.toml');
@@ -856,7 +856,7 @@ describe('loadConfig user-scope resolution', () => {
   });
 });
 
-describe('loadConfig layerUserConfig (FEAT-08)', () => {
+describe('loadConfig layerUserConfig', () => {
   function withUserConfig(userToml: string, fn: (userConfigDir: string) => void): void {
     const originalXdg = process.env.XDG_CONFIG_HOME;
     const xdg = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-xdg-'));
@@ -919,10 +919,19 @@ describe('loadConfig layerUserConfig (FEAT-08)', () => {
       const configPath = path.join(directory, 'agentenv.toml');
       fs.writeFileSync(configPath, 'scope = "project"\n[agents]\nclaude_code = true\n');
 
-      const config = loadConfig(configPath, { layerUserConfig: true });
+      const warnings: string[] = [];
+      const originalWarn = console.warn;
+      console.warn = (message?: unknown) => warnings.push(String(message));
+      let config: ReturnType<typeof loadConfig>;
+      try {
+        config = loadConfig(configPath, { layerUserConfig: true });
+      } finally {
+        console.warn = originalWarn;
+      }
 
       assert.equal(config.agents?.claude_code, true);
       assert.equal(config.agents?.copilot, false); // DEFAULT_CONFIG fallback, not a thrown error.
+      assert.ok(warnings.some((w) => w.includes('ignoring unreadable user config')));
     });
   });
 
@@ -956,5 +965,35 @@ describe('loadConfig layerUserConfig (FEAT-08)', () => {
       if (originalXdg === undefined) delete process.env.XDG_CONFIG_HOME;
       else process.env.XDG_CONFIG_HOME = originalXdg;
     }
+  });
+});
+
+describe('ast_grep binary name', () => {
+  it('uses ast-grep, since `sg` is shadow-utils set-group on Linux', () => {
+    assert.equal(BINARY_MAP.ast_grep, 'ast-grep');
+  });
+});
+
+describe('generate marker validation', () => {
+  const withMarkers = (start: string, end: string) =>
+    validateConfig({ ...DEFAULT_CONFIG, generate: { marker_start: start, marker_end: end } });
+
+  it('rejects empty markers', () => {
+    assert.ok(
+      withMarkers('', '<!-- end -->').errors.some((e) => /marker_start must not be empty/.test(e)),
+    );
+    assert.ok(
+      withMarkers('<!-- s -->', ' ').errors.some((e) => /marker_end must not be empty/.test(e)),
+    );
+  });
+
+  it('rejects identical markers', () => {
+    assert.ok(
+      withMarkers('<!-- x -->', '<!-- x -->').errors.some((e) => /must be different/.test(e)),
+    );
+  });
+
+  it('accepts distinct custom markers', () => {
+    assert.deepEqual(withMarkers('<!-- s -->', '<!-- e -->').errors, []);
   });
 });

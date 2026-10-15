@@ -990,6 +990,17 @@ export function fixShellConfiguration(
       };
     }
 
+    // Installing Homebrew formulae is a write: honor non-TTY / tier0.mode =
+    // "never" the same way the Windows branch does, and only report.
+    if (!complex) {
+      return {
+        success: true,
+        message:
+          'checked; GNU coreutils not found, not installing without a TTY (run `agentenv apply --shell-fix always` to install via Homebrew)',
+        gnubinPath: shellInfo.gnubinPath,
+      };
+    }
+
     // Try to install GNU coreutils via Homebrew
     const gnubinPath = installGNUCoreutilsMacOS();
     if (!gnubinPath) {

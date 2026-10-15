@@ -59,7 +59,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Upgrade npm
-        run: npm install -g npm@latest # trusted publishing/OIDC requires npm >= 11.5.1
+        run: npm install -g npm@11.6.2 # pinned; trusted publishing/OIDC requires npm >= 11.5.1
       - name: Determine target version
         id: version
         run: |
@@ -150,14 +150,14 @@ jobs:
           git add package.json package-lock.json
           git commit -m "chore: release v${{ steps.version.outputs.next }}"
           git tag -a "v${{ steps.version.outputs.next }}" -m "chore: release v${{ steps.version.outputs.next }}"
+      - name: Push version commit and tag (before publish, so a push failure can't leave an unpushed version on npm)
+        run: |
+          git push origin HEAD:refs/heads/main
+          git push origin "refs/tags/v${{ steps.version.outputs.next }}"
       - name: Publish to npm
         # No NODE_AUTH_TOKEN here: npm must use the OIDC trusted-publishing path.
         # A token env var makes npm fall back to the legacy token flow (EOTP).
         run: npm publish --provenance --access public --tag "${{ steps.version.outputs.tag }}"
-      - name: Push version commit and tag
-        run: |
-          git push origin HEAD:refs/heads/main
-          git push origin "refs/tags/v${{ steps.version.outputs.next }}"
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}

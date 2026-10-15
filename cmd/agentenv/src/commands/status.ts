@@ -17,6 +17,7 @@ import type { AgentKey, AgentenvConfig, CustomTool } from '../config/schema.js';
 import { findConfigPath, resolveScopeDir, userConfigDir } from '../config/scopes.js';
 import { checkAgentShellConfiguration, detectShell } from '../shell/detector.js';
 import type { ShellInfo } from '../shell/detector.js';
+import { requestedInstructionFiles } from '../generate/agentsmd.js';
 import { SuperpowersAdapter, ghAuthLine } from '../integrations/index.js';
 import type { IntegrationResult, IntegrationState } from '../integrations/base.js';
 import { resolveGhAuthProbe } from '../toolchain/gh.js';
@@ -34,40 +35,46 @@ import { colorizeLine, failGlyph, successGlyph, theme } from '../ui/theme.js';
 import { renderLogo, resolveResultLine, setQuietEnabled } from '../ui/output.js';
 import type { ResultBoxContent } from '../ui/output.js';
 
-const AGENT_CONFIG_FILES: Record<AgentKey, { label: string; check: (baseDir: string) => string }> =
-  {
-    claude_code: {
-      label: 'Claude Code',
-      check: () => path.join(claudeConfigDir(), 'settings.json'),
-    },
-    // Written by `rtk init --codex` in the project dir (project-scoped; not -g).
-    codex_cli: { label: 'Codex CLI', check: (baseDir) => path.join(baseDir, 'RTK.md') },
-    copilot: {
-      label: 'GitHub Copilot',
-      check: (baseDir) => path.join(baseDir, '.github', 'copilot-instructions.md'),
-    },
-    opencode: {
-      label: 'OpenCode',
-      check: () => path.join(opencodeConfigDir(), 'plugins', 'rtk.ts'),
-    },
-    // `-g --gemini` (verified live against a real rtk install): writes
-    // GEMINI.md — not RTK.md — into Gemini's own global config dir.
-    gemini_cli: { label: 'Gemini CLI', check: () => path.join(homeDir(), '.gemini', 'GEMINI.md') },
-    // `-g --agent cursor` writes into the shared Claude Code anchor, not
-    // Cursor's own config dir or baseDir — see adapters/cursor.ts's
-    // extraGlobalDirs comment; confirmed live.
-    cursor: { label: 'Cursor', check: () => path.join(claudeConfigDir(), 'RTK.md') },
-    // TODO: windsurf/vibe are still checked against baseDir/RTK.md, which a
-    // live probe against an older rtk build suggests is also wrong (windsurf
-    // wrote a cwd-relative .windsurfrules; vibe isn't
-    // supported by that build at all) — but that couldn't be confirmed
-    // against the pinned rtk 0.49.0 from this environment, so left as-is
-    // rather than guessing. Re-verify against smoke:real before changing.
-    windsurf: { label: 'Windsurf', check: (baseDir) => path.join(baseDir, 'RTK.md') },
-    // `--agent cline` (project-scoped; not -g) writes RTK.md in baseDir.
-    cline: { label: 'Cline CLI', check: (baseDir) => path.join(baseDir, 'RTK.md') },
-    vibe: { label: 'Mistral Vibe', check: (baseDir) => path.join(baseDir, 'RTK.md') },
-  };
+const AGENT_CONFIG_FILES: Record<
+  AgentKey,
+  { label: string; check: (baseDir: string) => string; contains?: string }
+> = {
+  claude_code: {
+    label: 'Claude Code',
+    check: () => path.join(claudeConfigDir(), 'settings.json'),
+    // settings.json usually exists already; only the rtk hook entry means wired.
+    contains: 'rtk hook claude',
+  },
+  // Written by `rtk init --codex` in the project dir (project-scoped; not -g).
+  codex_cli: { label: 'Codex CLI', check: (baseDir) => path.join(baseDir, 'RTK.md') },
+  copilot: {
+    label: 'GitHub Copilot',
+    // copilot-instructions.md may be the user's own; the rtk hook file is ours.
+    check: (baseDir) => path.join(baseDir, '.github', 'hooks', 'rtk-rewrite.json'),
+  },
+  opencode: {
+    label: 'OpenCode',
+    check: () => path.join(opencodeConfigDir(), 'plugins', 'rtk.ts'),
+  },
+  // `-g --gemini` (verified live against a real rtk install): writes
+  // GEMINI.md — not RTK.md — into Gemini's own global config dir.
+  gemini_cli: { label: 'Gemini CLI', check: () => path.join(homeDir(), '.gemini', 'GEMINI.md') },
+  // `-g --agent cursor` writes into the shared Claude Code anchor, not
+  // Cursor's own config dir or baseDir — see adapters/cursor.ts's
+  // extraGlobalDirs comment; confirmed live.
+  cursor: { label: 'Cursor', check: () => path.join(claudeConfigDir(), 'RTK.md') },
+  // Verified against rtk 0.49.0: `-g --agent windsurf` writes .windsurfrules into
+  // the project dir (no RTK.md).
+  windsurf: { label: 'Windsurf', check: (baseDir) => path.join(baseDir, '.windsurfrules') },
+  // `--agent cline` (project-scoped; not -g) writes RTK.md in baseDir.
+  cline: { label: 'Cline CLI', check: (baseDir) => path.join(baseDir, 'RTK.md') },
+  // Verified against rtk 0.49.0: `-g --agent vibe` registers ~/.vibe/hooks.toml.
+  vibe: {
+    label: 'Mistral Vibe',
+    check: () => path.join(homeDir(), '.vibe', 'hooks.toml'),
+    contains: 'rtk',
+  },
+};
 
 export { AGENT_CONFIG_FILES };
 
@@ -188,6 +195,8 @@ export interface StatusDeps {
   detectShell?: typeof detectShell;
   checkAgentShellConfiguration?: typeof checkAgentShellConfiguration;
   fileExists?: (file: string) => boolean;
+  /** Whether `file` contains `needle`; defaults to reading it (or always true when fileExists is faked). */
+  fileContains?: (file: string, needle: string) => boolean;
   hasManagedMarker?: (file: string, config: AgentenvConfig) => boolean;
   resolveGhAuthProbe?: typeof resolveGhAuthProbe;
   superpowersStatus?: (
@@ -216,11 +225,11 @@ function scopeFromConfigPath(configPath: string): 'project' | 'user' {
 
 /**
  * The directory a project-scoped config's mise.toml/AGENTS.md/etc. actually
- * live in. findConfigPath() now searches parent directories (FEAT-05), so
+ * live in. findConfigPath() now searches parent directories, so
  * that directory is no longer always process.cwd() — resolveScopeDir('project')
  * only knows about cwd, so a project config found in an ancestor directory
  * must use its own dirname instead, the same "derive from where the file was
- * found" fix SWEEP-01 applied to config.scope itself.
+ * found" fix applied to config.scope itself.
  */
 function resolveBaseDir(
   configPath: string,
@@ -350,12 +359,26 @@ export async function gatherStatus(deps: StatusDeps = {}): Promise<StatusReport>
   const shell = (deps.detectShell ?? detectShell)();
   const enabledAgents = (deps.getEnabledAgents ?? getEnabledAgents)(config) as AgentKey[];
   const exists = deps.fileExists ?? fs.existsSync;
+  const fileContains =
+    deps.fileContains ??
+    (deps.fileExists
+      ? () => true
+      : (file: string, needle: string): boolean => {
+          try {
+            return fs.readFileSync(file, 'utf-8').includes(needle);
+          } catch {
+            return false;
+          }
+        });
   const rtkEnabled = config.rtk?.enabled === true;
 
   const agents: StatusAgent[] = enabledAgents.map((agent) => {
     const meta = AGENT_CONFIG_FILES[agent];
     const installed = (deps.isAgentInstalled ?? isAgentInstalled)(agent);
-    const configured = exists(meta.check(baseDir));
+    const configFile = meta.check(baseDir);
+    const configured =
+      exists(configFile) &&
+      (meta.contains === undefined || fileContains(configFile, meta.contains));
     return {
       key: agent,
       label: meta.label,
@@ -415,10 +438,14 @@ export async function gatherStatus(deps: StatusDeps = {}): Promise<StatusReport>
     return { name: tool.name, status, drift };
   });
 
+  const requestedFiles = requestedInstructionFiles(config);
   const generatedEntries: Array<[string, string, boolean]> = [
     ['mise.toml', miseTomlPathFor(config.scope, baseDir), false],
-    ['AGENTS.md', path.join(baseDir, 'AGENTS.md'), true],
-    ['CLAUDE.md', path.join(baseDir, 'CLAUDE.md'), true],
+    ...requestedFiles.map((name): [string, string, boolean] => [
+      name,
+      path.join(baseDir, name),
+      true,
+    ]),
   ];
   const generated: StatusGenerated[] = generatedEntries.map(([label, file, markerCheck]) => {
     const generatedExists = exists(file);

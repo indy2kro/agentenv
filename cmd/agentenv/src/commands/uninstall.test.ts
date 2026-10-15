@@ -56,7 +56,7 @@ describe('resolveToolArgs', () => {
   const targets = [
     { key: 'ripgrep', miseName: 'ripgrep', binary: 'rg' },
     { key: 'git_delta', miseName: 'delta', binary: 'delta' },
-    { key: 'ast_grep', miseName: 'ast-grep', binary: 'sg' },
+    { key: 'ast_grep', miseName: 'ast-grep', binary: 'ast-grep' },
   ];
 
   it('resolves key, binary, and miseName forms', () => {
@@ -143,7 +143,7 @@ describe('renderUninstallSummary', () => {
   });
 });
 
-describe('parseAgentList (FEAT-03 --unwire-agents)', () => {
+describe('parseAgentList (--unwire-agents)', () => {
   it('parses and dedupes a comma-separated list of valid agent keys', () => {
     const result = parseAgentList('claude_code, codex_cli,claude_code');
     assert.deepEqual(result.agents, ['claude_code', 'codex_cli']);
@@ -163,7 +163,7 @@ describe('parseAgentList (FEAT-03 --unwire-agents)', () => {
   });
 });
 
-describe('buildUnwirePlan (FEAT-03)', () => {
+describe('buildUnwirePlan', () => {
   it('project scope, full unwire: classifies shared AGENTS.md/CLAUDE.md, leaves agentFiles empty', () => {
     const dir = tempDir('agentenv-unwire-plan-');
     fs.writeFileSync(path.join(dir, 'AGENTS.md'), `${start}\nold\n${end}\n`);
@@ -228,12 +228,14 @@ describe('buildUnwirePlan (FEAT-03)', () => {
   });
 });
 
-describe('executeUnwire (FEAT-03)', () => {
+const stubRtkInit = () => ({ success: true, message: 'ok', stdout: '', stderr: '' });
+
+describe('executeUnwire', () => {
   it('runs cleanup() for each targeted agent and reports its message', async () => {
     const dir = tempDir('agentenv-unwire-exec-');
     const plan = buildUnwirePlan(DEFAULT_CONFIG, dir, 'project', ['codex_cli'], false, false);
 
-    const result = await executeUnwire(dir, plan);
+    const result = await executeUnwire(dir, plan, { rtkInit: stubRtkInit });
 
     assert.equal(result.success, true);
     assert.ok(result.messages.some((m) => m.includes('Codex CLI')));
@@ -244,7 +246,7 @@ describe('executeUnwire (FEAT-03)', () => {
     fs.writeFileSync(path.join(dir, 'AGENTS.md'), `user notes\n\n${start}\nmanaged\n${end}\n`);
     const plan = buildUnwirePlan(DEFAULT_CONFIG, dir, 'project', ['codex_cli'], true, false);
 
-    const result = await executeUnwire(dir, plan);
+    const result = await executeUnwire(dir, plan, { rtkInit: stubRtkInit });
 
     assert.equal(result.success, true);
     const content = fs.readFileSync(path.join(dir, 'AGENTS.md'), 'utf-8');
@@ -257,7 +259,7 @@ describe('executeUnwire (FEAT-03)', () => {
     fs.writeFileSync(miseTomlPath, '# tools\n');
     const plan = buildUnwirePlan(DEFAULT_CONFIG, dir, 'project', ['codex_cli'], true, true);
 
-    const result = await executeUnwire(dir, plan);
+    const result = await executeUnwire(dir, plan, { rtkInit: stubRtkInit });
 
     assert.equal(result.success, true);
     assert.equal(fs.existsSync(miseTomlPath), false);
@@ -283,7 +285,7 @@ describe('executeUnwire (FEAT-03)', () => {
       );
       const plan = buildUnwirePlan(DEFAULT_CONFIG, dir, 'project', ['claude_code'], false, false);
 
-      const result = await executeUnwire(dir, plan);
+      const result = await executeUnwire(dir, plan, { rtkInit: stubRtkInit });
 
       assert.equal(result.success, true);
       const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));

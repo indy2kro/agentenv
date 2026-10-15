@@ -6,6 +6,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { AgentenvConfig, BINARY_MAP, TOOL_DESCRIPTIONS, DEFAULT_CONFIG } from '../config/schema.js';
+import { PLATFORM_UNSUPPORTED_TOOLS, isPlatformUnsupported } from '../toolchain/fallbacks.js';
 import { backupBeforeFirstEdit, writeFileWithRetry } from '../utils/fs-retry.js';
 
 // Tool categories for organization
@@ -77,6 +78,8 @@ const GENERAL_INSTRUCTION_TIPS: Record<string, string> = {
   jq: 'For JSON processing, use `jq`',
   bat: 'For viewing files, use `bat --plain --paging=never` instead of `cat` (skips the pager and decorations, which matter for a human, not an agent)',
   eza: 'For directory listings, use `eza` instead of `ls`',
+  tealdeer:
+    '`tldr` has no pages until the cache is downloaded: run `tldr --update` once before first use',
   git_delta:
     '`delta` gives syntax-highlighted diffs for human review; run `git --no-pager diff` (or plain `git diff`) directly instead of piping through it',
 };
@@ -116,7 +119,12 @@ export function generateAgentsMd(config: AgentenvConfig): string {
   lines.push('The following tools are available via agentenv:');
   lines.push('');
 
-  const enabledTools = getEnabledToolsForOutput(config);
+  // A user-scope file is only read on this machine, so tools that can't be
+  // installed here are left out. A project file is committed and shared
+  // across operating systems, so those tools stay listed with a caveat.
+  const enabledTools = getEnabledToolsForOutput(config).filter(
+    (tool) => !isUserScope || !isPlatformUnsupported(tool),
+  );
   const categorizedTools = categorizeTools(
     config.rtk?.enabled ? enabledTools.filter((tool) => tool !== 'rtk') : enabledTools,
   );
@@ -128,7 +136,9 @@ export function generateAgentsMd(config: AgentenvConfig): string {
       for (const tool of tools) {
         const description = TOOL_DESCRIPTIONS[tool] || 'Available via agentenv';
         const binaryName = BINARY_MAP[tool] || tool;
-        lines.push(`- **${tool}** (binary: \`${binaryName}\`): ${description}`);
+        lines.push(
+          `- **${tool}** (binary: \`${binaryName}\`): ${description}${platformCaveat(tool)}`,
+        );
       }
       lines.push('');
     }
@@ -186,6 +196,9 @@ export function generateAgentsMd(config: AgentenvConfig): string {
     );
   }
   lines.push('- Configuration is managed in `agentenv.toml`');
+  lines.push(
+    '- To diagnose a missing tool or drift, run `agentenv doctor --json` (environment checks) or `agentenv status --json` (what is configured vs. installed); each prints one JSON document',
+  );
   lines.push('');
   lines.push(markerEnd);
 
@@ -215,19 +228,34 @@ export function generateClaudeMd(config: AgentenvConfig = DEFAULT_CONFIG): strin
   lines.push('');
   lines.push('## General Instructions');
   lines.push('');
-  lines.push('Please see [AGENTS.md](./AGENTS.md) for the complete list of AI agent instructions.');
+  // Claude Code loads `@path` imports but does not follow markdown links.
+  lines.push('@AGENTS.md');
   lines.push('');
   lines.push('The instructions in AGENTS.md apply to Claude Code as well.');
   lines.push('');
   lines.push('## Claude Code Specific Notes');
   lines.push('');
   lines.push('- AGENTS.md is the source of truth for tool availability and usage instructions');
-  lines.push('- All tools listed in AGENTS.md are available for use');
-  lines.push('- RTK hooks are configured to optimize command execution');
+  if (config.rtk?.enabled === true) {
+    lines.push('- RTK hooks are configured to optimize command execution');
+  }
   lines.push('');
   lines.push(markerEnd);
 
   return lines.join('\n');
+}
+
+const PLATFORM_LABELS: Partial<Record<NodeJS.Platform, string>> = {
+  win32: 'Windows',
+  darwin: 'macOS',
+  linux: 'Linux',
+};
+
+/** " (not available on Windows)" for tools with a platform gap, else "". */
+function platformCaveat(tool: string): string {
+  const gaps = PLATFORM_UNSUPPORTED_TOOLS[tool];
+  if (!gaps || gaps.length === 0) return '';
+  return ` (not available on ${gaps.map((p) => PLATFORM_LABELS[p] ?? p).join(', ')})`;
 }
 
 /**
@@ -282,6 +310,16 @@ function getEnabledToolsForOutput(config: AgentenvConfig): string[] {
 export const GENERATED_FILE_NAMES = ['AGENTS.md', 'CLAUDE.md'] as const;
 
 /**
+ * Which instruction files apply writes: generate.files when set, otherwise
+ * AGENTS.md always and CLAUDE.md only when Claude Code is an enabled agent
+ * (a Codex/Copilot-only repo has no use for a CLAUDE.md).
+ */
+export function requestedInstructionFiles(config: AgentenvConfig): string[] {
+  if (config.generate?.files && config.generate.files.length > 0) return config.generate.files;
+  return GENERATED_FILE_NAMES.filter((name) => name !== 'CLAUDE.md' || config.agents?.claude_code);
+}
+
+/**
  * Generate the requested AGENTS.md / CLAUDE.md files, honoring
  * `config.generate.files` (default: both). Files outside that list are never
  * produced here; a config requesting only unknown names yields an empty list.
@@ -291,10 +329,7 @@ export function generateInstructionFiles(
   baseDir: string = '.',
 ): GeneratedFile[] {
   const files: GeneratedFile[] = [];
-  const requested =
-    config.generate?.files && config.generate.files.length > 0
-      ? config.generate.files
-      : GENERATED_FILE_NAMES;
+  const requested = requestedInstructionFiles(config);
 
   if (requested.includes('AGENTS.md')) {
     files.push({
@@ -364,7 +399,7 @@ export type MarkerUpdatePlan =
 /**
  * Decide what updateWithMarkers() would do to `filePath`, without writing
  * anything (it still reads the existing file, if any). The single source of
- * truth for both the real write and `apply --dry-run`'s preview (FEAT-06),
+ * truth for both the real write and `apply --dry-run`'s preview,
  * so they can never disagree about what counts as a change.
  */
 export function planMarkerUpdate(
@@ -395,6 +430,22 @@ export function planMarkerUpdate(
   // Existing files without markers belong to the user. Preserve them and
   // append only our newly managed block.
   if (!hasStart) {
+    // A block written under different markers (the defaults, before the user
+    // customized generate.marker_*) would be left behind and duplicated.
+    const defaultStart = DEFAULT_CONFIG.generate?.marker_start;
+    const defaultEnd = DEFAULT_CONFIG.generate?.marker_end;
+    if (
+      defaultStart &&
+      defaultEnd &&
+      defaultStart !== markerStart &&
+      existingContent.includes(defaultStart) &&
+      existingContent.includes(defaultEnd)
+    ) {
+      return {
+        status: 'error',
+        message: `File ${filePath} already holds a managed block under different markers (${defaultStart}); remove that block or restore generate.marker_start/marker_end so it is not duplicated`,
+      };
+    }
     const newStartIndex = newContent.indexOf(markerStart);
     const newEndIndex = newContent.indexOf(markerEnd, newStartIndex);
     if (newStartIndex === -1 || newEndIndex === -1) {
@@ -469,16 +520,19 @@ export function updateWithMarkers(
         fs.mkdirSync(path.dirname(filePath), { recursive: true });
         writeFileWithRetry(filePath, plan.content);
         return { success: true, updated: true, message: `Created ${filePath}` };
-      case 'update':
+      case 'update': {
         // This file predates agentenv (it had no managed markers yet) —
         // back up the user's original content before appending to it.
-        if (plan.backupFirst) backupBeforeFirstEdit(filePath);
+        const backup = plan.backupFirst ? backupBeforeFirstEdit(filePath) : null;
         writeFileWithRetry(filePath, plan.content);
         return {
           success: true,
           updated: true,
-          message: plan.backupFirst ? `Added managed block to ${filePath}` : `Updated ${filePath}`,
+          message: plan.backupFirst
+            ? `Added managed block to ${filePath}${backup ? ` (original backed up to ${backup})` : ''}`
+            : `Updated ${filePath}`,
         };
+      }
     }
   } catch (err) {
     return {
@@ -498,7 +552,7 @@ export type MarkerRemovalPlan =
 
 /**
  * Decide what removeMarkerBlock() would do to `filePath` — the read half of
- * an unwire (FEAT-03), mirroring planMarkerUpdate()'s role for apply. A file
+ * an unwire, mirroring planMarkerUpdate()'s role for apply. A file
  * that contains only the managed block (nothing else before/after it, once
  * whitespace is trimmed) is deleted outright rather than left as an empty
  * shell; a file with user content around the block keeps that content and
@@ -548,7 +602,7 @@ export function planMarkerRemoval(
 
 /**
  * Remove the agentenv-managed block from `filePath` (the write half of an
- * unwire, FEAT-03). Deletes the file when it held only the managed block;
+ * unwire). Deletes the file when it held only the managed block;
  * otherwise strips just the block and preserves the surrounding user
  * content. A file with no markers, or that doesn't exist, is left untouched.
  */

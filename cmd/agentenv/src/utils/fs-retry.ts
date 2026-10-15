@@ -15,14 +15,46 @@
  */
 
 import * as fs from 'fs';
+import * as path from 'path';
 
 export interface RetryFs {
   writeFileSync: (filePath: string, content: string) => void;
   statSize: (filePath: string) => number | null;
 }
 
+/**
+ * Write to a sibling temp file, then rename over the target, so an interrupted
+ * write can never leave a truncated file. Writes through a symlink (dotfile
+ * managers) to its real target and keeps the existing file's mode.
+ */
+export function atomicWriteFileSync(filePath: string, content: string): void {
+  let target = filePath;
+  let mode: number | undefined;
+  try {
+    target = fs.realpathSync(filePath);
+    mode = fs.statSync(target).mode & 0o777;
+  } catch {
+    // Target doesn't exist yet: write it fresh.
+  }
+  const tmp = path.join(
+    path.dirname(target),
+    `.${path.basename(target)}.agentenv-${process.pid}-${Date.now()}.tmp`,
+  );
+  try {
+    fs.writeFileSync(tmp, content, mode === undefined ? undefined : { mode });
+    fs.renameSync(tmp, target);
+  } catch (err) {
+    try {
+      fs.rmSync(tmp, { force: true });
+    } catch {
+      // best effort
+    }
+    throw err;
+  }
+}
+
 export const defaultRetryFs: RetryFs = {
-  writeFileSync: (filePath, content) => fs.writeFileSync(filePath, content),
+  writeFileSync: atomicWriteFileSync,
   statSize: (filePath) => {
     try {
       return fs.statSync(filePath).size;
@@ -96,16 +128,25 @@ export function writeFileWithRetry(
  * `filePath` doesn't exist yet (nothing to back up: this is a fresh file
  * agentenv is creating, not modifying). Backing up is advisory: a failure
  * here (e.g. a locked filesystem) must never block the real write.
+ * Returns the backup path when one was just created (so callers can tell the
+ * user), otherwise null.
  */
-export function backupBeforeFirstEdit(filePath: string): void {
+export function backupBeforeFirstEdit(filePath: string): string | null {
   try {
-    if (!fs.existsSync(filePath)) return;
-    const backupPath = `${filePath}.agentenv-backup`;
-    if (fs.existsSync(backupPath)) return;
+    if (!fs.existsSync(filePath)) return null;
+    const backupPath = backupPathFor(filePath);
+    if (fs.existsSync(backupPath)) return null;
     fs.copyFileSync(filePath, backupPath);
+    return backupPath;
   } catch {
     // Advisory only — never block the real write on a failed backup.
+    return null;
   }
+}
+
+/** Where backupBeforeFirstEdit() keeps the pre-agentenv copy of `filePath`. */
+export function backupPathFor(filePath: string): string {
+  return `${filePath}.agentenv-backup`;
 }
 
 export interface WriteVerifyResult {

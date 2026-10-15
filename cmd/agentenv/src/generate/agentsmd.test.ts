@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import {
+  generateClaudeMd,
   generateAgentsMd,
   generateInstructionFiles,
   removeMarkerBlock,
@@ -27,7 +28,7 @@ describe('managed instruction blocks', () => {
       fs.readFileSync(filePath, 'utf8'),
       '# My instructions\n\nKeep this.\n\n<!-- agentenv-managed-start -->\nmanaged\n<!-- agentenv-managed-end -->\n',
     );
-    // SWEEP-06: this file predated agentenv (no markers), so its original
+    // this file predated agentenv (no markers), so its original
     // content is backed up before the first append.
     assert.equal(fs.readFileSync(`${filePath}.agentenv-backup`, 'utf8'), originalContent);
   });
@@ -95,7 +96,7 @@ describe('managed instruction blocks', () => {
   });
 });
 
-describe('removeMarkerBlock (FEAT-03 unwire)', () => {
+describe('removeMarkerBlock (unwire)', () => {
   it('deletes the file when it holds only the agentenv-managed block', () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-unwire-'));
     const filePath = path.join(directory, 'AGENTS.md');
@@ -301,5 +302,120 @@ describe('generateInstructionFiles (config.generate.files)', () => {
       '/base',
     );
     assert.deepEqual(files, []);
+  });
+});
+
+describe('generateClaudeMd', () => {
+  it('imports AGENTS.md with an @import, not a markdown link', () => {
+    const out = generateClaudeMd({ rtk: { enabled: false } } as AgentenvConfig);
+    assert.match(out, /^@AGENTS\.md$/m);
+    assert.doesNotMatch(out, /\]\(\.\/AGENTS\.md\)/);
+  });
+
+  it('only claims RTK hooks when rtk is enabled', () => {
+    assert.doesNotMatch(
+      generateClaudeMd({ rtk: { enabled: false } } as AgentenvConfig),
+      /RTK hooks are configured/,
+    );
+    assert.match(
+      generateClaudeMd({ rtk: { enabled: true } } as AgentenvConfig),
+      /RTK hooks are configured/,
+    );
+  });
+});
+
+describe('platform-unsupported tools in generated output', () => {
+  const cfg = (scope: 'user' | 'project'): AgentenvConfig =>
+    ({ scope, tools: { ripgrep: true, jless: true } }) as AgentenvConfig;
+
+  it('lists jless with a caveat in a shared project file', () => {
+    const out = generateAgentsMd(cfg('project'));
+    assert.match(out, /\*\*jless\*\*.*\(not available on Windows\)/);
+    assert.doesNotMatch(out, /\*\*ripgrep\*\*.*not available/);
+  });
+
+  it(
+    'omits unsupported tools from a user-scope file on that platform',
+    { skip: process.platform !== 'win32' },
+    () => {
+      assert.doesNotMatch(generateAgentsMd(cfg('user')), /\*\*jless\*\*/);
+    },
+  );
+});
+
+describe('changed markers', () => {
+  it('refuses to add a second block when one exists under the default markers', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-markers-'));
+    try {
+      const file = path.join(dir, 'AGENTS.md');
+      fs.writeFileSync(
+        file,
+        '<!-- agentenv-managed-start -->\nold\n<!-- agentenv-managed-end -->\n',
+      );
+      const result = updateWithMarkers(
+        file,
+        '<!-- s -->\nnew\n<!-- e -->',
+        '<!-- s -->',
+        '<!-- e -->',
+      );
+      assert.equal(result.success, false);
+      assert.match(result.message, /different markers/);
+      assert.match(fs.readFileSync(file, 'utf-8'), /old/);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('generated guidance', () => {
+  it('points agents at doctor/status JSON for self-diagnosis', () => {
+    const out = generateAgentsMd({ tools: { ripgrep: true } } as AgentenvConfig);
+    assert.match(out, /agentenv doctor --json/);
+    assert.match(out, /agentenv status --json/);
+  });
+
+  it('tells agents to download the tldr cache when tealdeer is enabled', () => {
+    assert.match(
+      generateAgentsMd({ tools: { tealdeer: true } } as AgentenvConfig),
+      /tldr --update/,
+    );
+    assert.doesNotMatch(
+      generateAgentsMd({ tools: { ripgrep: true } } as AgentenvConfig),
+      /tldr --update/,
+    );
+  });
+
+  it('generates CLAUDE.md by default only when claude_code is enabled', () => {
+    const names = (agents: Record<string, boolean>): string[] =>
+      generateInstructionFiles({ agents } as AgentenvConfig, '.').map((f) => path.basename(f.path));
+    assert.deepEqual(names({ claude_code: true }), ['AGENTS.md', 'CLAUDE.md']);
+    assert.deepEqual(names({ codex_cli: true }), ['AGENTS.md']);
+  });
+});
+
+describe('backup reporting', () => {
+  it('mentions the backup path when the first edit to a pre-existing file creates one', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-backup-msg-'));
+    try {
+      const file = path.join(dir, 'AGENTS.md');
+      fs.writeFileSync(file, 'my own notes\n');
+      const result = updateWithMarkers(
+        file,
+        '<!-- s -->\nx\n<!-- e -->',
+        '<!-- s -->',
+        '<!-- e -->',
+      );
+      assert.equal(result.success, true);
+      assert.match(result.message, /original backed up to .*AGENTS\.md\.agentenv-backup/);
+      const second = updateWithMarkers(
+        file,
+        '<!-- s -->\ny\n<!-- e -->',
+        '<!-- s -->',
+        '<!-- e -->',
+      );
+      assert.doesNotMatch(second.message, /backed up/);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

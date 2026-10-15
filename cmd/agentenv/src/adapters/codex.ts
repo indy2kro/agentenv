@@ -9,6 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { BaseAdapter, AdapterConfig, AdapterResult } from './base.js';
 import { isAgentInstalled } from './detect.js';
+import { uninstallViaRtk } from './rtk-delegation.js';
 import { RTK_INIT_FLAGS, resolveRtkInit, rtkMessage } from '../toolchain/rtk.js';
 import { writeFileWithRetry } from '../utils/fs-retry.js';
 import { codexConfigDir } from './agent-dirs.js';
@@ -122,14 +123,8 @@ export class CodexCliAdapter extends BaseAdapter {
   }
 
   async cleanup(): Promise<AdapterResult> {
-    // RTK.md/AGENTS.md are owned by rtk; nothing to remove on our side.
-    return {
-      success: true,
-      message: 'Codex CLI adapter cleaned up',
-      filesCreated: [],
-      filesModified: [],
-      errors: [],
-    };
+    // rtk owns the hook files; ask it to remove them.
+    return uninstallViaRtk('Codex CLI', RTK_INIT_FLAGS.codex_cli, this.config);
   }
 
   getEnvVars(): Record<string, string> {

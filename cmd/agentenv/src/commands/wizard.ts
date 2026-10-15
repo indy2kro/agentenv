@@ -1,8 +1,9 @@
+import * as path from 'path';
 import { checkbox, confirm, input, select, Separator } from '@inquirer/prompts';
 import { detectInstalledAgents } from '../adapters/detect.js';
 import { DEFAULT_CONFIG, diffConfigs, loadConfig } from '../config/schema.js';
 import type { AgentKey, AgentenvConfig, CustomTool } from '../config/schema.js';
-import { configFilePath, findConfigPath } from '../config/scopes.js';
+import { configFilePath, findConfigPath, userConfigDir } from '../config/scopes.js';
 import { saveAndApply } from './setup.js';
 import {
   AGENT_OPTIONS,
@@ -41,6 +42,8 @@ export interface WizardDeps {
   saveAndApply?: typeof saveAndApply;
   /** Overrides the stdin/stdout TTY check (real process streams by default). */
   isTTY?: () => boolean;
+  /** Scope preselected in the scope prompt (from `setup --scope`). */
+  scope?: 'project' | 'user';
 }
 
 /**
@@ -199,8 +202,17 @@ export async function runConfigWizard(deps: WizardDeps = {}): Promise<void> {
 
   // Step 4: Choose scope
   console.log('\nStep 4/7: Choose configuration scope');
+  // Preselect: an explicit `setup --scope`, else the scope of the config that
+  // was found (so re-running on a user config doesn't default to project).
+  const foundConfig = findConfigPathFn();
+  const foundScope: 'project' | 'user' | undefined = foundConfig
+    ? path.resolve(path.dirname(foundConfig)) === path.resolve(userConfigDir())
+      ? 'user'
+      : 'project'
+    : undefined;
   const scope = (await selectFn({
     message: 'Scope:',
+    default: deps.scope ?? foundScope ?? 'project',
     choices: [
       { name: `Project-level (this repo: ${process.cwd()})`, value: 'project' },
       { name: 'User/global-level', value: 'user' },
@@ -309,6 +321,8 @@ export async function runConfigWizard(deps: WizardDeps = {}): Promise<void> {
     return;
   }
 
-  const file = configFilePath(scope);
+  // Save over the config that was found when it's at the chosen scope (it may
+  // live in an ancestor directory), otherwise at the scope's default location.
+  const file = foundConfig && foundScope === scope ? foundConfig : configFilePath(scope);
   await saveAndApplyFn(config, file, { successMessage: 'Configuration applied successfully!' });
 }

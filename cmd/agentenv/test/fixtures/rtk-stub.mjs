@@ -13,9 +13,26 @@ const flags = args.slice(1).join(' ');
 const cwd = process.cwd();
 const home = process.env.HOME || process.env.USERPROFILE || '';
 
+function writeFile(filePath, content) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, content);
+}
+
 function writeJson(filePath, value) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+if (flags.endsWith('--uninstall')) {
+  // `rtk init <flags> --uninstall`: remove what the matching init wrote.
+  const rm = (f) => fs.rmSync(f, { force: true });
+  rm(path.join(cwd, 'RTK.md'));
+  rm(path.join(cwd, '.github', 'copilot-instructions.md'));
+  rm(path.join(cwd, '.github', 'hooks', 'rtk-rewrite.json'));
+  rm(path.join(home, '.config', 'opencode', 'plugins', 'rtk.ts'));
+  rm(path.join(home, '.vibe', 'hooks.toml'));
+  rm(path.join(cwd, '.windsurfrules'));
+  process.exit(0);
 }
 
 switch (flags) {
@@ -52,7 +69,8 @@ switch (flags) {
     break;
   }
   case '-g --agent windsurf': {
-    fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK stub (Windsurf)\n');
+    // Real rtk 0.49.0 writes .windsurfrules into the project dir.
+    fs.writeFileSync(path.join(cwd, '.windsurfrules'), '# RTK stub (Windsurf)\n');
     break;
   }
   case '--agent cline': {
@@ -60,7 +78,8 @@ switch (flags) {
     break;
   }
   case '-g --agent vibe': {
-    fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK stub (Mistral Vibe)\n');
+    // Real rtk 0.49.0 registers the hook in ~/.vibe/hooks.toml.
+    writeFile(path.join(home, '.vibe', 'hooks.toml'), '# rtk hook registry stub\n');
     break;
   }
   default: {

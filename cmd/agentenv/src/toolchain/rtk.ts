@@ -245,6 +245,7 @@ export function checkRtkInstallation(
     const result = spawn(resolvedPath, ['--version'], {
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 10000,
     });
     const output = (result.stdout || result.stderr || '').trim();
     if (result.status === 0 && output) version = output;
@@ -257,6 +258,7 @@ export function checkRtkInstallation(
     const result = spawn(resolvedPath, ['gain'], {
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 10000,
     });
     gainOk = result.status === 0;
   } catch {

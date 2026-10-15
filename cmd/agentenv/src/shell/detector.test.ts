@@ -655,6 +655,20 @@ describe('detectShell', () => {
   });
 });
 
+describe('fixShellConfiguration on macOS without a TTY', () => {
+  it('reports only; it does not attempt a Homebrew install', () => {
+    const originalPlatform = process.platform;
+    Object.defineProperty(process, 'platform', { value: 'darwin' });
+    try {
+      const result = fixShellConfiguration(os.tmpdir(), [], false);
+      assert.equal(result.success, true);
+      assert.doesNotMatch(result.message, /could not be installed|installed via Homebrew/);
+    } finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform });
+    }
+  });
+});
+
 describe('gitBashCandidatePaths', () => {
   it('always includes the four machine-wide Program Files locations', () => {
     const candidates = gitBashCandidatePaths({});

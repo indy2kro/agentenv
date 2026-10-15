@@ -11,11 +11,11 @@ import { AGENT_KEYS } from '../config/schema.js';
 import type { AgentKey } from '../config/schema.js';
 
 // The binary(ies) that indicate an agent is installed. An agent counts as
-// present when at least one listed command resolves. Copilot rides on `gh`.
+// present when at least one listed command resolves. Copilot is detected by its own `copilot` CLI (gh is a tool agentenv installs itself).
 export const AGENT_COMMANDS: Record<AgentKey, string[]> = {
   claude_code: ['claude'],
   codex_cli: ['codex'],
-  copilot: ['gh'],
+  copilot: ['copilot'],
   opencode: ['opencode'],
   gemini_cli: ['gemini'],
   cursor: ['cursor'],
@@ -57,6 +57,34 @@ export function isAgentInstalled(agent: AgentKey, detect: DetectFn = defaultDete
   return AGENT_COMMANDS[agent].some(detect);
 }
 
+const WINDOWS_EXECUTABLE_EXT = /\.(exe|com|cmd|bat)$/i;
+const WINDOWS_BATCH_EXT = /\.(cmd|bat)$/i;
+
+/**
+ * Choose among `where`/`which` output lines. On Windows `where` lists the
+ * extensionless POSIX shim npm installs (not spawnable) before its `.cmd`, so
+ * prefer the first line with an executable extension.
+ */
+export function pickLookupResult(output: string, windows: boolean): string | null {
+  const lines = output
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  if (windows) {
+    const executable = lines.find((line) => WINDOWS_EXECUTABLE_EXT.test(line));
+    if (executable) return executable;
+  }
+  return lines[0] ?? null;
+}
+
+/** True for Windows batch files, which Node cannot spawn without a shell (EINVAL). */
+export function needsWindowsShell(
+  binaryPath: string,
+  platform: string = process.platform,
+): boolean {
+  return platform === 'win32' && WINDOWS_BATCH_EXT.test(binaryPath);
+}
+
 /**
  * Resolve the first PATH hit for a binary, or null when it is not on PATH.
  * Used by `agentenv status` to surface tool drift.
@@ -80,13 +108,7 @@ export function resolveBinary(command: string): string | null {
       stdio: ['ignore', 'pipe', 'ignore'],
       timeout: 5000,
     });
-    const out = result.stdout ?? '';
-    return (
-      out
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .find((line) => line.length > 0) ?? null
-    );
+    return pickLookupResult(result.stdout ?? '', process.platform === 'win32');
   } catch {
     return null;
   }

@@ -1,5 +1,7 @@
+import { printJson } from '../cli/json.js';
 import { Command } from 'commander';
 import * as fs from 'fs';
+import * as path from 'path';
 import { confirm } from '@inquirer/prompts';
 import {
   AGENT_KEYS,
@@ -14,10 +16,14 @@ import {
   configFilePath,
   findConfigPath,
   parseScopeFlag,
-  resolveScopeDir,
+  baseDirForConfig,
 } from '../config/scopes.js';
 import type { ScopeValue } from '../config/scopes.js';
+import { RTK_INIT_FLAGS } from '../toolchain/rtk.js';
+import type { RtkInitFn } from '../toolchain/rtk.js';
+import { claudeConfigDir } from '../adapters/agent-dirs.js';
 import { ADAPTER_CLASSES } from '../adapters/index.js';
+import { isScopedRtkUninstall } from '../adapters/rtk-delegation.js';
 import {
   generateInstructionFiles,
   planMarkerRemoval,
@@ -35,6 +41,7 @@ import {
   miseTomlPathFor,
 } from '../toolchain/mise.js';
 import { normalizeOutput } from '../utils/output.js';
+import { backupPathFor } from '../utils/fs-retry.js';
 import { renderLogo, setQuietEnabled } from '../ui/output.js';
 import { printConfigPath, printResult, reportValidation } from '../ui/report.js';
 
@@ -271,14 +278,29 @@ export interface UnwireResult {
  * the managed block from each planned file, then delete mise.toml if
  * planned. Files are re-read fresh via removeMarkerBlock() rather than
  * trusting the plan's precomputed status, matching apply's dry-run/execute
- * split (FEAT-06) — the plan is a preview, never a cached write.
+ * split — the plan is a preview, never a cached write.
  */
-export async function executeUnwire(baseDir: string, plan: UnwirePlan): Promise<UnwireResult> {
+/** What an agent's cleanup would do, in terms of files/commands rather than method names. */
+export function describeCleanup(agent: AgentKey): string {
+  if (agent === 'claude_code') {
+    return `would remove the rtk hook from ${path.join(claudeConfigDir(), 'settings.json')}`;
+  }
+  const flags = RTK_INIT_FLAGS[agent];
+  return isScopedRtkUninstall(flags)
+    ? `would run \`rtk init ${flags.join(' ')} --uninstall\``
+    : 'no automatic rtk removal (rtk cannot uninstall this agent alone); see the note printed on unwire';
+}
+
+export async function executeUnwire(
+  baseDir: string,
+  plan: UnwirePlan,
+  deps: { rtkInit?: RtkInitFn } = {},
+): Promise<UnwireResult> {
   const messages: string[] = [];
   const errors: string[] = [];
 
   for (const agent of plan.agents) {
-    const adapter = new ADAPTER_CLASSES[agent]({ enabled: true, baseDir });
+    const adapter = new ADAPTER_CLASSES[agent]({ enabled: true, baseDir, rtkInit: deps.rtkInit });
     const result = await adapter.cleanup();
     messages.push(`${adapter.getName()}: ${result.message}`);
     errors.push(...result.errors);
@@ -287,6 +309,16 @@ export async function executeUnwire(baseDir: string, plan: UnwirePlan): Promise<
   for (const file of [...plan.agentFiles, ...plan.sharedFiles]) {
     const result = removeMarkerBlock(file.path, plan.markerStart, plan.markerEnd);
     (result.success ? messages : errors).push(result.message);
+  }
+
+  // Tell the user where the pre-agentenv originals are, so they can restore them.
+  for (const file of [...plan.agentFiles, ...plan.sharedFiles]) {
+    const backup = backupPathFor(file.path);
+    if (fs.existsSync(backup)) {
+      messages.push(
+        `Original of ${file.path} was backed up at ${backup}; copy it back to restore it`,
+      );
+    }
   }
 
   if (plan.miseToml) {
@@ -339,7 +371,7 @@ export interface UninstallJsonResult {
 }
 
 function printUninstallJson(payload: UninstallJsonResult): void {
-  console.log(JSON.stringify(payload, null, 2));
+  printJson(payload);
 }
 
 const filesChangedFrom = (plan: UnwirePlan): string[] =>
@@ -348,7 +380,7 @@ const filesChangedFrom = (plan: UnwirePlan): string[] =>
     .map((f) => f.path);
 
 /**
- * The `--unwire-agents` path (FEAT-03): calls each targeted agent's
+ * The `--unwire-agents` path: calls each targeted agent's
  * `cleanup()`, removes the agentenv-managed block from its user-scope
  * instruction file, and — on a full unwire (no specific agents named) —
  * also strips the shared project/user AGENTS.md/CLAUDE.md and, with
@@ -403,7 +435,7 @@ async function doUnwireAgents(
   }
 
   const scope: ScopeValue = config.scope ?? 'project';
-  const baseDir = resolveScopeDir(scope);
+  const baseDir = baseDirForConfig(configPath, scope);
   const plan = buildUnwirePlan(
     config,
     baseDir,
@@ -425,7 +457,7 @@ async function doUnwireAgents(
         deletedMiseToml: plan.miseToml?.exists ?? false,
       });
     } else {
-      const lines: string[] = agents.map((agent) => `  ${agent} — would run cleanup()`);
+      const lines: string[] = agents.map((agent) => `  ${agent} — ${describeCleanup(agent)}`);
       for (const file of [...plan.agentFiles, ...plan.sharedFiles]) {
         lines.push(`  ${file.path} — ${file.status}${file.message ? ` (${file.message})` : ''}`);
       }
@@ -441,7 +473,8 @@ async function doUnwireAgents(
   }
 
   if (!options.yes) {
-    if (process.stdin.isTTY && process.stdout.isTTY) {
+    // --json must never render a prompt onto stdout ahead of the document.
+    if (!json && process.stdin.isTTY && process.stdout.isTTY) {
       const proceed = await confirm({
         message: fullUnwire
           ? `Unwire ${agents.length} agent(s) and remove agentenv-managed instruction blocks?`
@@ -455,7 +488,7 @@ async function doUnwireAgents(
       }
     } else {
       fail(
-        'Interactive confirmation requires a TTY; pass `--yes` (or `--dry-run` to preview) to run non-interactively.',
+        'Confirmation requires an interactive TTY and no --json; pass `--yes` (or `--dry-run` to preview) to run non-interactively.',
       );
       return;
     }
@@ -566,7 +599,7 @@ export async function doUninstall(options: UninstallCommandOptions): Promise<voi
     return;
   }
 
-  const scopeDir = resolveScopeDir(config.scope ?? 'project');
+  const scopeDir = baseDirForConfig(configPath, config.scope ?? 'project');
   const miseToml = miseTomlPathFor(config.scope, scopeDir);
   const miseTomlPath = fs.existsSync(miseToml) ? miseToml : undefined;
 
@@ -639,7 +672,8 @@ export async function doUninstall(options: UninstallCommandOptions): Promise<voi
 
   // 7. Confirmation, only when there is actually something to remove.
   if (!options.yes) {
-    if (process.stdin.isTTY && process.stdout.isTTY) {
+    // --json must never render a prompt onto stdout ahead of the document.
+    if (!json && process.stdin.isTTY && process.stdout.isTTY) {
       const proceed = await confirm({
         message: `Uninstall ${plan.toUninstall.length} tool(s) from the mise store?`,
         default: false,
@@ -651,7 +685,7 @@ export async function doUninstall(options: UninstallCommandOptions): Promise<voi
       }
     } else {
       fail(
-        'Interactive confirmation requires a TTY; pass `--yes` (or `--dry-run` to preview) to run non-interactively.',
+        'Confirmation requires an interactive TTY and no --json; pass `--yes` (or `--dry-run` to preview) to run non-interactively.',
       );
       return;
     }

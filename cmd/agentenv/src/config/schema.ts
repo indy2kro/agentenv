@@ -337,7 +337,7 @@ export const BINARY_MAP: Record<string, string> = {
   fd: 'fd',
   jq: 'jq',
   rtk: 'rtk',
-  ast_grep: 'sg',
+  ast_grep: 'ast-grep',
   git_delta: 'delta',
   gh: 'gh',
   difftastic: 'difft',
@@ -414,7 +414,7 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
 export interface LoadConfigOptions {
   /**
    * Merge a discovered user-scope config in beneath a project-scope one,
-   * instead of the project file shadowing it completely (FEAT-08) — a
+   * instead of the project file shadowing it completely — a
    * project config only needs to state what it wants to override; anything
    * it leaves out falls through to the user config, then to DEFAULT_CONFIG.
    * Off by default, so every existing single-file caller — including the
@@ -467,10 +467,14 @@ export function loadConfig(configPath?: string, options: LoadConfigOptions = {})
       ) {
         try {
           base = mergeWithDefaults(normalizeConfig(readAndParseToml(userConfigPath)));
-        } catch {
+        } catch (userErr) {
           // A broken/unreadable user config must not block a valid project
           // config from loading — fall back to DEFAULT_CONFIG, same as if
-          // no user config existed at all.
+          // no user config existed at all. Say so on stderr, though, so the
+          // user knows their user-level preferences are not being applied.
+          console.warn(
+            `warning: ignoring unreadable user config ${userConfigPath}: ${userErr instanceof Error ? userErr.message : String(userErr)}`,
+          );
         }
       }
     }
@@ -487,7 +491,8 @@ export function loadConfig(configPath?: string, options: LoadConfigOptions = {})
 /**
  * Save configuration to agentenv.toml file
  */
-export function saveConfig(config: AgentenvConfig, configPath: string): void {
+/** Returns true when the file was written, false when it already held this config. */
+export function saveConfig(config: AgentenvConfig, configPath: string): boolean {
   try {
     // Re-serializing an unchanged config from scratch would strip whatever
     // hand-written comments/formatting the file has (agentenv.toml.example
@@ -497,7 +502,7 @@ export function saveConfig(config: AgentenvConfig, configPath: string): void {
     // through to a normal save, which gives the user a valid file back.
     if (fs.existsSync(configPath)) {
       try {
-        if (isDeepStrictEqual(loadConfig(configPath), config)) return;
+        if (isDeepStrictEqual(loadConfig(configPath), config)) return false;
       } catch {
         // Fall through to a normal save.
       }
@@ -505,6 +510,7 @@ export function saveConfig(config: AgentenvConfig, configPath: string): void {
     fs.mkdirSync(path.dirname(configPath), { recursive: true });
     const result = writeFileWithVerify(configPath, configToToml(config));
     if (!result.success) throw new Error(result.message);
+    return true;
   } catch (err) {
     throw new Error(`Failed to save config: ${err}`, { cause: err });
   }
@@ -669,8 +675,8 @@ function copyUnknownKeys(
  * field `config` sets wins, everything it leaves unset falls through to
  * `base`'s value. Passing a config already merged with DEFAULT_CONFIG as
  * `base` (rather than DEFAULT_CONFIG itself) is what layers a project
- * config over a user config instead of over hardcoded defaults (FEAT-09 —
- * loadConfig()'s `layerUserConfig` option).
+ * config over a user config instead of over hardcoded defaults
+ * (loadConfig()'s `layerUserConfig` option).
  */
 function mergeWithDefaults(
   config: AgentenvConfig,
@@ -1089,6 +1095,17 @@ export function validateConfig(config: AgentenvConfig): {
     }
     if (generate.marker_end !== undefined && typeof generate.marker_end !== 'string') {
       errors.push('generate.marker_end must be a string');
+    }
+    const markerStart = generate.marker_start;
+    const markerEnd = generate.marker_end;
+    if (typeof markerStart === 'string' && markerStart.trim() === '') {
+      errors.push('generate.marker_start must not be empty');
+    }
+    if (typeof markerEnd === 'string' && markerEnd.trim() === '') {
+      errors.push('generate.marker_end must not be empty');
+    }
+    if (typeof markerStart === 'string' && markerStart !== '' && markerStart === markerEnd) {
+      errors.push('generate.marker_start and generate.marker_end must be different');
     }
     if (generate.files !== undefined && !Array.isArray(generate.files)) {
       errors.push('generate.files must be an array of file names');

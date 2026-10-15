@@ -1,4 +1,4 @@
-import { colorizeLine, theme } from './theme.js';
+import { colorizeLine, failGlyph, theme } from './theme.js';
 import { resolveResultLine } from './output.js';
 import type { ResultSeverity } from './output.js';
 
@@ -35,10 +35,38 @@ export function reportValidation(report: ValidationReportView, notApplying: stri
   return true;
 }
 
-/** Apply/setup result tail: colorized messages, then themed errors. */
-export function printMessages(messages: string[], errors: string[]): void {
+export interface TimelineEntry {
+  kind: 'message' | 'error';
+  text: string;
+}
+
+/** An error line that stays distinguishable without color (NO_COLOR, screen readers). */
+export function formatErrorLine(error: string): string {
+  const glyph = failGlyph();
+  return error.trimStart().startsWith(glyph) ? error : `${glyph} ${error}`;
+}
+
+/**
+ * Apply/setup result tail: colorized messages and themed errors. With a
+ * `timeline` they are printed in the order the steps produced them, so a
+ * failure appears next to the step it belongs to; without one, messages come
+ * first and errors last. Errors always carry a glyph, not just red.
+ */
+export function printMessages(
+  messages: string[],
+  errors: string[],
+  timeline?: TimelineEntry[],
+): void {
+  const printError = (error: string): void => console.error(theme.fail(formatErrorLine(error)));
+  if (timeline && timeline.length > 0) {
+    for (const entry of timeline) {
+      if (entry.kind === 'error') printError(entry.text);
+      else console.log(colorizeLine(entry.text));
+    }
+    return;
+  }
   for (const message of messages) console.log(colorizeLine(message));
-  for (const error of errors) console.error(theme.fail(error));
+  for (const error of errors) printError(error);
 }
 
 /**

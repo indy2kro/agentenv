@@ -1,5 +1,5 @@
 /**
- * Shell-fix state manifest (FEAT-06).
+ * Shell-fix state manifest.
  *
  * The Tier 0 Windows fix (`detector.ts`) writes per-agent config keys into
  * files agentenv does not own. To make that reversible, every write records
@@ -11,6 +11,7 @@
  */
 
 import * as fs from 'fs';
+import { writeFileWithRetry } from '../utils/fs-retry.js';
 import * as path from 'path';
 import { userConfigDir } from '../config/scopes.js';
 import type { AgentKey } from '../config/schema.js';
@@ -65,7 +66,7 @@ export function writeShellFixState(
   statePath: string = shellFixStatePath(),
 ): void {
   fs.mkdirSync(path.dirname(statePath), { recursive: true });
-  fs.writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`);
+  writeFileWithRetry(statePath, `${JSON.stringify(state, null, 2)}\n`);
 }
 
 export function clearShellFixState(statePath: string = shellFixStatePath()): void {

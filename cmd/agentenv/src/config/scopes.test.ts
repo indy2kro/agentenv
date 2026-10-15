@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import {
+  baseDirForConfig,
   configFilePath,
   findConfigPath,
   parseScopeFlag,
@@ -136,5 +137,16 @@ describe('scope resolution', () => {
     fs.writeFileSync(projectFile, '');
 
     assert.equal(findConfigPath(nested), projectFile);
+  });
+});
+
+describe('baseDirForConfig', () => {
+  it('uses the directory of an ancestor-level project config, not cwd', () => {
+    const cfg = path.join(os.tmpdir(), 'repo', 'agentenv.toml');
+    assert.equal(baseDirForConfig(cfg, 'project'), path.dirname(path.resolve(cfg)));
+  });
+
+  it('uses the user config dir for user scope', () => {
+    assert.equal(baseDirForConfig('/anywhere/agentenv.toml', 'user'), userConfigDir());
   });
 });

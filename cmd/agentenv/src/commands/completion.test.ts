@@ -96,3 +96,27 @@ describe('completion model', () => {
     assert.match(generatePowerShell(model), /'bash', 'zsh', 'fish', 'powershell'/);
   });
 });
+
+describe('completion values', () => {
+  const program = new Command().name('agentenv');
+  program.command('add').argument('<items...>').option('--scope <scope>');
+  program.command('apply').option('--shell-fix <mode>');
+  const model = buildCompletionModel(program);
+
+  it('suggests tool and agent keys for add and fixed values for --scope/--shell-fix', () => {
+    const add = model.commands.find((command) => command.name === 'add');
+    assert.ok(add?.positionals.includes('ripgrep'));
+    assert.ok(add?.positionals.includes('claude_code'));
+    assert.deepEqual(model.flagValues['--scope'], ['project', 'user']);
+    assert.deepEqual(model.flagValues['--shell-fix'], ['auto', 'always', 'never']);
+  });
+
+  it('emits those values in every shell script', () => {
+    for (const shell of COMPLETION_SHELLS) {
+      const script = generateCompletion(shell, model);
+      assert.match(script, /project/, shell);
+      assert.match(script, /always/, shell);
+      assert.match(script, /ripgrep/, shell);
+    }
+  });
+});

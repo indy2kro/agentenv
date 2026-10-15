@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { interactiveScopeIgnoredWarning, misePrereqCheck, unattendedSetup } from './setup.js';
+import { misePrereqCheck, unattendedSetup, unattendedSetupJson } from './setup.js';
 import { applyConfiguration } from './apply.js';
 import { DEFAULT_CONFIG, saveConfig } from '../config/schema.js';
 
@@ -129,7 +129,41 @@ describe('unattended setup pipeline', () => {
     assert.match(toml, /\[integrations\.superpowers\]/);
   });
 
-  it('re-applies the nearest user config instead of writing a fresh project config (UX-04)', async () => {
+  it('leaves an existing hand-written config byte-identical and applies it in place via --config', async () => {
+    const dir = tempDir('agentenv-inplace-');
+    const cwdDir = tempDir('agentenv-cwd-');
+    const file = path.join(dir, 'team.toml');
+    const original = ['# team config', '[agents]', 'claude_code = true # keep me', ''].join('\n');
+    fs.writeFileSync(file, original);
+
+    let appliedBaseDir: string | undefined;
+    const stubApply: typeof applyConfiguration = async (_config, baseDir) => {
+      appliedBaseDir = baseDir;
+      return { success: true, messages: [], errors: [] };
+    };
+    const originalLog = console.log;
+    const originalCwd = process.cwd();
+    console.log = () => {};
+    try {
+      process.chdir(cwdDir);
+      await unattendedSetup(
+        { yes: true, config: file },
+        {
+          misePrereqCheckDeps: { isInstalled: () => true, version: () => '3.2.1' },
+          applyConfiguration: stubApply,
+        },
+      );
+    } finally {
+      process.chdir(originalCwd);
+      console.log = originalLog;
+    }
+
+    assert.equal(fs.readFileSync(file, 'utf-8'), original);
+    assert.equal(appliedBaseDir, dir);
+    assert.equal(fs.existsSync(path.join(cwdDir, 'agentenv.toml')), false);
+  });
+
+  it('re-applies the nearest user config instead of writing a fresh project config', async () => {
     const projectDir = tempDir('agentenv-project-');
     const xdgDir = tempDir('agentenv-xdg-');
     const userToml = path.join(xdgDir, 'agentenv', 'agentenv.toml');
@@ -178,7 +212,7 @@ describe('unattended setup pipeline', () => {
     );
   });
 
-  it('applies a project config found in a parent directory to that directory, not cwd (FEAT-05)', async () => {
+  it('applies a project config found in a parent directory to that directory, not cwd', async () => {
     const projectRoot = tempDir('agentenv-project-');
     const nestedCwd = path.join(projectRoot, 'src', 'commands');
     fs.mkdirSync(nestedCwd, { recursive: true });
@@ -236,7 +270,7 @@ describe('unattended setup pipeline', () => {
     try {
       process.chdir(dir);
       await unattendedSetup(
-        { yes: true, agents: 'codex_cli', superpowers: 'v7.0.0' },
+        { yes: true, agents: 'codex_cli', superpowers: 'v7.0.0', rtk: false, tier2: false },
         {
           misePrereqCheckDeps: { isInstalled: () => true, version: () => '3.2.1' },
           applyConfiguration: stubApply,
@@ -251,6 +285,8 @@ describe('unattended setup pipeline', () => {
 
     assert.ok(warnings.some((line) => line.includes('--agents')));
     assert.ok(warnings.some((line) => line.includes('--superpowers')));
+    assert.ok(warnings.some((line) => line.includes('--no-rtk')));
+    assert.ok(warnings.some((line) => line.includes('--no-tier2')));
   });
 
   it('does not warn when no unattended flags are passed alongside an existing config', async () => {
@@ -320,14 +356,83 @@ describe('unattended setup pipeline', () => {
   });
 });
 
-describe('interactiveScopeIgnoredWarning', () => {
-  it('warns when --scope was passed', () => {
-    const warning = interactiveScopeIgnoredWarning('user');
-    assert.match(warning ?? '', /--scope is ignored by the interactive wizard/);
-    assert.match(warning ?? '', /--scope user/);
+describe('unattended setup argument errors', () => {
+  it('exits 2 (usage error) for an unknown agent name', async () => {
+    const dir = tempDir('agentenv-badagent-');
+    const xdgDir = tempDir('agentenv-badagent-xdg-');
+    const originalXdg = process.env.XDG_CONFIG_HOME;
+    const stubApply: typeof applyConfiguration = async () => {
+      throw new Error('apply must not run for a usage error');
+    };
+    const originalLog = console.log;
+    const originalError = console.error;
+    const originalCwd = process.cwd();
+    const originalExit = process.exitCode;
+    console.log = () => {};
+    console.error = () => {};
+    try {
+      process.env.XDG_CONFIG_HOME = xdgDir;
+      process.chdir(dir);
+      await unattendedSetup(
+        { yes: true, agents: 'not_an_agent' },
+        {
+          misePrereqCheckDeps: { isInstalled: () => true, version: () => '3.2.1' },
+          applyConfiguration: stubApply,
+        },
+      );
+      assert.equal(process.exitCode, 2);
+    } finally {
+      if (originalXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = originalXdg;
+      process.exitCode = originalExit;
+      process.chdir(originalCwd);
+      console.log = originalLog;
+      console.error = originalError;
+    }
   });
+});
 
-  it('is silent when --scope was not passed', () => {
-    assert.equal(interactiveScopeIgnoredWarning(undefined), undefined);
+describe('unattendedSetupJson', () => {
+  it('prints exactly one JSON envelope and nothing else on stdout', async () => {
+    const dir = tempDir('agentenv-setup-json-');
+    const xdgDir = tempDir('agentenv-setup-json-xdg-');
+    const toml = path.join(dir, 'agentenv.toml');
+    saveConfig({ ...DEFAULT_CONFIG, agents: { claude_code: true } }, toml);
+    const stubApply: typeof applyConfiguration = async () => ({
+      success: true,
+      messages: ['Tools: wrote mise.toml'],
+      errors: [],
+    });
+
+    const stdout: string[] = [];
+    const originalLog = console.log;
+    const originalCwd = process.cwd();
+    const originalXdg = process.env.XDG_CONFIG_HOME;
+    const originalExit = process.exitCode;
+    try {
+      process.env.XDG_CONFIG_HOME = xdgDir;
+      process.chdir(dir);
+      // unattendedSetupJson restores console.log before printing, so capture after it swaps.
+      console.log = (message?: unknown) => stdout.push(String(message));
+      await unattendedSetupJson(
+        { yes: true, json: true },
+        {
+          misePrereqCheckDeps: { isInstalled: () => true, version: () => '3.2.1' },
+          applyConfiguration: stubApply,
+        },
+      );
+    } finally {
+      process.chdir(originalCwd);
+      process.exitCode = originalExit;
+      if (originalXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = originalXdg;
+      console.log = originalLog;
+    }
+
+    assert.equal(stdout.length, 1, `expected one stdout write, got: ${stdout.join(' | ')}`);
+    const doc = JSON.parse(stdout[0]);
+    assert.equal(doc.success, true);
+    assert.equal(doc.schemaVersion, 1);
+    assert.ok(Array.isArray(doc.messages) && Array.isArray(doc.errors));
   });
 });

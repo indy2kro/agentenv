@@ -158,7 +158,7 @@ describe('Codex CLI adapter', () => {
     });
   });
 
-  it('honors CODEX_HOME over the default ~/.codex (SWEEP-03)', async () => {
+  it('honors CODEX_HOME over the default ~/.codex', async () => {
     await withHome(tempHome(), async () => {
       const home = process.env.HOME as string;
       const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-codex-relocated-'));
@@ -219,7 +219,7 @@ describe('GitHub Copilot adapter', () => {
     });
   });
 
-  it('honors XDG_CONFIG_HOME over the default ~/.config (SWEEP-03)', async () => {
+  it('honors XDG_CONFIG_HOME over the default ~/.config', async () => {
     await withHome(tempHome(), async () => {
       const home = process.env.HOME as string;
       const xdgHome = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-copilot-xdg-'));
@@ -278,7 +278,7 @@ describe('OpenCode adapter', () => {
     });
   });
 
-  it('honors XDG_CONFIG_HOME over the default ~/.config (SWEEP-03)', async () => {
+  it('honors XDG_CONFIG_HOME over the default ~/.config', async () => {
     await withHome(tempHome(), async () => {
       const home = process.env.HOME as string;
       const xdgHome = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-opencode-xdg-'));
@@ -390,11 +390,25 @@ for (const [label, AdapterCtor, rtkFlags, configDirName] of [
       });
     });
 
-    it('cleanup is a no-op', async () => {
-      const adapter = new AdapterCtor({ enabled: true, baseDir: '/tmp', rtkEnabled: true });
+    it('cleanup only runs rtk uninstall when it is scoped to this agent', async () => {
+      const calls: string[][] = [];
+      const adapter = new AdapterCtor({
+        enabled: true,
+        baseDir: '/tmp',
+        rtkEnabled: true,
+        rtkInit: (args) => {
+          calls.push(args);
+          return { success: true, message: 'ok', stdout: '', stderr: '' };
+        },
+      });
       const result = await adapter.cleanup();
       assert.equal(result.success, true);
       assert.equal(result.filesCreated.length, 0);
+      // Only verified-scoped uninstalls (copilot, vibe) invoke rtk; the rest
+      // must not run rtk's agent-unscoped global uninstall.
+      assert.ok(calls.length <= 1);
+      if (calls.length === 1) assert.equal(calls[0][calls[0].length - 1], '--uninstall');
+      else assert.match(result.message, /nothing was removed/);
     });
   });
 }
@@ -418,4 +432,64 @@ describe('Cursor adapter extraGlobalDirs', () => {
       assert.ok(result.filesCreated.includes(path.join(home, '.claude')));
     });
   });
+});
+
+describe('Copilot and OpenCode failure paths', () => {
+  const failingRtk = () => ({
+    success: false,
+    message: 'rtk init failed (exit 1)',
+    stdout: '',
+    stderr: 'boom',
+  });
+
+  for (const [name, Ctor] of [
+    ['GitHub Copilot', CopilotAdapter],
+    ['OpenCode', OpenCodeAdapter],
+  ] as const) {
+    it(`${name}: a failing rtk init fails initialize() with the rtk error`, async () => {
+      await withHome(tempHome(), async () => {
+        const home = process.env.HOME as string;
+        const adapter = new Ctor({
+          enabled: true,
+          baseDir: home,
+          rtkEnabled: true,
+          rtkInit: failingRtk,
+        });
+        const result = await adapter.initialize();
+        assert.equal(result.success, false);
+        assert.ok(result.errors.some((e) => e.includes('boom')));
+      });
+    });
+
+    it(`${name}: a disabled adapter does nothing`, async () => {
+      const rtk = fakeRtkInit();
+      const adapter = new Ctor({
+        enabled: false,
+        baseDir: os.tmpdir(),
+        rtkEnabled: true,
+        rtkInit: rtk.fn,
+      });
+      const result = await adapter.initialize();
+      assert.equal(result.success, true);
+      assert.match(result.message, /not enabled/);
+      assert.equal(rtk.calls.length, 0);
+    });
+
+    it(`${name}: exposes SHELL=bash.exe on Windows only when rtk is enabled`, () => {
+      const original = process.platform;
+      try {
+        Object.defineProperty(process, 'platform', { value: 'win32' });
+        assert.deepEqual(
+          new Ctor({ enabled: true, baseDir: os.tmpdir(), rtkEnabled: true }).getEnvVars(),
+          { SHELL: 'bash.exe' },
+        );
+        assert.deepEqual(
+          new Ctor({ enabled: true, baseDir: os.tmpdir(), rtkEnabled: false }).getEnvVars(),
+          {},
+        );
+      } finally {
+        Object.defineProperty(process, 'platform', { value: original });
+      }
+    });
+  }
 });

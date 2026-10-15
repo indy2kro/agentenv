@@ -9,6 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { BaseAdapter, AdapterConfig, AdapterResult } from './base.js';
 import { isAgentInstalled } from './detect.js';
+import { uninstallViaRtk } from './rtk-delegation.js';
 import { RTK_INIT_FLAGS, resolveRtkInit, rtkMessage } from '../toolchain/rtk.js';
 import { opencodeConfigDir } from './agent-dirs.js';
 
@@ -96,14 +97,8 @@ export class OpenCodeAdapter extends BaseAdapter {
   }
 
   async cleanup(): Promise<AdapterResult> {
-    // plugins/rtk.ts is owned by rtk; nothing to remove on our side.
-    return {
-      success: true,
-      message: 'OpenCode adapter cleaned up',
-      filesCreated: [],
-      filesModified: [],
-      errors: [],
-    };
+    // rtk owns the hook files; ask it to remove them.
+    return uninstallViaRtk('OpenCode', RTK_INIT_FLAGS.opencode, this.config);
   }
 
   getEnvVars(): Record<string, string> {

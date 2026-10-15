@@ -2,6 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   formatDuration,
+  formatErrorLine,
+  printMessages,
   printConfigPath,
   printResult,
   reportValidation,
@@ -125,5 +127,47 @@ describe('printResult', () => {
       Object.defineProperty(process.stdout, 'isTTY', { value: originalIsTTY, configurable: true });
     }
     assert.doesNotMatch(captured.out.join('\n'), /finished in|failed in/);
+  });
+});
+
+describe('printMessages', () => {
+  const capture = (fn: () => void): string[] => {
+    const lines: string[] = [];
+    const log = console.log;
+    const err = console.error;
+    console.log = (m?: unknown) => lines.push(`out:${String(m)}`);
+    console.error = (m?: unknown) => lines.push(`err:${String(m)}`);
+    try {
+      fn();
+    } finally {
+      console.log = log;
+      console.error = err;
+    }
+    return lines;
+  };
+
+  it('prints errors in step order when given a timeline', () => {
+    const lines = capture(() =>
+      printMessages(
+        ['a', 'c'],
+        ['b failed'],
+        [
+          { kind: 'message', text: 'a' },
+          { kind: 'error', text: 'b failed' },
+          { kind: 'message', text: 'c' },
+        ],
+      ),
+    );
+    assert.equal(lines.length, 3);
+    assert.match(lines[0], /^out:.*a/);
+    assert.match(lines[1], /^err:.*b failed/);
+    assert.match(lines[2], /^out:.*c/);
+  });
+
+  it('marks errors with a glyph so color is not the only signal', () => {
+    const lines = capture(() => printMessages([], ['boom']));
+    assert.match(lines[0], /^err:.+ boom/);
+    assert.notEqual(formatErrorLine('boom'), 'boom');
+    assert.equal(formatErrorLine(formatErrorLine('boom')), formatErrorLine('boom'));
   });
 });

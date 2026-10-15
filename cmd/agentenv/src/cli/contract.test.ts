@@ -7,6 +7,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const cli = fileURLToPath(new URL('../index.js', import.meta.url));
+const rtkStubPath = fileURLToPath(new URL('../../test/fixtures/rtk-stub.mjs', import.meta.url));
 
 function run(
   args: string[],
@@ -217,6 +218,8 @@ direnv = false
       HOME: scrub,
       USERPROFILE: scrub,
       XDG_CONFIG_HOME: path.join(scrub, 'xdg'),
+      // Never let a contract test reach the developer's real rtk.
+      AGENTENV_RTK_BIN: rtkStubPath,
     };
   });
 
@@ -294,6 +297,28 @@ direnv = false
     assert.equal(json.success, true);
     assert.equal(json.configPath, path.join(clean, 'agentenv.toml'));
     assert.equal(result.stderr, '', `apply --json should be silent on stderr: ${result.stderr}`);
+    // Shared envelope: versioned, with both arrays always present.
+    assert.equal(json.schemaVersion, 1);
+    assert.ok(Array.isArray(json.messages));
+    assert.ok(Array.isArray(json.errors));
+  });
+
+  it('apply --json failure documents carry the same fields as a success document', () => {
+    const result = run(['apply', '--json', '--scope', 'user'], clean, {
+      ...shellEnv,
+      XDG_CONFIG_HOME: path.join(clean, 'no-such-xdg'),
+    });
+    assert.equal(result.status, 1);
+    const json = JSON.parse(result.stdout);
+    assert.equal(json.success, false);
+    assert.equal(json.schemaVersion, 1);
+    for (const field of ['configPath', 'baseDir', 'messages', 'errors', 'warnings']) {
+      assert.ok(field in json, `missing ${field}`);
+    }
+  });
+
+  it('setup --json without --yes is a usage error (exit 2)', () => {
+    assert.equal(run(['setup', '--json'], clean, shellEnv).status, 2);
   });
 
   it('apply --dry-run --json emits a structured plan instead of the human summary lines', () => {
@@ -416,7 +441,7 @@ direnv = false
     assert.doesNotMatch(dry.stdout, /wrote/);
   });
 
-  it('apply --dry-run reports [unchanged] for a config already applied (FEAT-06)', () => {
+  it('apply --dry-run reports [unchanged] for a config already applied', () => {
     // `clean` was applied once in before(); re-previewing it must show every
     // generated artifact as unchanged, not just list target paths.
     const dry = run(['apply', '--dry-run'], clean);
@@ -434,10 +459,10 @@ direnv = false
     );
   });
 
-  it('uninstall --unwire-agents --dry-run previews classified changes without writing (FEAT-03)', () => {
+  it('uninstall --unwire-agents --dry-run previews classified changes without writing', () => {
     const dry = run(['uninstall', '--unwire-agents', '--dry-run'], unwireFixture, shellEnv);
     assert.equal(dry.status, 0, dry.stderr);
-    assert.match(dry.stdout, /codex_cli — would run cleanup\(\)/);
+    assert.match(dry.stdout, /codex_cli — no automatic rtk removal/);
     assert.match(dry.stdout, /AGENTS\.md — delete/);
     assert.match(dry.stdout, /CLAUDE\.md — delete/);
     assert.match(dry.stdout, /Dry run complete/);
@@ -445,7 +470,7 @@ direnv = false
     assert.equal(fs.existsSync(path.join(unwireFixture, 'AGENTS.md')), true);
   });
 
-  it('uninstall --unwire-agents --yes removes the managed block and reports success (FEAT-03)', () => {
+  it('uninstall --unwire-agents --yes removes the managed block and reports success', () => {
     const dir = makeUnwireFixture(fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-contract-')));
     const result = run(['uninstall', '--unwire-agents', '--yes', '--json'], dir, shellEnv);
     assert.equal(result.status, 0, result.stderr);
@@ -461,7 +486,7 @@ direnv = false
     assert.equal(fs.existsSync(path.join(dir, 'mise.toml')), true);
   });
 
-  it('uninstall --unwire-agents --delete-mise-toml --yes also removes mise.toml (FEAT-03)', () => {
+  it('uninstall --unwire-agents --delete-mise-toml --yes also removes mise.toml', () => {
     const dir = makeUnwireFixture(fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-contract-')));
     const result = run(
       ['uninstall', '--unwire-agents', '--delete-mise-toml', '--yes', '--json'],
@@ -474,7 +499,7 @@ direnv = false
     assert.equal(fs.existsSync(path.join(dir, 'mise.toml')), false);
   });
 
-  it('uninstall --unwire-agents=<agent> only unwires that agent and never touches shared files (FEAT-03)', () => {
+  it('uninstall --unwire-agents=<agent> only unwires that agent and never touches shared files', () => {
     const dir = makeUnwireFixture(fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-contract-')));
     const result = run(
       ['uninstall', '--unwire-agents', 'codex_cli', '--yes', '--json'],
@@ -490,7 +515,7 @@ direnv = false
     assert.equal(fs.existsSync(path.join(dir, 'CLAUDE.md')), true);
   });
 
-  it('exits 2 for an unknown agent on uninstall --unwire-agents (FEAT-03)', () => {
+  it('exits 2 for an unknown agent on uninstall --unwire-agents', () => {
     const result = run(
       ['uninstall', '--unwire-agents', 'not-a-real-agent', '--dry-run'],
       unwireFixture,
@@ -500,7 +525,7 @@ direnv = false
     assert.match(result.stderr, /Unknown agent\(s\) to unwire: not-a-real-agent/);
   });
 
-  it('exits 2 when --unwire-agents is combined with specific tool arguments (FEAT-03)', () => {
+  it('exits 2 when --unwire-agents is combined with specific tool arguments', () => {
     const result = run(
       ['uninstall', 'ripgrep', '--unwire-agents', '--dry-run'],
       unwireFixture,
@@ -510,7 +535,7 @@ direnv = false
     assert.match(result.stderr, /--unwire-agents cannot be combined with specific tool arguments/);
   });
 
-  it('exits 2 when --delete-mise-toml is combined with a specific agent list (FEAT-03)', () => {
+  it('exits 2 when --delete-mise-toml is combined with a specific agent list', () => {
     const result = run(
       ['uninstall', '--unwire-agents', 'codex_cli', '--delete-mise-toml', '--dry-run'],
       unwireFixture,
@@ -523,13 +548,13 @@ direnv = false
     );
   });
 
-  it('exits 2 for --delete-mise-toml without --unwire-agents at all (FEAT-03)', () => {
+  it('exits 2 for --delete-mise-toml without --unwire-agents at all', () => {
     const result = run(['uninstall', '--delete-mise-toml', '--dry-run'], unwireFixture, shellEnv);
     assert.equal(result.status, 2);
     assert.match(result.stderr, /--delete-mise-toml requires --unwire-agents/);
   });
 
-  it('add/remove --dry-run previews the planned change without writing (FEAT-07)', () => {
+  it('add/remove --dry-run previews the planned change without writing', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-configedit-'));
     fs.writeFileSync(
       path.join(dir, 'agentenv.toml'),
@@ -543,7 +568,7 @@ direnv = false
     assert.match(fs.readFileSync(path.join(dir, 'agentenv.toml'), 'utf-8'), /jq = false/);
   });
 
-  it('add --no-apply --json saves the change without running apply (FEAT-07)', () => {
+  it('add --no-apply --json saves the change without running apply', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-configedit-'));
     fs.writeFileSync(
       path.join(dir, 'agentenv.toml'),
@@ -567,7 +592,7 @@ direnv = false
     assert.match(fs.readFileSync(path.join(dir, 'agentenv.toml'), 'utf-8'), /jq = false/);
   });
 
-  it('add reports "Nothing to change" as a no-op when already at the target value (FEAT-07)', () => {
+  it('add reports "Nothing to change" as a no-op when already at the target value', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-configedit-'));
     fs.writeFileSync(
       path.join(dir, 'agentenv.toml'),
@@ -581,7 +606,7 @@ direnv = false
     assert.match(json.message, /Nothing to change/);
   });
 
-  it('add --json runs a full apply with --skip-mise-install, generating files (FEAT-07)', () => {
+  it('add --json runs a full apply with --skip-mise-install, generating files', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-configedit-'));
     // Every agent explicitly disabled (not just claude_code): codex_cli
     // defaults to enabled via DEFAULT_CONFIG, and an enabled agent here
@@ -600,7 +625,7 @@ direnv = false
     assert.equal(fs.existsSync(path.join(dir, 'mise.toml')), true);
   });
 
-  it('exits 2 for an unknown tool/agent key on add (FEAT-07)', () => {
+  it('exits 2 for an unknown tool/agent key on add', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-configedit-'));
     fs.writeFileSync(path.join(dir, 'agentenv.toml'), 'scope = "project"\n[agents]\n[tools]\n');
 
@@ -609,18 +634,18 @@ direnv = false
     assert.match(result.stderr, /Unknown tool\/agent key\(s\) to add: not-a-real-key/);
   });
 
-  it('rejects unknown flags on add/remove as a usage error (FEAT-07)', () => {
+  it('rejects unknown flags on add/remove as a usage error', () => {
     assert.equal(run(['add', 'jq', '--nope'], wipe).status, 2);
     assert.equal(run(['remove', 'jq', '--nope'], wipe).status, 2);
   });
 
-  it('exits 1 for add with no config (operational failure) (FEAT-07)', () => {
+  it('exits 1 for add with no config (operational failure)', () => {
     const missing = run(['add', 'jq'], empty, shellEnv);
     assert.equal(missing.status, 1);
     assert.match(missing.stderr, /No agentenv\.toml found/);
   });
 
-  it('status --json layers a sparse project config over the user config (FEAT-08)', () => {
+  it('status --json layers a sparse project config over the user config', () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-layer-home-'));
     const userDir = path.join(home, '.config', 'agentenv');
     fs.mkdirSync(userDir, { recursive: true });

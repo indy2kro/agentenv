@@ -216,7 +216,7 @@ describe('gatherStatus', () => {
     assert.ok(!('integrationDetails' in json));
   });
 
-  it('derives baseDir from where a project config was actually found, not resolveScopeDir(scope) (FEAT-05)', async () => {
+  it('derives baseDir from where a project config was actually found, not resolveScopeDir(scope)', async () => {
     // findConfigPath now searches parent directories, so a project config
     // discovered from e.g. `repo/src/commands` no longer lives at cwd — the
     // real fix here is that baseDir must follow the config's own directory,
@@ -240,6 +240,30 @@ describe('gatherStatus', () => {
       hasManagedMarker: () => true,
     });
     assert.equal(report.baseDir, path.join('C:', 'repo'));
+  });
+
+  it('reports a Claude Code settings.json without the rtk hook as drift, not configured', async () => {
+    const report = await gatherStatus({
+      findConfigPath: () => '/tmp/agentenv.toml',
+      loadConfig: () => ({ ...noopConfig, rtk: { enabled: true } }),
+      resolveScopeDir: () => '/tmp',
+      validateConfig: () => ({ errors: [], warnings: [] }),
+      getEnabledAgents: () => ['claude_code'],
+      isAgentInstalled: () => true,
+      detectShell: () =>
+        ({
+          isWindows: false,
+          isPosixCompatible: true,
+          currentShell: 'bash',
+          missingUtilities: [],
+        }) as never,
+      fileExists: () => true,
+      fileContains: () => false,
+      hasManagedMarker: () => true,
+    });
+    const agent = report.agents.find((a) => a.key === 'claude_code');
+    assert.equal(agent?.configured, false);
+    assert.equal(agent?.drift, true);
   });
 
   it('puts a load failure into validation.errors and keeps the path', async () => {

@@ -4,6 +4,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import {
+  ensureDirOnWindowsUserPath,
   MISE_TOOL_NAMES,
   generateMiseToml,
   getShimsDirValue,
@@ -504,7 +505,7 @@ describe('toolAvailabilityClassification', () => {
 
   it('marks a fallback tool manual when absent but resolvable when on PATH', () => {
     // tokei is never handed to mise, but `apt install tokei` on Linux puts it
-    // on PATH — then it IS installed, just not via mise (BUG-16): report it
+    // on PATH — then it IS installed, just not via mise: report it
     // as resolvable instead of nagging the user to install what they have.
     assert.equal(
       toolAvailabilityClassification('tokei', 'tokei', empty, resolvable(null), noShim),
@@ -643,5 +644,43 @@ describe('miseTomlPathFor', () => {
       if (saved === undefined) delete process.env.MISE_CONFIG_DIR;
       else process.env.MISE_CONFIG_DIR = saved;
     }
+  });
+});
+
+describe('ensureDirOnWindowsUserPath', () => {
+  const shims = 'C:/Users/me/.local/bin';
+
+  it('does nothing off Windows and never runs PowerShell', () => {
+    let ran = false;
+    const result = ensureDirOnWindowsUserPath(shims, 'linux', () => {
+      ran = true;
+      return { status: 0, stdout: '', stderr: '' };
+    });
+    assert.equal(result.success, true);
+    assert.equal(ran, false);
+  });
+
+  it('reports added vs already present, passing the dir via env (not the script)', () => {
+    const seen: Array<{ script: string; env: Record<string, string> }> = [];
+    const runner = (stdout: string) => (script: string, env: Record<string, string>) => {
+      seen.push({ script, env });
+      return { status: 0, stdout, stderr: '' };
+    };
+    const added = ensureDirOnWindowsUserPath(shims, 'win32', runner('added\r\n'));
+    assert.match(added.message, /added .* to your user PATH; open a new terminal/);
+    const present = ensureDirOnWindowsUserPath(shims, 'win32', runner('present'));
+    assert.match(present.message, /already on your user PATH/);
+    assert.equal(seen[0].env.AGENTENV_PATH_DIR, shims);
+    assert.ok(!seen[0].script.includes(shims));
+  });
+
+  it('surfaces a PowerShell failure', () => {
+    const result = ensureDirOnWindowsUserPath(shims, 'win32', () => ({
+      status: 1,
+      stdout: '',
+      stderr: 'access denied',
+    }));
+    assert.equal(result.success, false);
+    assert.match(result.message, /access denied/);
   });
 });
