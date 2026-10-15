@@ -7,6 +7,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const cli = fileURLToPath(new URL('../index.js', import.meta.url));
+const rtkStubPath = fileURLToPath(new URL('../../test/fixtures/rtk-stub.mjs', import.meta.url));
 
 function run(
   args: string[],
@@ -217,6 +218,8 @@ direnv = false
       HOME: scrub,
       USERPROFILE: scrub,
       XDG_CONFIG_HOME: path.join(scrub, 'xdg'),
+      // Never let a contract test reach the developer's real rtk.
+      AGENTENV_RTK_BIN: rtkStubPath,
     };
   });
 
@@ -437,7 +440,7 @@ direnv = false
   it('uninstall --unwire-agents --dry-run previews classified changes without writing', () => {
     const dry = run(['uninstall', '--unwire-agents', '--dry-run'], unwireFixture, shellEnv);
     assert.equal(dry.status, 0, dry.stderr);
-    assert.match(dry.stdout, /codex_cli — would run cleanup\(\)/);
+    assert.match(dry.stdout, /codex_cli — would run `rtk init --codex --uninstall`/);
     assert.match(dry.stdout, /AGENTS\.md — delete/);
     assert.match(dry.stdout, /CLAUDE\.md — delete/);
     assert.match(dry.stdout, /Dry run complete/);

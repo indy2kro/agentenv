@@ -390,11 +390,22 @@ for (const [label, AdapterCtor, rtkFlags, configDirName] of [
       });
     });
 
-    it('cleanup is a no-op', async () => {
-      const adapter = new AdapterCtor({ enabled: true, baseDir: '/tmp', rtkEnabled: true });
+    it('cleanup asks rtk to uninstall its wiring', async () => {
+      const calls: string[][] = [];
+      const adapter = new AdapterCtor({
+        enabled: true,
+        baseDir: '/tmp',
+        rtkEnabled: true,
+        rtkInit: (args) => {
+          calls.push(args);
+          return { success: true, message: 'ok', stdout: '', stderr: '' };
+        },
+      });
       const result = await adapter.cleanup();
       assert.equal(result.success, true);
       assert.equal(result.filesCreated.length, 0);
+      assert.equal(calls.length, 1);
+      assert.equal(calls[0][calls[0].length - 1], '--uninstall');
     });
   });
 }

@@ -18,6 +18,16 @@ function writeJson(filePath, value) {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
+if (flags.endsWith('--uninstall')) {
+  // `rtk init <flags> --uninstall`: remove what the matching init wrote.
+  const rm = (f) => fs.rmSync(f, { force: true });
+  rm(path.join(cwd, 'RTK.md'));
+  rm(path.join(cwd, '.github', 'copilot-instructions.md'));
+  rm(path.join(cwd, '.github', 'hooks', 'rtk-rewrite.json'));
+  rm(path.join(home, '.config', 'opencode', 'plugins', 'rtk.ts'));
+  process.exit(0);
+}
+
 switch (flags) {
   case '--codex': {
     fs.writeFileSync(

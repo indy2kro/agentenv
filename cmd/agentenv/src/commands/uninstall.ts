@@ -1,5 +1,6 @@
 import { Command } from 'commander';
 import * as fs from 'fs';
+import * as path from 'path';
 import { confirm } from '@inquirer/prompts';
 import {
   AGENT_KEYS,
@@ -17,6 +18,9 @@ import {
   baseDirForConfig,
 } from '../config/scopes.js';
 import type { ScopeValue } from '../config/scopes.js';
+import { RTK_INIT_FLAGS } from '../toolchain/rtk.js';
+import type { RtkInitFn } from '../toolchain/rtk.js';
+import { claudeConfigDir } from '../adapters/agent-dirs.js';
 import { ADAPTER_CLASSES } from '../adapters/index.js';
 import {
   generateInstructionFiles,
@@ -273,12 +277,24 @@ export interface UnwireResult {
  * trusting the plan's precomputed status, matching apply's dry-run/execute
  * split — the plan is a preview, never a cached write.
  */
-export async function executeUnwire(baseDir: string, plan: UnwirePlan): Promise<UnwireResult> {
+/** What an agent's cleanup would do, in terms of files/commands rather than method names. */
+export function describeCleanup(agent: AgentKey): string {
+  if (agent === 'claude_code') {
+    return `would remove the rtk hook from ${path.join(claudeConfigDir(), 'settings.json')}`;
+  }
+  return `would run \`rtk init ${RTK_INIT_FLAGS[agent].join(' ')} --uninstall\``;
+}
+
+export async function executeUnwire(
+  baseDir: string,
+  plan: UnwirePlan,
+  deps: { rtkInit?: RtkInitFn } = {},
+): Promise<UnwireResult> {
   const messages: string[] = [];
   const errors: string[] = [];
 
   for (const agent of plan.agents) {
-    const adapter = new ADAPTER_CLASSES[agent]({ enabled: true, baseDir });
+    const adapter = new ADAPTER_CLASSES[agent]({ enabled: true, baseDir, rtkInit: deps.rtkInit });
     const result = await adapter.cleanup();
     messages.push(`${adapter.getName()}: ${result.message}`);
     errors.push(...result.errors);
@@ -425,7 +441,7 @@ async function doUnwireAgents(
         deletedMiseToml: plan.miseToml?.exists ?? false,
       });
     } else {
-      const lines: string[] = agents.map((agent) => `  ${agent} — would run cleanup()`);
+      const lines: string[] = agents.map((agent) => `  ${agent} — ${describeCleanup(agent)}`);
       for (const file of [...plan.agentFiles, ...plan.sharedFiles]) {
         lines.push(`  ${file.path} — ${file.status}${file.message ? ` (${file.message})` : ''}`);
       }
@@ -441,7 +457,8 @@ async function doUnwireAgents(
   }
 
   if (!options.yes) {
-    if (process.stdin.isTTY && process.stdout.isTTY) {
+    // --json must never render a prompt onto stdout ahead of the document.
+    if (!json && process.stdin.isTTY && process.stdout.isTTY) {
       const proceed = await confirm({
         message: fullUnwire
           ? `Unwire ${agents.length} agent(s) and remove agentenv-managed instruction blocks?`
@@ -455,7 +472,7 @@ async function doUnwireAgents(
       }
     } else {
       fail(
-        'Interactive confirmation requires a TTY; pass `--yes` (or `--dry-run` to preview) to run non-interactively.',
+        'Confirmation requires an interactive TTY and no --json; pass `--yes` (or `--dry-run` to preview) to run non-interactively.',
       );
       return;
     }
@@ -639,7 +656,8 @@ export async function doUninstall(options: UninstallCommandOptions): Promise<voi
 
   // 7. Confirmation, only when there is actually something to remove.
   if (!options.yes) {
-    if (process.stdin.isTTY && process.stdout.isTTY) {
+    // --json must never render a prompt onto stdout ahead of the document.
+    if (!json && process.stdin.isTTY && process.stdout.isTTY) {
       const proceed = await confirm({
         message: `Uninstall ${plan.toUninstall.length} tool(s) from the mise store?`,
         default: false,
@@ -651,7 +669,7 @@ export async function doUninstall(options: UninstallCommandOptions): Promise<voi
       }
     } else {
       fail(
-        'Interactive confirmation requires a TTY; pass `--yes` (or `--dry-run` to preview) to run non-interactively.',
+        'Confirmation requires an interactive TTY and no --json; pass `--yes` (or `--dry-run` to preview) to run non-interactively.',
       );
       return;
     }

@@ -201,9 +201,18 @@ describe('RtkDelegationAdapter', () => {
     });
   });
 
-  it('cleanup is a no-op', async () => {
+  it('cleanup runs the same rtk init flags with --uninstall', async () => {
+    const calls: string[][] = [];
     const adapter = new RtkDelegationAdapter(
-      { enabled: true, baseDir: '/tmp', rtkEnabled: true },
+      {
+        enabled: true,
+        baseDir: '/tmp',
+        rtkEnabled: true,
+        rtkInit: (args) => {
+          calls.push(args);
+          return { success: true, message: 'ok', stdout: '', stderr: '' };
+        },
+      },
       {
         agentKey: 'gemini_cli',
         label: 'Gemini CLI',
@@ -216,5 +225,29 @@ describe('RtkDelegationAdapter', () => {
     assert.equal(result.success, true);
     assert.equal(result.filesCreated.length, 0);
     assert.equal(result.filesModified.length, 0);
+    assert.deepEqual(calls, [['--gemini', '--uninstall']]);
+  });
+
+  it('cleanup treats a missing rtk binary as nothing to remove, and surfaces real failures', async () => {
+    const make = (message: string) =>
+      new RtkDelegationAdapter(
+        {
+          enabled: true,
+          baseDir: '/tmp',
+          rtkEnabled: true,
+          rtkInit: () => ({ success: false, message, stdout: '', stderr: 'boom' }),
+        },
+        {
+          agentKey: 'gemini_cli',
+          label: 'Gemini CLI',
+          rtkFlags: ['--gemini'],
+          configDir: '/tmp/.gemini',
+          expectedFile: 'RTK.md',
+        },
+      );
+    assert.equal((await make('rtk binary not found via mise').cleanup()).success, true);
+    const failed = await make('rtk init --gemini --uninstall failed (exit 1)').cleanup();
+    assert.equal(failed.success, false);
+    assert.match(failed.errors[0], /boom/);
   });
 });

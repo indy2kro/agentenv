@@ -35,6 +35,37 @@ export interface RtkDelegationOptions {
   extraGlobalDirs?: string[];
 }
 
+/**
+ * Undo an `rtk init` delegation with `rtk init <same flags> --uninstall`, so
+ * unwiring an agent removes the hooks/plugin/RTK.md rtk wrote instead of only
+ * reporting success. A missing rtk binary is not an error here: there is
+ * nothing rtk can remove, and uninstalling tools must not require them.
+ */
+export async function uninstallViaRtk(
+  label: string,
+  rtkFlags: string[],
+  config: AdapterConfig,
+): Promise<AdapterResult> {
+  const result: AdapterResult = {
+    success: true,
+    message: '',
+    filesCreated: [],
+    filesModified: [],
+    errors: [],
+  };
+  const run = resolveRtkInit(config.rtkInit)([...rtkFlags, '--uninstall'], config.baseDir);
+  if (run.success) {
+    result.message = `${label}: removed rtk wiring (rtk init ${rtkFlags.join(' ')} --uninstall)`;
+  } else if (run.message.startsWith('rtk binary not found')) {
+    result.message = `${label}: rtk not found, so no rtk wiring was removed`;
+  } else {
+    result.success = false;
+    result.message = `${label} cleanup failed`;
+    result.errors.push(run.message + (run.stderr ? `: ${run.stderr.trim()}` : ''));
+  }
+  return result;
+}
+
 export class RtkDelegationAdapter extends BaseAdapter {
   private opts: RtkDelegationOptions;
 
@@ -147,12 +178,6 @@ export class RtkDelegationAdapter extends BaseAdapter {
   }
 
   async cleanup(): Promise<AdapterResult> {
-    return {
-      success: true,
-      message: `${this.opts.label} adapter cleaned up`,
-      filesCreated: [],
-      filesModified: [],
-      errors: [],
-    };
+    return uninstallViaRtk(this.opts.label, this.opts.rtkFlags, this.config);
   }
 }
