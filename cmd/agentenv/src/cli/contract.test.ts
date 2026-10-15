@@ -317,6 +317,10 @@ direnv = false
     }
   });
 
+  it('setup --json without --yes is a usage error (exit 2)', () => {
+    assert.equal(run(['setup', '--json'], clean, shellEnv).status, 2);
+  });
+
   it('apply --dry-run --json emits a structured plan instead of the human summary lines', () => {
     const result = run(['apply', '--dry-run', '--json'], clean);
     assert.equal(result.status, 0, result.stderr);

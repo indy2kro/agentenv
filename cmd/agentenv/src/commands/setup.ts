@@ -15,8 +15,9 @@ import {
   miseInstallInstructions,
   prereqLine,
 } from '../toolchain/mise.js';
-import { colorizeLine, theme } from '../ui/theme.js';
-import { renderLogo } from '../ui/output.js';
+import { colorizeLine, setColorEnabled, theme } from '../ui/theme.js';
+import { renderLogo, setQuietEnabled } from '../ui/output.js';
+import { printJson } from '../cli/json.js';
 import { printConfigPath, printMessages, printResult, reportValidation } from '../ui/report.js';
 import { withSpinner } from '../ui/spinner.js';
 import type { Spinner } from '../ui/spinner.js';
@@ -65,6 +66,8 @@ export interface SaveAndApplyDeps {
    * wants: don't touch it, so its comments and layering survive.
    */
   persistConfig?: AgentenvConfig | null;
+  /** JSON mode: don't stream raw mise output onto stdout (it would corrupt the document). */
+  json?: boolean;
 }
 
 /** Save the config and apply it, mirroring the shared setup tail. */
@@ -94,14 +97,16 @@ export async function saveAndApply(
     apply(config, path.dirname(file), {
       skipPrereqMessage: true,
       skipMiseInstall: deps.skipMiseInstall,
-      onMiseInstall: {
-        onStart: () => {
-          spinner.stop();
-          console.log(colorizeLine('Installing tools via mise...'));
-        },
-        onOutput: (chunk) => process.stdout.write(chunk),
-        onEnd: () => spinner.start(),
-      },
+      onMiseInstall: deps.json
+        ? undefined
+        : {
+            onStart: () => {
+              spinner.stop();
+              console.log(colorizeLine('Installing tools via mise...'));
+            },
+            onOutput: (chunk) => process.stdout.write(chunk),
+            onEnd: () => spinner.start(),
+          },
     }),
   );
   printMessages(result.messages, result.errors, result.timeline);
@@ -123,6 +128,7 @@ interface SetupCommandOptions {
   rtk?: boolean;
   config?: string;
   superpowers?: string | boolean;
+  json?: boolean;
 }
 
 export interface UnattendedSetupDeps extends SaveAndApplyDeps {
@@ -287,6 +293,42 @@ export async function unattendedSetup(
   });
 }
 
+/**
+ * `setup --yes --json`: run the normal unattended flow with chrome off and
+ * its console output captured, then emit one JSON envelope. Raw mise output
+ * is not streamed (it would corrupt the document).
+ */
+export async function unattendedSetupJson(
+  options: SetupCommandOptions,
+  deps: UnattendedSetupDeps = {},
+): Promise<void> {
+  setQuietEnabled(true);
+  setColorEnabled(false);
+  const messages: string[] = [];
+  const errors: string[] = [];
+  const original = { log: console.log, warn: console.warn, error: console.error };
+  const capture = (sink: string[]) => (message?: unknown) => {
+    for (const line of String(message ?? '').split(/\r?\n/)) {
+      if (line.trim() !== '') sink.push(line);
+    }
+  };
+  console.log = capture(messages);
+  console.warn = capture(messages);
+  console.error = capture(errors);
+  const priorExitCode = process.exitCode;
+  process.exitCode = undefined;
+  try {
+    await unattendedSetup(options, { ...deps, json: true });
+  } finally {
+    console.log = original.log;
+    console.warn = original.warn;
+    console.error = original.error;
+  }
+  const failed = process.exitCode !== undefined && process.exitCode !== 0;
+  printJson({ success: !failed, messages, errors });
+  if (!failed) process.exitCode = priorExitCode;
+}
+
 export const setupCommand = new Command()
   .name('setup')
   .alias('configure')
@@ -306,10 +348,19 @@ export const setupCommand = new Command()
     'enable the Superpowers integration (unattended); optional github tag/branch/commit ref',
   )
   .option('--config <path>', 'path to an existing agentenv.toml to apply (unattended)')
+  .option('--json', 'emit one machine-readable JSON document on stdout (requires --yes)')
   .action(async (options: SetupCommandOptions, command: Command) => {
     const scope = parseScopeFlag(options.scope);
     if (scope.error) {
       command.error(scope.error);
+      return;
+    }
+    if (options.json && !options.yes) {
+      command.error('--json requires --yes (the interactive wizard cannot produce JSON)');
+      return;
+    }
+    if (options.yes && options.json) {
+      await unattendedSetupJson({ ...options, scope: scope.scope });
       return;
     }
     if (options.yes) {

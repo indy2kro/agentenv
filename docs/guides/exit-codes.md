@@ -65,7 +65,7 @@ successful informational exits, not errors.
 ## `--json`
 
 `--json` is available on `status`, `doctor`, `shell-fix`, `apply`, `update`,
-`uninstall`, `add` and `remove`. When set, the
+`uninstall`, `add`, `remove` and `setup --yes`. When set, the
 command emits a **single JSON document on stdout and nothing else** (diagnostics
 stay on stderr, which is silent on success), skips banner/color, and implies
 quiet mode. The process exit code still applies — it is set by the same logic
@@ -98,9 +98,8 @@ one envelope, emitted once on completion (or failure):
 `warnings` and `elapsedMs` (also on early failures, as `null`/`[]`);
 `uninstall`/`add`/`remove` keep a convenience `message` string alongside the
 arrays. Only `status`, `doctor` and `shell-fix` mirror the exit code as
-`exitCode`; for the others the process exit code is the contract. `setup` and
-`configure` accept `--json` only with `--yes` once available; today it is a
-usage error and exits `2`.
+`exitCode`; for the others the process exit code is the contract. `setup --yes --json` emits the same envelope with the run's output captured
+into `messages`/`errors`; `--json` without `--yes` is a usage error (exit `2`).
 
 Example:
 

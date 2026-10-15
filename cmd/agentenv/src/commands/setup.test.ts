@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { misePrereqCheck, unattendedSetup } from './setup.js';
+import { misePrereqCheck, unattendedSetup, unattendedSetupJson } from './setup.js';
 import { applyConfiguration } from './apply.js';
 import { DEFAULT_CONFIG, saveConfig } from '../config/schema.js';
 
@@ -389,5 +389,50 @@ describe('unattended setup argument errors', () => {
       console.log = originalLog;
       console.error = originalError;
     }
+  });
+});
+
+describe('unattendedSetupJson', () => {
+  it('prints exactly one JSON envelope and nothing else on stdout', async () => {
+    const dir = tempDir('agentenv-setup-json-');
+    const xdgDir = tempDir('agentenv-setup-json-xdg-');
+    const toml = path.join(dir, 'agentenv.toml');
+    saveConfig({ ...DEFAULT_CONFIG, agents: { claude_code: true } }, toml);
+    const stubApply: typeof applyConfiguration = async () => ({
+      success: true,
+      messages: ['Tools: wrote mise.toml'],
+      errors: [],
+    });
+
+    const stdout: string[] = [];
+    const originalLog = console.log;
+    const originalCwd = process.cwd();
+    const originalXdg = process.env.XDG_CONFIG_HOME;
+    const originalExit = process.exitCode;
+    try {
+      process.env.XDG_CONFIG_HOME = xdgDir;
+      process.chdir(dir);
+      // unattendedSetupJson restores console.log before printing, so capture after it swaps.
+      console.log = (message?: unknown) => stdout.push(String(message));
+      await unattendedSetupJson(
+        { yes: true, json: true },
+        {
+          misePrereqCheckDeps: { isInstalled: () => true, version: () => '3.2.1' },
+          applyConfiguration: stubApply,
+        },
+      );
+    } finally {
+      process.chdir(originalCwd);
+      process.exitCode = originalExit;
+      if (originalXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = originalXdg;
+      console.log = originalLog;
+    }
+
+    assert.equal(stdout.length, 1, `expected one stdout write, got: ${stdout.join(' | ')}`);
+    const doc = JSON.parse(stdout[0]);
+    assert.equal(doc.success, true);
+    assert.equal(doc.schemaVersion, 1);
+    assert.ok(Array.isArray(doc.messages) && Array.isArray(doc.errors));
   });
 });
