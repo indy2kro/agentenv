@@ -7,7 +7,7 @@ import {
   configFilePath,
   findConfigPath,
   parseScopeFlag,
-  resolveScopeDir,
+  baseDirForConfig,
 } from '../config/scopes.js';
 import type { ScopeValue } from '../config/scopes.js';
 import { shellFixStatePath } from '../shell/shell-fix-state.js';
@@ -196,7 +196,7 @@ export async function doUpdate(
     } else {
       log('\nUpgrading mise-managed tools...');
     }
-    const scopeDir = resolveScopeDir(config.scope ?? 'project');
+    const scopeDir = baseDirForConfig(configPath, config.scope ?? 'project');
     const miseTomlPath = miseTomlPathFor(config.scope, scopeDir);
     if (!fs.existsSync(miseTomlPath)) {
       logErr(`  ${miseTomlPath} not found — run \`agentenv apply\` first.`);
@@ -272,7 +272,7 @@ export async function doUpdate(
       console.log('\nSkipping watch mode (dry run).');
     } else {
       console.log('\nWatching mise.toml for changes (Ctrl+C to stop)...');
-      const scopeDir = resolveScopeDir(config.scope ?? 'project');
+      const scopeDir = baseDirForConfig(configPath, config.scope ?? 'project');
       const miseTomlPath = miseTomlPathFor(config.scope, scopeDir);
       watchMiseTomlFn(miseTomlPath, scopeDir, configPath);
     }

@@ -14,7 +14,7 @@ import {
   configFilePath,
   findConfigPath,
   parseScopeFlag,
-  resolveScopeDir,
+  baseDirForConfig,
 } from '../config/scopes.js';
 import type { ScopeValue } from '../config/scopes.js';
 import { ADAPTER_CLASSES } from '../adapters/index.js';
@@ -403,7 +403,7 @@ async function doUnwireAgents(
   }
 
   const scope: ScopeValue = config.scope ?? 'project';
-  const baseDir = resolveScopeDir(scope);
+  const baseDir = baseDirForConfig(configPath, scope);
   const plan = buildUnwirePlan(
     config,
     baseDir,
@@ -566,7 +566,7 @@ export async function doUninstall(options: UninstallCommandOptions): Promise<voi
     return;
   }
 
-  const scopeDir = resolveScopeDir(config.scope ?? 'project');
+  const scopeDir = baseDirForConfig(configPath, config.scope ?? 'project');
   const miseToml = miseTomlPathFor(config.scope, scopeDir);
   const miseTomlPath = fs.existsSync(miseToml) ? miseToml : undefined;
 

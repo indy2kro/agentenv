@@ -18,7 +18,7 @@ import {
   configFilePath,
   findConfigPath,
   parseScopeFlag,
-  resolveScopeDir,
+  baseDirForConfig,
 } from '../config/scopes.js';
 import type { ScopeValue } from '../config/scopes.js';
 import type { AgentenvConfig } from '../config/schema.js';
@@ -547,7 +547,7 @@ export const applyCommand = new Command()
       }
       if (!json) reportValidation(report, 'Configuration invalid — not applying.');
 
-      const baseDir = resolveScopeDir(config.scope);
+      const baseDir = baseDirForConfig(configPath, config.scope);
       if (dryRun) {
         const files = [
           ...generateInstructionFiles(config, baseDir),

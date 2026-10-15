@@ -37,6 +37,18 @@ export function resolveScopeDir(scope: 'project' | 'user' | undefined): string {
   return scope === 'user' ? userConfigDir() : process.cwd();
 }
 
+/**
+ * The directory a config's generated files live in, derived from where the
+ * config was actually found: the user config dir for user scope, otherwise
+ * the directory holding the (possibly ancestor-level) project agentenv.toml.
+ */
+export function baseDirForConfig(
+  configPath: string,
+  scope: 'project' | 'user' | undefined,
+): string {
+  return scope === 'user' ? userConfigDir() : path.dirname(path.resolve(configPath));
+}
+
 export function configFilePath(scope: 'project' | 'user' | undefined): string {
   return path.join(resolveScopeDir(scope), 'agentenv.toml');
 }
