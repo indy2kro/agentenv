@@ -59,6 +59,12 @@ export interface SaveAndApplyDeps {
   startedAt?: number;
   /** Generate files only — no `mise install`, no verification. */
   skipMiseInstall?: boolean;
+  /**
+   * What to write to `file`, when it differs from the (possibly user-layered)
+   * `config` being applied. `null` means the file is already what the user
+   * wants: don't touch it, so its comments and layering survive.
+   */
+  persistConfig?: AgentenvConfig | null;
 }
 
 /** Save the config and apply it, mirroring the shared setup tail. */
@@ -67,11 +73,16 @@ export async function saveAndApply(
   file: string,
   deps: SaveAndApplyDeps = {},
 ): Promise<void> {
-  if (fs.existsSync(file)) {
-    console.log(`Note: ${file} already exists — setup is idempotent and updates it in place.\n`);
+  const toSave = deps.persistConfig === undefined ? config : deps.persistConfig;
+  if (toSave === null) {
+    console.log(`Using existing configuration: ${file} (left unchanged)\n`);
+  } else {
+    if (fs.existsSync(file)) {
+      console.log(`Note: ${file} already exists — setup is idempotent and updates it in place.\n`);
+    }
+    saveConfig(toSave, file);
+    console.log(`Saved configuration: ${file}\n`);
   }
-  saveConfig(config, file);
-  console.log(`Saved configuration: ${file}\n`);
 
   const apply = deps.applyConfiguration ?? applyConfiguration;
   // `file` is always the actual agentenv.toml being applied — including when
@@ -173,6 +184,7 @@ export async function unattendedSetup(
 
   let config: AgentenvConfig | undefined;
   let file: string;
+  let reusedExisting = false;
 
   if (options.config) {
     try {
@@ -188,7 +200,9 @@ export async function unattendedSetup(
       process.exitCode = 1;
       return;
     }
-    file = configFilePath(config.scope ?? 'project');
+    // Apply the given file in place (never copy it over cwd/agentenv.toml).
+    file = path.resolve(options.config);
+    reusedExisting = true;
   } else {
     const scope: ScopeValue = options.scope ?? 'project';
     file = configFilePath(scope);
@@ -208,6 +222,7 @@ export async function unattendedSetup(
         return;
       }
       warnIgnoredFlags(options, file);
+      reusedExisting = true;
     } else if (options.scope === undefined) {
       // No config at the preferred scope and the user didn't ask for a
       // specific one. Re-apply the nearest existing config (project first,
@@ -229,6 +244,7 @@ export async function unattendedSetup(
           return;
         }
         warnIgnoredFlags(options, file);
+        reusedExisting = true;
       }
     }
 
@@ -271,7 +287,11 @@ export async function unattendedSetup(
     }
   }
 
-  await saveAndApply(config, file, { ...deps, startedAt });
+  await saveAndApply(config, file, {
+    ...deps,
+    startedAt,
+    ...(reusedExisting ? { persistConfig: null } : {}),
+  });
 }
 
 export const setupCommand = new Command()

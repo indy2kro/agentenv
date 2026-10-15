@@ -129,6 +129,40 @@ describe('unattended setup pipeline', () => {
     assert.match(toml, /\[integrations\.superpowers\]/);
   });
 
+  it('leaves an existing hand-written config byte-identical and applies it in place via --config', async () => {
+    const dir = tempDir('agentenv-inplace-');
+    const cwdDir = tempDir('agentenv-cwd-');
+    const file = path.join(dir, 'team.toml');
+    const original = ['# team config', '[agents]', 'claude_code = true # keep me', ''].join('\n');
+    fs.writeFileSync(file, original);
+
+    let appliedBaseDir: string | undefined;
+    const stubApply: typeof applyConfiguration = async (_config, baseDir) => {
+      appliedBaseDir = baseDir;
+      return { success: true, messages: [], errors: [] };
+    };
+    const originalLog = console.log;
+    const originalCwd = process.cwd();
+    console.log = () => {};
+    try {
+      process.chdir(cwdDir);
+      await unattendedSetup(
+        { yes: true, config: file },
+        {
+          misePrereqCheckDeps: { isInstalled: () => true, version: () => '3.2.1' },
+          applyConfiguration: stubApply,
+        },
+      );
+    } finally {
+      process.chdir(originalCwd);
+      console.log = originalLog;
+    }
+
+    assert.equal(fs.readFileSync(file, 'utf-8'), original);
+    assert.equal(appliedBaseDir, dir);
+    assert.equal(fs.existsSync(path.join(cwdDir, 'agentenv.toml')), false);
+  });
+
   it('re-applies the nearest user config instead of writing a fresh project config', async () => {
     const projectDir = tempDir('agentenv-project-');
     const xdgDir = tempDir('agentenv-xdg-');

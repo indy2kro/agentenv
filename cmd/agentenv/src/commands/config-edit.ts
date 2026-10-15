@@ -198,9 +198,13 @@ async function doConfigEdit(
   }
 
   const nextConfig = applyConfigEdit(config, plan);
+  // `config` is the user-layered view used for planning and applying; only
+  // the file's own (unlayered) settings plus this edit may be written back,
+  // so user-level preferences are never baked into the project agentenv.toml.
+  const persisted = applyConfigEdit(loadConfig(configPath), plan);
 
   if (options.apply === false) {
-    saveConfig(nextConfig, configPath);
+    saveConfig(persisted, configPath);
     const message = `Updated ${plan.changes.length} setting(s)`;
     if (json) {
       console.log(
@@ -223,7 +227,7 @@ async function doConfigEdit(
   }
 
   if (json) {
-    saveConfig(nextConfig, configPath);
+    saveConfig(persisted, configPath);
     const baseDir = path.dirname(configPath);
     const result = await applyConfiguration(nextConfig, baseDir, {
       skipMiseInstall: options.skipMiseInstall,
@@ -237,6 +241,7 @@ async function doConfigEdit(
 
   console.log(plan.changes.map(changeLine).join('\n'));
   await saveAndApply(nextConfig, configPath, {
+    persistConfig: persisted,
     startedAt,
     successMessage: `Updated ${plan.changes.length} setting(s) and applied`,
     skipMiseInstall: options.skipMiseInstall,
