@@ -41,8 +41,10 @@ import { shellFixStatePath } from '../shell/shell-fix-state.js';
 import type { RtkInitFn } from '../toolchain/rtk.js';
 import { isUnsupportedRtkAgentError } from '../toolchain/rtk.js';
 import {
+  ensureDirOnWindowsUserPath,
   ensureGlobalShimsDir,
   eulaPreflightHint,
+  shimsDir,
   generateMiseToml,
   isMiseInstalled,
   miseActivationHint,
@@ -211,6 +213,8 @@ export interface ApplyOptions {
    * flag). Takes precedence over the config file when set.
    */
   tier0Mode?: 'auto' | 'always' | 'never';
+  /** Add the mise shims dir to the Windows user PATH (`apply --fix-path`). */
+  fixPath?: boolean;
   /** Injectable Superpowers adapter dependencies (tests pass a claude stub). */
   superpowersDeps?: SuperpowersAdapterDeps;
   /**
@@ -381,6 +385,10 @@ export async function applyConfiguration(
   if (shouldRunMiseInstall(miseTomlWritten, options.skipMiseInstall === true)) {
     const shims = ensureGlobalShimsDir(shellFixStatePath());
     (shims.success ? messages : errors).push(shims.message);
+    if (options.fixPath) {
+      const fixed = ensureDirOnWindowsUserPath(shimsDir());
+      (fixed.success ? messages : errors).push(fixed.message);
+    }
 
     const trust = trustMiseToml(misePath, baseDir);
     (trust.success ? messages : errors).push(trust.message);
@@ -475,6 +483,7 @@ export const applyCommand = new Command()
     'Tier 0 Windows shell fix: auto (default; only writes files with a TTY) | always (write even without a TTY — for an agent running apply) | never',
   )
   .option('--scope <scope>', 'config scope to apply: project|user (default: nearest config)')
+  .option('--fix-path', 'Windows: add the mise shims directory to your user PATH (opt-in)')
   .option('--json', 'emit a machine-readable JSON document on stdout')
   .action(
     async (
@@ -484,6 +493,7 @@ export const applyCommand = new Command()
         shellFix?: string;
         scope?: ScopeValue;
         json?: boolean;
+        fixPath?: boolean;
       },
       command: Command,
     ) => {
@@ -625,6 +635,7 @@ export const applyCommand = new Command()
         applyConfiguration(config, baseDir, {
           skipMiseInstall: options.skipMiseInstall === true,
           tier0Mode,
+          fixPath: options.fixPath === true,
           // Streamed mise install progress is human-only chrome — it would
           // otherwise interleave raw text into the JSON document.
           onMiseInstall: json

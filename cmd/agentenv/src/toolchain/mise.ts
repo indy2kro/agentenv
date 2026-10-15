@@ -280,6 +280,74 @@ export function shimsDirOnPath(): boolean {
   return pathContainsDir(process.env.PATH ?? '', shimsDir());
 }
 
+/** Runs a PowerShell script with extra env vars; injectable so tests never touch the registry. */
+export type PowerShellRunner = (
+  script: string,
+  env: Record<string, string>,
+) => { status: number | null; stdout: string; stderr: string };
+
+const defaultPowerShellRunner: PowerShellRunner = (script, env) => {
+  const result = child_process.spawnSync(
+    'powershell.exe',
+    ['-NoProfile', '-NonInteractive', '-Command', script],
+    { encoding: 'utf-8', env: { ...process.env, ...env }, timeout: 15000, windowsHide: true },
+  );
+  return { status: result.status, stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
+};
+
+// Reads/writes the *persistent* per-user PATH (not the process copy). Passing
+// the directory through an env var avoids any quoting of the path itself.
+// [char]92 is a backslash, so trailing-separator differences don't hide a match.
+const ADD_TO_USER_PATH_SCRIPT = [
+  '$d = $env:AGENTENV_PATH_DIR',
+  "$cur = [Environment]::GetEnvironmentVariable('Path', 'User')",
+  "if ($null -eq $cur) { $cur = '' }",
+  '$want = $d.TrimEnd([char]92).ToLowerInvariant()',
+  "$has = ($cur -split ';' | Where-Object { $_ -ne '' } | ForEach-Object { $_.TrimEnd([char]92).ToLowerInvariant() }) -contains $want",
+  "if ($has) { 'present' } else {",
+  "  $next = if ($cur) { $cur.TrimEnd(';') + ';' + $d } else { $d }",
+  "  [Environment]::SetEnvironmentVariable('Path', $next, 'User')",
+  "  'added'",
+  '}',
+].join('; ');
+
+/**
+ * Windows only: append `dir` to the persistent user PATH (idempotent). Opt-in
+ * (`apply --fix-path`) because it edits a user-global setting; new terminals
+ * pick it up, the current one does not.
+ */
+export function ensureDirOnWindowsUserPath(
+  dir: string,
+  platform: string = process.platform,
+  run: PowerShellRunner = defaultPowerShellRunner,
+): { success: boolean; message: string } {
+  if (platform !== 'win32') {
+    return { success: true, message: 'PATH: --fix-path only applies on Windows; nothing to do' };
+  }
+  try {
+    const result = run(ADD_TO_USER_PATH_SCRIPT, { AGENTENV_PATH_DIR: dir });
+    const out = result.stdout.trim();
+    if (result.status === 0 && out === 'present') {
+      return { success: true, message: `PATH: ${dir} is already on your user PATH` };
+    }
+    if (result.status === 0 && out === 'added') {
+      return {
+        success: true,
+        message: `PATH: added ${dir} to your user PATH; open a new terminal for it to take effect`,
+      };
+    }
+    return {
+      success: false,
+      message: `PATH: could not update the user PATH (exit ${result.status ?? 'null'}): ${(result.stderr || out).trim()}`,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      message: `PATH: could not update the user PATH: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+}
+
 /**
  * Line-based insert/update of `shims_dir = "<dir>"` under `[settings]` in a
  * mise config. Surgical on purpose: the global mise config may carry the
@@ -385,7 +453,7 @@ export function ensureGlobalShimsDir(statePath?: string): {
 
     const pathLine = shimsDirOnPath()
       ? `${dir} is on PATH`
-      : `Add ${dir} to PATH so the shims resolve (Windows: System Properties > Environment Variables > Path)`;
+      : `Add ${dir} to PATH so the shims resolve (Windows: re-run: agentenv apply --fix-path, or System Properties > Environment Variables > Path)`;
     if (updated !== existing) {
       return {
         success: true,
