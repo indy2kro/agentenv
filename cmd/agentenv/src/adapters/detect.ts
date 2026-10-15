@@ -11,11 +11,11 @@ import { AGENT_KEYS } from '../config/schema.js';
 import type { AgentKey } from '../config/schema.js';
 
 // The binary(ies) that indicate an agent is installed. An agent counts as
-// present when at least one listed command resolves. Copilot rides on `gh`.
+// present when at least one listed command resolves. Copilot is detected by its own `copilot` CLI (gh is a tool agentenv installs itself).
 export const AGENT_COMMANDS: Record<AgentKey, string[]> = {
   claude_code: ['claude'],
   codex_cli: ['codex'],
-  copilot: ['gh'],
+  copilot: ['copilot'],
   opencode: ['opencode'],
   gemini_cli: ['gemini'],
   cursor: ['cursor'],

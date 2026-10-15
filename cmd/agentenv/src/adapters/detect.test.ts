@@ -29,9 +29,10 @@ describe('agent installation detection', () => {
     ]);
   });
 
-  it('treats gh presence as Copilot presence', () => {
-    assert.equal(isAgentInstalled('copilot', fakeDetect(['gh'])), true);
+  it('detects Copilot by its own CLI, not gh', () => {
+    assert.equal(isAgentInstalled('copilot', fakeDetect(['copilot'])), true);
     assert.equal(isAgentInstalled('copilot', fakeDetect(['codex'])), false);
+    assert.equal(isAgentInstalled('copilot', fakeDetect(['gh'])), false);
   });
 
   it('resolveBinary finds an existing binary and returns null otherwise', () => {
