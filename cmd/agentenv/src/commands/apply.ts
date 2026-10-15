@@ -63,6 +63,7 @@ import { normalizeOutput } from '../utils/output.js';
 import { colorizeLine, theme } from '../ui/theme.js';
 import { renderLogo, setQuietEnabled } from '../ui/output.js';
 import { printConfigPath, printMessages, printResult, reportValidation } from '../ui/report.js';
+import type { TimelineEntry } from '../ui/report.js';
 import { withSpinner } from '../ui/spinner.js';
 import type { Spinner } from '../ui/spinner.js';
 
@@ -72,6 +73,8 @@ export interface ApplyResult {
   errors: string[];
   /** Wall-clock milliseconds the apply took, for the end-of-run timing line. */
   elapsedMs?: number;
+  /** Messages and errors in the order the steps produced them (for human output). */
+  timeline?: TimelineEntry[];
 }
 
 export interface ApplyJsonResult {
@@ -308,8 +311,17 @@ export async function applyConfiguration(
   options: ApplyOptions = {},
 ): Promise<ApplyResult> {
   const startedAt = Date.now();
-  const messages: string[] = [];
-  const errors: string[] = [];
+  const timeline: TimelineEntry[] = [];
+  const track = (list: string[], kind: TimelineEntry['kind']): string[] => {
+    const push = list.push.bind(list);
+    list.push = (...items: string[]): number => {
+      for (const text of items) timeline.push({ kind, text });
+      return push(...items);
+    };
+    return list;
+  };
+  const messages = track([], 'message');
+  const errors = track([], 'error');
 
   // Step 0 — self-diagnose the prerequisite before touching anything, so a
   // missing mise fails loudly with install instructions instead of half
@@ -319,7 +331,7 @@ export async function applyConfiguration(
       errors.push('Prerequisite check failed: mise is not installed.');
       errors.push("agentenv uses mise to install and manage this project's tools.");
       errors.push(...miseInstallInstructions());
-      return { success: false, messages, errors, elapsedMs: Date.now() - startedAt };
+      return { success: false, messages, errors, elapsedMs: Date.now() - startedAt, timeline };
     }
     if (!options.skipPrereqMessage) {
       messages.push(prereqMessage());
@@ -443,7 +455,13 @@ export async function applyConfiguration(
     for (const error of result.errors) errors.push(`Superpowers: ${error}`);
   }
 
-  return { success: errors.length === 0, messages, errors, elapsedMs: Date.now() - startedAt };
+  return {
+    success: errors.length === 0,
+    messages,
+    errors,
+    elapsedMs: Date.now() - startedAt,
+    timeline,
+  };
 }
 
 export const applyCommand = new Command()
@@ -625,7 +643,7 @@ export const applyCommand = new Command()
         return;
       }
 
-      printMessages(result.messages, result.errors);
+      printMessages(result.messages, result.errors, result.timeline);
       if (!result.success) {
         process.exitCode = 1;
         printResult(

@@ -104,7 +104,7 @@ export async function saveAndApply(
       },
     }),
   );
-  printMessages(result.messages, result.errors);
+  printMessages(result.messages, result.errors, result.timeline);
   const elapsedMs = deps.startedAt === undefined ? result.elapsedMs : Date.now() - deps.startedAt;
   if (!result.success) {
     process.exitCode = 1;
