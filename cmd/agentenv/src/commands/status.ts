@@ -17,6 +17,7 @@ import type { AgentKey, AgentenvConfig, CustomTool } from '../config/schema.js';
 import { findConfigPath, resolveScopeDir, userConfigDir } from '../config/scopes.js';
 import { checkAgentShellConfiguration, detectShell } from '../shell/detector.js';
 import type { ShellInfo } from '../shell/detector.js';
+import { requestedInstructionFiles } from '../generate/agentsmd.js';
 import { SuperpowersAdapter, ghAuthLine } from '../integrations/index.js';
 import type { IntegrationResult, IntegrationState } from '../integrations/base.js';
 import { resolveGhAuthProbe } from '../toolchain/gh.js';
@@ -415,10 +416,14 @@ export async function gatherStatus(deps: StatusDeps = {}): Promise<StatusReport>
     return { name: tool.name, status, drift };
   });
 
+  const requestedFiles = requestedInstructionFiles(config);
   const generatedEntries: Array<[string, string, boolean]> = [
     ['mise.toml', miseTomlPathFor(config.scope, baseDir), false],
-    ['AGENTS.md', path.join(baseDir, 'AGENTS.md'), true],
-    ['CLAUDE.md', path.join(baseDir, 'CLAUDE.md'), true],
+    ...requestedFiles.map((name): [string, string, boolean] => [
+      name,
+      path.join(baseDir, name),
+      true,
+    ]),
   ];
   const generated: StatusGenerated[] = generatedEntries.map(([label, file, markerCheck]) => {
     const generatedExists = exists(file);

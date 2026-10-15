@@ -366,3 +366,29 @@ describe('changed markers', () => {
     }
   });
 });
+
+describe('generated guidance', () => {
+  it('points agents at doctor/status JSON for self-diagnosis', () => {
+    const out = generateAgentsMd({ tools: { ripgrep: true } } as AgentenvConfig);
+    assert.match(out, /agentenv doctor --json/);
+    assert.match(out, /agentenv status --json/);
+  });
+
+  it('tells agents to download the tldr cache when tealdeer is enabled', () => {
+    assert.match(
+      generateAgentsMd({ tools: { tealdeer: true } } as AgentenvConfig),
+      /tldr --update/,
+    );
+    assert.doesNotMatch(
+      generateAgentsMd({ tools: { ripgrep: true } } as AgentenvConfig),
+      /tldr --update/,
+    );
+  });
+
+  it('generates CLAUDE.md by default only when claude_code is enabled', () => {
+    const names = (agents: Record<string, boolean>): string[] =>
+      generateInstructionFiles({ agents } as AgentenvConfig, '.').map((f) => path.basename(f.path));
+    assert.deepEqual(names({ claude_code: true }), ['AGENTS.md', 'CLAUDE.md']);
+    assert.deepEqual(names({ codex_cli: true }), ['AGENTS.md']);
+  });
+});

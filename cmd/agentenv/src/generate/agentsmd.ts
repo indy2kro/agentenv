@@ -78,6 +78,8 @@ const GENERAL_INSTRUCTION_TIPS: Record<string, string> = {
   jq: 'For JSON processing, use `jq`',
   bat: 'For viewing files, use `bat --plain --paging=never` instead of `cat` (skips the pager and decorations, which matter for a human, not an agent)',
   eza: 'For directory listings, use `eza` instead of `ls`',
+  tealdeer:
+    '`tldr` has no pages until the cache is downloaded: run `tldr --update` once before first use',
   git_delta:
     '`delta` gives syntax-highlighted diffs for human review; run `git --no-pager diff` (or plain `git diff`) directly instead of piping through it',
 };
@@ -194,6 +196,9 @@ export function generateAgentsMd(config: AgentenvConfig): string {
     );
   }
   lines.push('- Configuration is managed in `agentenv.toml`');
+  lines.push(
+    '- To diagnose a missing tool or drift, run `agentenv doctor --json` (environment checks) or `agentenv status --json` (what is configured vs. installed); each prints one JSON document',
+  );
   lines.push('');
   lines.push(markerEnd);
 
@@ -305,6 +310,16 @@ function getEnabledToolsForOutput(config: AgentenvConfig): string[] {
 export const GENERATED_FILE_NAMES = ['AGENTS.md', 'CLAUDE.md'] as const;
 
 /**
+ * Which instruction files apply writes: generate.files when set, otherwise
+ * AGENTS.md always and CLAUDE.md only when Claude Code is an enabled agent
+ * (a Codex/Copilot-only repo has no use for a CLAUDE.md).
+ */
+export function requestedInstructionFiles(config: AgentenvConfig): string[] {
+  if (config.generate?.files && config.generate.files.length > 0) return config.generate.files;
+  return GENERATED_FILE_NAMES.filter((name) => name !== 'CLAUDE.md' || config.agents?.claude_code);
+}
+
+/**
  * Generate the requested AGENTS.md / CLAUDE.md files, honoring
  * `config.generate.files` (default: both). Files outside that list are never
  * produced here; a config requesting only unknown names yields an empty list.
@@ -314,10 +329,7 @@ export function generateInstructionFiles(
   baseDir: string = '.',
 ): GeneratedFile[] {
   const files: GeneratedFile[] = [];
-  const requested =
-    config.generate?.files && config.generate.files.length > 0
-      ? config.generate.files
-      : GENERATED_FILE_NAMES;
+  const requested = requestedInstructionFiles(config);
 
   if (requested.includes('AGENTS.md')) {
     files.push({
