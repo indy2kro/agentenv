@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-10-15
 
-Target: 40 · Found: 40 deduplicated items · Completed: 0/40
+Target: 40 · Found: 40 deduplicated items · Completed: 10/40 (+1 partial)
 
 > **How to use this document — read before implementing anything.**
 > As you finish each item, change `- [ ]` to `- [x]`, append ` ✅ <commit-sha>`,
@@ -48,7 +48,7 @@ Themes this round:
 
 ## Cross-cutting sweeps   (SWEEP-NN)
 
-- [ ] **SWEEP-01** [bug] Derive the project base dir from the directory the config was *found* in, not `process.cwd()`. Do this in `apply`, `update`, `uninstall` and the wizard, and make `--scope project` search upward too — `src/commands/apply.ts:550`, `update.ts:199,275`, `uninstall.ts:406,569`, `wizard.ts:312`, `config/scopes.ts:36-42` · effort M · impact high
+- [x] **SWEEP-01** [bug] Derive the project base dir from the directory the config was *found* in, not `process.cwd()`. Do this in `apply`, `update`, `uninstall` and the wizard, and make `--scope project` search upward too — `src/commands/apply.ts:550`, `update.ts:199,275`, `uninstall.ts:406,569`, `wizard.ts:312`, `config/scopes.ts:36-42` · effort M · impact high
   `findConfigPath()` searches parent directories. So `agentenv apply` run from `repo/src` loads `repo/agentenv.toml` but writes `mise.toml`/`AGENTS.md`/`CLAUDE.md` into `repo/src`. Reproduced: `baseDir` = `…/gen/sub` while `configPath` = `…/gen/agentenv.toml`. `status` (`status.ts:224`) and `setup` (`setup.ts:83`) already use `dirname(configPath)`, so they check a different directory than the one `apply` writes to.
 - [ ] **SWEEP-02** [bug] Don't save layered user-config values into the project `agentenv.toml`. Save only the project layer (or the user's edit applied on top of it) — `src/commands/setup.ts:199,220,274`, `wizard.ts:94,312`, `config-edit.ts:146,203,223`, `config/schema.ts:500` · effort M · impact med
   These callers load with `layerUserConfig: true`. `saveConfig` compares the result against an *un-layered* load. So when a user config exists, `setup --yes`, the wizard and `agentenv add jq` rewrite the project file with the user's agents/rtk/tools merged in, and strip its comments.
@@ -67,27 +67,27 @@ Themes this round:
 
 ## Correctness bugs   (BUG-NN)
 
-- [ ] **BUG-01** The project `CLAUDE.md` links to AGENTS.md (`[AGENTS.md](./AGENTS.md)`) instead of importing it with `@AGENTS.md` — `src/generate/agentsmd.ts:199-231` · effort S · impact high
+- [x] **BUG-01** The project `CLAUDE.md` links to AGENTS.md (`[AGENTS.md](./AGENTS.md)`) instead of importing it with `@AGENTS.md` — `src/generate/agentsmd.ts:199-231` · effort S · impact high
   Claude Code loads `@path` imports but doesn't follow markdown links. In project scope, Claude never sees the tool list or the rtk guidance, even though the file says it exists because Claude "doesn't read AGENTS.md natively".
-- [ ] **BUG-02** `setup` "detects" Copilot when `gh` is on PATH — `src/adapters/detect.ts` (`AGENT_COMMANDS.copilot: ['gh']`) · effort S · impact med
+- [x] **BUG-02** `setup` "detects" Copilot when `gh` is on PATH — `src/adapters/detect.ts` (`AGENT_COMMANDS.copilot: ['gh']`) · effort S · impact med
   `gh` is a Tier 1 tool that agentenv installs itself. So `setup --yes` enables Copilot for nearly everyone, and `rtk init --copilot` then writes `.github/copilot-instructions.md` and `.github/hooks/` into repos that don't use Copilot. Detect the `copilot` CLI instead.
-- [ ] **BUG-03** Generated instructions list tools that aren't installed on the platform (`ripgrep_all`/`rga` and `jless` on Windows) — `src/generate/agentsmd.ts:253-275`, `toolchain/fallbacks.ts` (`PLATFORM_UNSUPPORTED_TOOLS`) · effort S · impact med
+- [x] **BUG-03** Generated instructions list tools that aren't installed on the platform (`ripgrep_all`/`rga` and `jless` on Windows) — `src/generate/agentsmd.ts:253-275`, `toolchain/fallbacks.ts` (`PLATFORM_UNSUPPORTED_TOOLS`) · effort S · impact med
   `getEnabledToolsForOutput` never checks `isPlatformUnsupported`. The audited machine's own `~/.claude/CLAUDE.md` advertises `rga`/`jless` on Windows. Omit them in user scope. A project `AGENTS.md` is committed and read on several OSes, so mark them "(not on Windows)" there instead.
 - [ ] **BUG-04** `status` counts an agent as configured when its config file exists, not when the hook or managed block is actually in it — `src/commands/status.ts:37-70,356-358` · effort M · impact med
   `claude_code` counts as configured whenever `~/.claude/settings.json` exists, and `copilot` whenever `.github/copilot-instructions.md` exists. A removed hook, or an unrelated file that was already there, is never reported as drift for the two most common agents.
-- [ ] **BUG-05** `ast_grep` is advertised and resolved as `sg`, but on Linux `sg` is shadow-utils' set-group command — `src/config/schema.ts:340`, `generate/agentsmd.ts:18` · effort S · impact med
+- [x] **BUG-05** `ast_grep` is advertised and resolved as `sg`, but on Linux `sg` is shadow-utils' set-group command — `src/config/schema.ts:340`, `generate/agentsmd.ts:18` · effort S · impact med
   On most Linux distros `/usr/bin/sg` exists, so status/verify report ast-grep as resolvable when it isn't installed, and agents told to run `sg` run the wrong program. Use `ast-grep`.
-- [ ] **BUG-06** On macOS, Tier 0 ignores `--shell-fix never` / `tier0.mode` / a missing TTY and runs `brew install` anyway — `src/shell/detector.ts:923-1007,352-384` · effort S · impact med
+- [x] **BUG-06** On macOS, Tier 0 ignores `--shell-fix never` / `tier0.mode` / a missing TTY and runs `brew install` anyway — `src/shell/detector.ts:923-1007,352-384` · effort S · impact med
   The `complex`/writeFiles flag only gates the Windows branch. An agent's non-TTY `apply` on macOS still installs five Homebrew formulae (up to 120 s each) without consent.
 - [ ] **BUG-07** npm-installed CLIs can't be spawned on Windows, which breaks the Superpowers integration — `src/adapters/detect.ts:64-90` (`resolveBinary`), `integrations/superpowers.ts:40-55` · effort S · impact med
   `where.exe` lists the extensionless sh shim before `*.cmd` (checked with `npm` on the audit machine). Spawning the shim fails with ENOENT. Since Node's CVE-2024-27980 fix, spawning the `.cmd` without a shell fails with EINVAL.
-- [ ] **BUG-08** The generated `CLAUDE.md` always says "RTK hooks are configured" and "All tools listed in AGENTS.md are available" — `src/generate/agentsmd.ts:224-226` · effort S · impact med
+- [x] **BUG-08** The generated `CLAUDE.md` always says "RTK hooks are configured" and "All tools listed in AGENTS.md are available" — `src/generate/agentsmd.ts:224-226` · effort S · impact med
   Both lines appear even with `rtk.enabled = false` and when tools were skipped on the platform, so every Claude session is told about hooks and tools that aren't there. Do this together with BUG-01.
-- [ ] **BUG-09** `writeFileWithRetry` overwrites files in place instead of writing a temp file and renaming it — `src/utils/fs-retry.ts:64-80` · effort S · impact med
+- [x] **BUG-09** `writeFileWithRetry` overwrites files in place instead of writing a temp file and renaming it — `src/utils/fs-retry.ts:64-80` · effort S · impact med
   `~/.claude/settings.json`, `~/.codex/config.toml` and the agent shell configs are rewritten in place. An interrupted apply (Ctrl-C, crash, antivirus lock mid-write) can leave a truncated file that the agent then refuses to load.
-- [ ] **BUG-10** Tool verification is still skipped after a Tier 0 or trust error — `src/commands/apply.ts:391` · effort S · impact low
+- [x] **BUG-10** Tool verification is still skipped after a Tier 0 or trust error — `src/commands/apply.ts:391` · effort S · impact low
   BUG-07 last round stopped Tier 0 errors from skipping `mise install`. The verify step is still `if (errors.length === 0)`, so one failed shell-fix write hides which tools are actually missing.
-- [ ] **BUG-11** The `rtk --version` / `rtk gain` probes have no timeout, and neither does the streamed `mise install` — `src/toolchain/rtk.ts:245-262`, `toolchain/mise.ts:1125-1130` · effort S · impact low
+- [x] **BUG-11** (rtk probes done; streamed `mise install` still has no inactivity timeout) The `rtk --version` / `rtk gain` probes have no timeout, and neither does the streamed `mise install` — `src/toolchain/rtk.ts:245-262`, `toolchain/mise.ts:1125-1130` · effort S · impact low
   This is a regression of SWEEP-02 (2026-09-22): the later doctor rtk check added two spawns without a timeout, so a hung rtk freezes `doctor` indefinitely.
 - [ ] **BUG-12** Check windsurf/vibe at the locations `rtk init` actually writes to (leftover from SWEEP-04, 2026-09-22) — `src/commands/status.ts:60-69`, `adapters/rtk-delegation.ts:111` · effort M · impact med
   Both places still look for `baseDir/RTK.md`, which an earlier live probe suggested is wrong. Re-verify against the pinned rtk with `smoke:real`, then fix both places together.
@@ -98,7 +98,7 @@ Themes this round:
 
 ## UX & affordances   (UX-NN)
 
-- [ ] **UX-01** `docs/guides/exit-codes.md` says passing `--json` to apply/update/uninstall "is a usage error", and leaves add/remove out of the per-command table — `docs/guides/exit-codes.md:3-5,63,86` · effort S · impact med
+- [x] **UX-01** `docs/guides/exit-codes.md` says passing `--json` to apply/update/uninstall "is a usage error", and leaves add/remove out of the per-command table — `docs/guides/exit-codes.md:3-5,63,86` · effort S · impact med
   That is the opposite of how the commands behave now, and it's the contract doc that scripts and agents read, so it steers them away from the structured output.
 - [ ] **UX-02** The wizard's scope prompt always defaults to project and ignores `setup --scope` — `src/commands/wizard.ts:200-207`, `setup.ts:134-141` · effort S · impact med
   Re-running the wizard on a user-scope config preselects project and writes a new project config. `setup` also claims the wizard "has no scope prompt yet" and drops `--scope`, even though step 4 is that prompt.
