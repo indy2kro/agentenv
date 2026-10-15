@@ -152,21 +152,9 @@ export class ClaudeCodeAdapter extends BaseAdapter {
       );
     }
 
-    // Also create CLAUDE.md pointing to AGENTS.md
-    const claudeMdPath = path.join(this.config.baseDir, 'CLAUDE.md');
-    try {
-      const claudeMdContent = this.generateClaudeMdContent();
-
-      if (!fs.existsSync(claudeMdPath)) {
-        writeFileWithRetry(claudeMdPath, claudeMdContent);
-        result.filesCreated.push(claudeMdPath);
-      }
-    } catch (err) {
-      result.errors.push(
-        `Failed to create CLAUDE.md: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-
+    // CLAUDE.md is owned by the instruction generator (marker-delimited,
+    // honoring generate.files and scope); the adapter must not write a second,
+    // marker-less copy.
     return result;
   }
 
@@ -233,28 +221,5 @@ export class ClaudeCodeAdapter extends BaseAdapter {
     }
 
     return env;
-  }
-
-  /**
-   * Generate CLAUDE.md content
-   */
-  private generateClaudeMdContent(): string {
-    return `# CLAUDE.md
-
-This file provides Claude Code-specific instructions.
-
-## General Instructions
-
-Please see [AGENTS.md](./AGENTS.md) for the complete list of AI agent instructions.
-
-The instructions in AGENTS.md apply to Claude Code as well.
-
-## Claude Code Specific Notes
-
-- AGENTS.md is the source of truth for tool availability and usage instructions
-- All tools listed in AGENTS.md are available for use
-- RTK hooks are configured to optimize command execution
-- Use RTK-optimized commands for better performance and token efficiency
-`;
   }
 }

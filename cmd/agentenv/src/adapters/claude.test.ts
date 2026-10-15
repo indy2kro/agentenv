@@ -29,6 +29,8 @@ describe('Claude Code adapter', () => {
 
       assert.equal(result.success, true);
       assert.equal(settings.hooks.PreToolUse[0].hooks[0].command, 'existing hook');
+      // CLAUDE.md belongs to the instruction generator, not the adapter.
+      assert.equal(fs.existsSync(path.join(home, 'CLAUDE.md')), false);
       assert.equal(settings.hooks.PreToolUse[1].hooks[0].command, 'rtk hook claude');
 
       // the first edit to this pre-existing user-global file backs
