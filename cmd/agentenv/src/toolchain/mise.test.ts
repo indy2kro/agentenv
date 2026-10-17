@@ -28,6 +28,7 @@ import {
   pathContainsDir,
   platformUnsupportedHint,
   runMiseUpgrade,
+  summarizeMiseFailures,
   shimsDir,
   shimsDirOnPath,
   trustMiseToml,
@@ -740,5 +741,32 @@ describe('runMiseUpgrade', () => {
     const source = fs.readFileSync(path.join(import.meta.dirname, 'mise.js'), 'utf-8');
     const body = source.slice(source.indexOf('async function runMiseUpgrade'));
     assert.doesNotMatch(body.slice(0, body.indexOf('\n}\n')), /timeout:\s*120000/);
+  });
+});
+
+describe('summarizeMiseFailures', () => {
+  const real = [
+    'mise ✗ direnv@2.38.2    371ms · failed: no asset found: direnv.windows-amd64',
+    String.raw`mise WARN  not replacing unmanaged file in shims directory: C:\Users\x\.local\bin\uv.exe`,
+    'mise ERROR Failed to install aqua:direnv/direnv@latest: no asset found: direnv.windows-amd64',
+    'Available assets:',
+    'direnv.windows-386.exe',
+    'mise ERROR Version: 2026.10.11 windows-x64 (2026-10-15)',
+    'mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information',
+  ].join('\n');
+
+  it('names each tool mise failed to install, with its reason, and nothing else', () => {
+    assert.deepEqual(summarizeMiseFailures(real), [
+      'aqua:direnv/direnv@latest — no asset found: direnv.windows-amd64',
+    ]);
+  });
+
+  it('ignores colour codes and returns nothing when no tool failed', () => {
+    const esc = String.fromCharCode(27);
+    assert.deepEqual(
+      summarizeMiseFailures(`${esc}[31mmise ERROR${esc}[0m Failed to install jq@1: boom`),
+      ['jq@1 — boom'],
+    );
+    assert.deepEqual(summarizeMiseFailures('mise ✓ jq@1.8.2  1.0s'), []);
   });
 });

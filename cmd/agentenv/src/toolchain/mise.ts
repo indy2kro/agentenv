@@ -658,6 +658,23 @@ export async function runMiseUpgrade(
   });
 }
 
+const ANSI_ESCAPE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*[A-Za-z]`, 'g');
+
+/**
+ * The tools mise reported it could not install, one `spec — reason` line each,
+ * pulled from its `ERROR Failed to install <spec>: <reason>` lines. A failed
+ * `mise up` otherwise buries the one tool that broke under progress bars for
+ * the ones that worked.
+ */
+export function summarizeMiseFailures(output: string): string[] {
+  const failures: string[] = [];
+  for (const line of output.replace(ANSI_ESCAPE, '').split(/\r?\n/)) {
+    const match = /ERROR\s+Failed to install\s+(\S+?):\s+(.+)$/.exec(line);
+    if (match) failures.push(`${match[1]} — ${match[2].trim()}`);
+  }
+  return failures;
+}
+
 /**
  * Uninstall the given tools from the mise store. Each tool name is passed
  * version-less (no `@version`) together with `--all`, removing every installed

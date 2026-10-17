@@ -23,6 +23,7 @@ import {
   runMiseUpgrade,
   shimsDir,
   shimsDirOnPath,
+  summarizeMiseFailures,
   toolAvailabilityLine,
   trustMiseToml,
   verifyHintNeeded,
@@ -236,9 +237,23 @@ export async function doUpdate(
               log(`  ${(upgrade.stdout || upgrade.stderr || '').trim() || 'all tools up to date'}`);
             }
           } else {
-            logErr(
-              `  mise up failed (exit ${upgrade.exitCode ?? 'null'}): ${normalizeOutput(upgrade.stderr || upgrade.stdout).trim()}`,
-            );
+            const output = `${upgrade.stderr}\n${upgrade.stdout}`;
+            const failures = summarizeMiseFailures(output);
+            const head = `  mise up failed (exit ${upgrade.exitCode ?? 'null'})`;
+            if (failures.length > 0) {
+              // Name what broke; the rest of mise's output was already shown
+              // (human mode) or is still in the JSON document's raw detail.
+              logErr(`${head} for:`);
+              for (const failure of failures) logErr(`    ${failure}`);
+              logErr(
+                '  The other tools were upgraded. Pin a broken tool under [tool_versions], or `agentenv remove <tool>` to stop managing it.',
+              );
+              if (json) logErr(normalizeOutput(upgrade.stderr || upgrade.stdout).trim());
+            } else if (streamed) {
+              logErr(`${head}; see mise's output above.`);
+            } else {
+              logErr(`${head}: ${normalizeOutput(upgrade.stderr || upgrade.stdout).trim()}`);
+            }
             failed = true;
           }
         }

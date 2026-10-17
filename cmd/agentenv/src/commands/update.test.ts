@@ -459,3 +459,47 @@ describe('watchMiseToml — user-scope layout', () => {
     }
   });
 });
+
+describe('doUpdate — a failed `mise up`', () => {
+  const failingOutput = [
+    'mise ✗ direnv@2.38.2  371ms · failed: no asset found: direnv.windows-amd64',
+    'mise ERROR Failed to install aqua:direnv/direnv@latest: no asset found: direnv.windows-amd64',
+    'Available assets:',
+    'direnv.windows-386.exe',
+  ].join('\n');
+
+  const failingDeps = (): UpdateDeps =>
+    happyDeps({
+      runMiseUpgrade: async (_targets, _cwd, onOutput) => {
+        onOutput?.(`${failingOutput}\n`, 'stderr');
+        return { success: false, stdout: '', stderr: failingOutput, exitCode: 1 };
+      },
+    });
+
+  it('names the tool that broke without repeating output that was already streamed', async () => {
+    const dir = tempConfig('scope = "project"\n');
+    fs.writeFileSync(path.join(dir, 'mise.toml'), '[tools]\n');
+    const { errors } = await withCwd(dir, () =>
+      withCapturedConsole(() => doUpdate({ scope: 'project' }, failingDeps())),
+    );
+    const text = errors.join('\n');
+    assert.match(text, /mise up failed \(exit 1\) for:/);
+    assert.match(text, /aqua:direnv\/direnv@latest — no asset found/);
+    assert.doesNotMatch(text, /Available assets/, 'the streamed output must not be printed twice');
+    assert.equal(process.exitCode, 1);
+    process.exitCode = 0;
+  });
+
+  it('keeps the raw mise output in --json, where nothing was streamed', async () => {
+    const dir = tempConfig('scope = "project"\n');
+    fs.writeFileSync(path.join(dir, 'mise.toml'), '[tools]\n');
+    const { logs } = await withCwd(dir, () =>
+      withCapturedConsole(() => doUpdate({ scope: 'project', json: true }, failingDeps())),
+    );
+    const parsed = JSON.parse(logs[0]);
+    assert.equal(parsed.success, false);
+    assert.ok(parsed.errors.some((e: string) => e.includes('aqua:direnv/direnv@latest')));
+    assert.ok(parsed.errors.some((e: string) => e.includes('Available assets')));
+    process.exitCode = 0;
+  });
+});
