@@ -421,7 +421,10 @@ export function gatherDoctor(sectionFilter?: string, deps: GatherDoctorDeps = {}
         item.detail = 'not managed by mise; install manually';
       } else if (status === 'missing') {
         item.status = 'fail';
-        item.detail = 'not on PATH — run `mise install` in this project';
+        item.detail =
+          scope === 'user'
+            ? 'not on PATH — run `agentenv apply --scope user`'
+            : 'not on PATH — run `mise install` in this project';
       }
       toolItems.push(item);
     }
