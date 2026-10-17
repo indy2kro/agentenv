@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-10-17
 
-Target: 40 · Found: 39 deduplicated items (37 audited + 2 from user feedback) · Completed: 30/39
+Target: 40 · Found: 39 deduplicated items (37 audited + 2 from user feedback) · Completed: 38/39
 
 > **How to use this document — read before implementing anything.**
 > As you finish each item, change `- [ ]` to `- [x]`, append ` ✅ <commit-sha>`,
@@ -56,7 +56,7 @@ Themes this round:
 
 - [x] **SWEEP-01** [bug] Generate committed project files and run agent wiring from the project layer (plus defaults), not the user-layered config. Keep layering for local-only behavior — `src/config/schema.ts:461-476`, `commands/apply.ts:558,587-595`, `commands/status.ts:329`, `generate/agentsmd.ts:90-160`, `toolchain/mise.ts:103-140` · effort M · impact high ✅ 4d14341
   Reproduced: a project `agentenv.toml` enabling 2 agents and 7 tools produced an `AGENTS.md`/`mise.toml` listing ~30 tools and wired all 9 agents, because `~/.config/agentenv/agentenv.toml` enables them. That included `rtk init -g` for gemini/cursor/opencode/windsurf/vibe. So committed files differ per teammate, and a project apply changes global agent config. Decide whether layered agents/tools should be generated at all in project scope, and document the rule in `docs/configuration.md`. Follows up SWEEP-02 (2026-10-15), which only fixed *saving*.
-- [ ] **SWEEP-02** [bug] In user scope, don't run project-only `rtk init`s (codex `--codex`, copilot `--copilot`, cline, windsurf rules) with cwd `~/.config/agentenv`. Use the `-g` variant where rtk has one, otherwise skip with a message — `src/toolchain/rtk.ts:25-39`, `adapters/codex.ts:108-112`, `adapters/copilot.ts`, `adapters/cline.ts`, `adapters/windsurf.ts` · effort M · impact med
+- [x] **SWEEP-02** [bug] In user scope, don't run project-only `rtk init`s (codex `--codex`, copilot `--copilot`, cline, windsurf rules) with cwd `~/.config/agentenv`. Use the `-g` variant where rtk has one, otherwise skip with a message — `src/toolchain/rtk.ts:25-39`, `adapters/codex.ts:108-112`, `adapters/copilot.ts`, `adapters/cline.ts`, `adapters/windsurf.ts` · effort M · impact med ✅ 25ca45d
   Observed on the audit machine: `~/.config/agentenv` holds `RTK.md`, `.github/copilot-instructions.md`, `.clinerules`, `.windsurfrules` and an `AGENTS.md` ending in `@RTK.md`, while `~/.codex` has no `RTK.md`. A user-scope Codex therefore never gets the rtk guidance, and the files that were written are read by no agent.
 - [ ] **SWEEP-03** (partly done: per-file floors are now keyed by path, the defaults raised and the weak files ratcheted; adding tests to lift the weakest files is still open) [test] Raise the per-file coverage floors and the weakest files. Branches: `apply.ts` 62%, `shell-fix.ts` 64%, `setup.ts` 67%, `status.ts` 67%, `config-edit.ts` 69%, `uninstall.ts` 70%, `wizard.ts` 70%, `index.ts` 50%. Lines: `uninstall.ts` 75%, `detector.ts` 79%, `superpowers.ts` 80%, `mise.ts` 80%. Also key floors and rows by dist-relative path instead of basename — `cmd/agentenv/scripts/check-coverage.mjs:17-21,35-45` · effort M · impact med
   `DEFAULT_FLOOR` is 60% branches, far below the 75% global gate, so the command layer can keep slipping. Because rows are keyed by basename, the `index.js: {branches: 50}` override also loosens `adapters/index.js` and `integrations/index.js`, and `ui/output.js`/`utils/output.js` collide. Follows up SWEEP-06 (2026-10-15).
@@ -106,7 +106,7 @@ Themes this round:
   Aborting a prompt is a normal cancel. Catch `ExitPromptError`, print "Cancelled", exit 130, and document it in `docs/guides/exit-codes.md`.
 - [x] **UX-04** Doctor's missing-tool hint always says "run `mise install` in this project", also in user scope — `src/commands/doctor.ts:422-425` · effort S · impact low ✅ d56805c
   In user scope the fix is `agentenv apply --scope user`, so the hint sends users to the wrong directory.
-- [ ] **UX-05** Agent wiring output dumps rtk's whole stdout on one line, cut off with `...` after 400 characters — `src/toolchain/rtk.ts:195-207`, `commands/apply.ts:441-457` · effort S · impact low
+- [x] **UX-05** Agent wiring output dumps rtk's whole stdout on one line, cut off with `...` after 400 characters — `src/toolchain/rtk.ts:195-207`, `commands/apply.ts:441-457` · effort S · impact low (decided to keep as is: it is the only record of what rtk changed, and it exposed the Gemini/Vibe bug) ✅ (dropped)
   Lines like "Cursor: … RTK hook registered … Legacy [tee] config detected … sqlite recall store …" bury the one fact that matters (which file was wired), and they hid BUG-02's "Skipped" prompts. Keep a short summary on the console and put the full output under `--debug`/JSON.
 - [x] **UX-06** Put a "managed by agentenv — edits inside this block are overwritten on apply" note inside the generated block — `src/generate/agentsmd.ts:102-104,502-536` · effort S · impact low ✅ d118119
   People and agents editing a committed `AGENTS.md` can't tell that the region between the HTML comments is regenerated, and apply silently discards their edits.
@@ -114,7 +114,7 @@ Themes this round:
   `apply --json` includes `report.warnings`, but the add/remove path hardcodes an empty list, so an agent editing the config never sees unknown-key or path warnings.
 - [x] **UX-08** The gh auth probe hardcodes `--hostname github.com`, so GitHub Enterprise users always see an auth warning — `src/toolchain/gh.ts:43-52` · effort S · impact low ✅ 814b427
   `GH_HOST` and a gh login to an enterprise host are ignored, so status shows a false "not authenticated" on GHE-only machines.
-- [ ] **UX-09** Warn before `uninstall` removes tool versions from the shared mise store that other configs still declare — `src/commands/uninstall.ts:673-695` · effort M · impact low
+- [x] **UX-09** Warn before `uninstall` removes tool versions from the shared mise store that other configs still declare — `src/commands/uninstall.ts:673-695` · effort M · impact low ✅ e87a212
   `mise uninstall --all` affects the whole store. Cleaning one project can break the user-scope config and every other project that uses the same tool. At least name the user-scope config when it also enables a target.
 
 - [x] **UX-10** Stop counting "not managed by mise; install manually" tools as `doctor` warnings — `src/commands/doctor.ts:416-421` · effort S · impact low ✅ 41e05a4
