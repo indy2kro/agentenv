@@ -678,6 +678,25 @@ direnv = false
     assert.ok(tool('yq'), 'yq should be enabled — inherited from the user config');
   });
 
+  it('add declares a tool in the project file even when the user config already enables it', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-add-home-'));
+    const userDir = path.join(home, '.config', 'agentenv');
+    fs.mkdirSync(userDir, { recursive: true });
+    fs.writeFileSync(path.join(userDir, 'agentenv.toml'), 'scope = "user"\n[tools]\nyq = true\n');
+    const addEnv: NodeJS.ProcessEnv = { ...process.env, HOME: home, USERPROFILE: home };
+    delete addEnv.XDG_CONFIG_HOME;
+
+    const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-add-project-'));
+    const projectFile = path.join(projectDir, 'agentenv.toml');
+    fs.writeFileSync(projectFile, 'scope = "project"\n[agents]\nclaude_code = true\n');
+
+    const result = run(['add', 'yq', '--no-apply', '--json'], projectDir, addEnv);
+    const json = JSON.parse(result.stdout);
+    assert.equal(json.success, true);
+    assert.equal(json.changes?.length, 1, 'adding yq must not be "Nothing to change"');
+    assert.match(fs.readFileSync(projectFile, 'utf-8'), /yq = true/);
+  });
+
   it('exits 1 for uninstall with no config (operational failure)', () => {
     const missing = run(['uninstall'], empty, shellEnv);
     assert.equal(missing.status, 1);

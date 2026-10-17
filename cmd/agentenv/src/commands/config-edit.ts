@@ -158,7 +158,10 @@ async function doConfigEdit(
   }
   if (!json) reportValidation(report, 'Configuration invalid — not editing.');
 
-  const plan = planConfigEdit(config, items, enable);
+  // Plan against the file's own settings: a tool the user config already
+  // enables must still be declarable in (or removable from) this file.
+  const fileConfig = loadConfig(configPath);
+  const plan = planConfigEdit(fileConfig, items, enable);
   if (plan.unknown.length > 0) {
     usageError(
       `Unknown tool/agent key(s) to ${verb}: ${plan.unknown.join(', ')}. Valid keys: ${[...AGENT_KEYS, ...TOOL_KEYS].join(', ')}`,
@@ -192,7 +195,7 @@ async function doConfigEdit(
   // `config` is the user-layered view used for planning and applying; only
   // the file's own (unlayered) settings plus this edit may be written back,
   // so user-level preferences are never baked into the project agentenv.toml.
-  const persisted = applyConfigEdit(loadConfig(configPath), plan);
+  const persisted = applyConfigEdit(fileConfig, plan);
 
   if (options.apply === false) {
     saveConfig(persisted, configPath);
