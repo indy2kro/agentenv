@@ -437,6 +437,10 @@ describe('watchMiseToml — user-scope layout', () => {
     const watcher = watchMiseToml(miseTomlPath, dir, configPath, 50);
     try {
       assert.ok(watcher, 'watchMiseToml should return a live watcher');
+      // macOS FSEvents can replay the setup writes above just after the watch
+      // starts; let those drain so only what this test does next is observed.
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      logs.length = 0;
       // Editing the agentenv config itself must not trigger an upgrade run...
       fs.writeFileSync(configPath, fs.readFileSync(configPath, 'utf-8') + '\n# touched\n');
       await new Promise((resolve) => setTimeout(resolve, 400));
