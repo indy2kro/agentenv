@@ -547,6 +547,12 @@ export function gatherDoctor(sectionFilter?: string, deps: GatherDoctorDeps = {}
         detail: installed
           ? ''
           : 'CLI not found on PATH — install it or disable the agent in config',
+        // Installing it is the other way out, but only disabling is a command agentenv owns.
+        ...(installed
+          ? {}
+          : {
+              fix: `agentenv remove ${agent}${config.scope === 'user' ? ' --scope user' : ''}`,
+            }),
       });
       if (platform === 'win32' && SHELL_MANAGED_AGENTS.includes(agent as AgentKey)) {
         agentItems.push(

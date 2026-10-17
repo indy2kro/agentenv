@@ -815,3 +815,46 @@ describe('gatherDoctor — installed but nothing to run', () => {
     assert.equal(item?.fix, 'mise install --force direnv');
   });
 });
+
+describe('gatherDoctor — an enabled agent that is not installed', () => {
+  const agentItem = (configPath: string) =>
+    section(
+      gatherDoctor(
+        undefined,
+        baseDeps({
+          findConfigPath: () => configPath,
+          loadConfig: () => ({
+            ...DEFAULT_CONFIG,
+            scope: configPath.includes('.config') ? 'user' : 'project',
+            agents: { cursor: true },
+          }),
+          isAgentInstalled: () => false,
+        }),
+      ),
+      'Agents',
+    )?.items.find((item) => item.label.startsWith('cursor'));
+
+  it('offers `agentenv remove <agent>` as the fix, in the config’s own scope', () => {
+    const project = agentItem('/fake/project/agentenv.toml');
+    assert.equal(project?.status, 'warn');
+    assert.equal(project?.fix, 'agentenv remove cursor');
+
+    const user = agentItem('/fake/home/.config/agentenv/agentenv.toml');
+    assert.equal(user?.fix, 'agentenv remove cursor --scope user');
+  });
+
+  it('adds no fix for an installed agent', () => {
+    const installed = section(
+      gatherDoctor(
+        undefined,
+        baseDeps({
+          loadConfig: () => ({ ...DEFAULT_CONFIG, agents: { cursor: true } }),
+          isAgentInstalled: () => true,
+        }),
+      ),
+      'Agents',
+    )?.items.find((item) => item.label.startsWith('cursor'));
+    assert.equal(installed?.status, 'ok');
+    assert.equal(installed?.fix, undefined);
+  });
+});
