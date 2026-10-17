@@ -18,6 +18,7 @@ import { findConfigPath, resolveScopeDir, userConfigDir } from '../config/scopes
 import { checkAgentShellConfiguration, detectShell } from '../shell/detector.js';
 import type { ShellInfo } from '../shell/detector.js';
 import { requestedInstructionFiles } from '../generate/agentsmd.js';
+import { userScopeInstructionFiles } from './apply.js';
 import { SuperpowersAdapter, ghAuthLine } from '../integrations/index.js';
 import type { IntegrationResult, IntegrationState } from '../integrations/base.js';
 import { resolveGhAuthProbe } from '../toolchain/gh.js';
@@ -439,6 +440,18 @@ export async function gatherStatus(deps: StatusDeps = {}): Promise<StatusReport>
   });
 
   const requestedFiles = requestedInstructionFiles(config);
+  // In user scope apply also writes each enabled agent's own instruction file
+  // (e.g. ~/.claude/CLAUDE.md), the ones the agents actually load.
+  const home = homeDir();
+  const agentFiles = userScopeInstructionFiles(config, baseDir, {}).map(
+    (file): [string, string, boolean] => [
+      path.relative(home, file.path).startsWith('..')
+        ? file.path
+        : `~/${path.relative(home, file.path).replace(/\\/g, '/')}`,
+      file.path,
+      true,
+    ],
+  );
   const generatedEntries: Array<[string, string, boolean]> = [
     ['mise.toml', miseTomlPathFor(config.scope, baseDir), false],
     ...requestedFiles.map((name): [string, string, boolean] => [
@@ -446,6 +459,7 @@ export async function gatherStatus(deps: StatusDeps = {}): Promise<StatusReport>
       path.join(baseDir, name),
       true,
     ]),
+    ...agentFiles,
   ];
   const generated: StatusGenerated[] = generatedEntries.map(([label, file, markerCheck]) => {
     const generatedExists = exists(file);
