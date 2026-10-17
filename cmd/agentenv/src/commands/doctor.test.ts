@@ -1,5 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import {
   agentShellItem,
   renderDoctor,
@@ -7,6 +10,7 @@ import {
   wantsDoctorSection,
   gatherDoctor,
   nativeUnixToolsItem,
+  scopedDoctorDeps,
 } from './doctor.js';
 import type { DoctorSection, GatherDoctorDeps } from './doctor.js';
 import { LOGO } from '../ui/output.js';
@@ -745,5 +749,36 @@ describe('gatherDoctor — generated files and custom tools', () => {
     assert.match(withCustom(false)?.detail ?? '', /\/opt\/corp-cli/);
 
     assert.equal(section(gatherDoctor(undefined, baseDeps()), 'Custom tools'), undefined);
+  });
+});
+
+describe('scopedDoctorDeps', () => {
+  it('changes nothing without --scope', () => {
+    assert.deepEqual(scopedDoctorDeps(undefined), {});
+  });
+
+  it('makes doctor inspect the requested scope even when a project config is nearer', () => {
+    const userDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-doctor-scope-'));
+    fs.mkdirSync(path.join(userDir, 'agentenv'), { recursive: true });
+    fs.writeFileSync(path.join(userDir, 'agentenv', 'agentenv.toml'), 'scope = "user"\n');
+    const prior = process.env.XDG_CONFIG_HOME;
+    process.env.XDG_CONFIG_HOME = userDir;
+    try {
+      const deps = scopedDoctorDeps('user');
+      const userFile = path.join(userDir, 'agentenv', 'agentenv.toml');
+      assert.equal(deps.findConfigPath?.(), userFile);
+
+      const config = section(
+        gatherDoctor(
+          undefined,
+          baseDeps({ ...deps, userConfigDir: () => path.join(userDir, 'agentenv') }),
+        ),
+        'Config',
+      );
+      assert.match(config?.items[0]?.detail ?? '', /user scope/);
+    } finally {
+      if (prior === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = prior;
+    }
   });
 });

@@ -273,6 +273,11 @@ export function agentShellItem(
   return { status: 'ok', label, detail: info.shell };
 }
 
+/** The deps that make `doctor --scope <scope>` inspect that scope; none without a scope. */
+export function scopedDoctorDeps(scope: ScopeValue | undefined): GatherDoctorDeps {
+  return scope ? { findConfigPath: () => findConfigPathInScope(scope) } : {};
+}
+
 export function gatherDoctor(sectionFilter?: string, deps: GatherDoctorDeps = {}): DoctorSection[] {
   const detectShellFn = deps.detectShell ?? detectShell;
   const existsSync = deps.existsSync ?? fs.existsSync;
@@ -655,10 +660,7 @@ export const doctorCommand = new Command()
     const json = options.json === true;
     if (json) setQuietEnabled(true);
 
-    const gathered = gatherDoctor(
-      options.section,
-      scope.scope ? { findConfigPath: () => findConfigPathInScope(scope.scope) } : {},
-    );
+    const gathered = gatherDoctor(options.section, scopedDoctorDeps(scope.scope));
     const sections =
       options.section === undefined ? gathered : filterDoctorSections(gathered, options.section);
     if (sections === undefined) {

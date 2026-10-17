@@ -758,13 +758,8 @@ direnv = false
     );
     assert.equal(user.config, path.join(userDir, 'agentenv.toml'));
     assert.equal(user.scope, 'user');
-
-    const doctor = run(
-      ['doctor', '--json', '--scope', 'user', '--section', 'Config'],
-      projectDir,
-      scopeEnv,
-    );
-    assert.match(doctor.stdout, /user scope/);
+    // doctor's own --scope wiring is covered by scopedDoctorDeps in doctor.test.ts:
+    // through the CLI it only reaches the Config section when mise is installed.
   });
 
   it('rejects an invalid --scope on status and doctor as a usage error', () => {
