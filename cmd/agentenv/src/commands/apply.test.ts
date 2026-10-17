@@ -7,6 +7,7 @@ import {
   applyConfiguration,
   buildApplyDryRunPlan,
   buildApplyJsonResult,
+  applySuccessSummary,
   resolveTier0WriteFiles,
   shouldRunMiseInstall,
   userScopeInstructionFiles,
@@ -794,4 +795,12 @@ describe('buildApplyDryRunPlan', () => {
       }
     },
   );
+});
+
+describe('applySuccessSummary', () => {
+  it('claims verification only when tools were actually installed and verified', () => {
+    assert.match(applySuccessSummary(false), /verified/);
+    assert.doesNotMatch(applySuccessSummary(true), /verified/);
+    assert.match(applySuccessSummary(true), /--skip-mise-install/);
+  });
 });

@@ -263,6 +263,13 @@ export function resolveTier0WriteFiles(mode: 'auto' | 'always' | 'never', isTTY:
  * `errors.length === 0` meant one broken agent shell-fix write silently
  * skipped tool installation entirely.
  */
+/** The second line of the success box: don't claim verification when no tools were installed. */
+export function applySuccessSummary(skipMiseInstall: boolean): string {
+  return skipMiseInstall
+    ? 'files written; tools were not installed (--skip-mise-install)'
+    : 'everything is configured and verified';
+}
+
 export function shouldRunMiseInstall(miseTomlWritten: boolean, skipMiseInstall: boolean): boolean {
   return miseTomlWritten && !skipMiseInstall;
 }
@@ -694,7 +701,7 @@ export const applyCommand = new Command()
       printResult(
         'ok',
         'Apply complete!',
-        'everything is configured and verified',
+        applySuccessSummary(options.skipMiseInstall === true),
         result.elapsedMs,
       );
     },
