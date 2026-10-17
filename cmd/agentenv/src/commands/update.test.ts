@@ -5,7 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { verifySummaryLine, toolAvailabilityLine, miseActivationHint } from '../toolchain/mise.js';
 import type { ToolAvailability } from '../toolchain/mise.js';
-import { doUpdate, watchMiseToml } from './update.js';
+import { doUpdate, watchAgentenvConfig, watchMiseToml } from './update.js';
 import type { UpdateDeps } from './update.js';
 
 describe('update verify rendering', () => {
@@ -564,5 +564,113 @@ describe('doUpdate — --check reports what is actually outdated', () => {
     const parsed = JSON.parse(logs[0]);
     assert.deepEqual(parsed.outdated, [{ tool: 'jq', current: '1.7.0', latest: '1.8.2' }]);
     process.exitCode = 0;
+  });
+});
+
+describe('watchAgentenvConfig — re-apply when agentenv.toml changes', () => {
+  const fixture = () => {
+    const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-watch-cfg-')));
+    const configPath = path.join(dir, 'agentenv.toml');
+    fs.writeFileSync(configPath, 'scope = "project"\n');
+    const emptyHome = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-watch-cfg-home-'));
+    const saved = { ...process.env };
+    process.env.HOME = emptyHome;
+    process.env.USERPROFILE = emptyHome;
+    process.env.XDG_CONFIG_HOME = path.join(emptyHome, 'xdg');
+    const restore = (): void => {
+      for (const key of ['HOME', 'USERPROFILE', 'XDG_CONFIG_HOME']) {
+        if (saved[key] === undefined) delete process.env[key];
+        else process.env[key] = saved[key];
+      }
+    };
+    return { dir, configPath, restore };
+  };
+
+  it('re-applies only files and tools (never the agent wiring) and pauses the mise watcher meanwhile', async () => {
+    const { dir, configPath, restore } = fixture();
+    const calls: Array<{ only?: string[]; skipPrereqMessage?: boolean }> = [];
+    const busy: boolean[] = [];
+    const originalLog = console.log;
+    console.log = () => {};
+    const watcher = watchAgentenvConfig(configPath, dir, {
+      debounceMs: 50,
+      settleMs: 50,
+      apply: async (_config, _baseDir, options) => {
+        calls.push({ only: options?.only, skipPrereqMessage: options?.skipPrereqMessage });
+        return { success: true, messages: ['Tools: wrote mise.toml'], errors: [] };
+      },
+      onBusy: (isBusy) => busy.push(isBusy),
+    });
+    try {
+      assert.ok(watcher, 'a live watcher');
+      const touch = (): void =>
+        fs.writeFileSync(configPath, `scope = "project"\n# ${Date.now()}\n`);
+      touch();
+      await waitFor(() => calls.length > 0 && busy[busy.length - 1] === false, 8000, touch);
+      assert.deepEqual(calls[0], { only: ['files', 'tools'], skipPrereqMessage: true });
+      assert.equal(busy[0], true, 'paused before applying');
+    } finally {
+      watcher?.close();
+      console.log = originalLog;
+      restore();
+    }
+  });
+
+  it('reports an unreadable config and does not apply it', async () => {
+    const { dir, configPath, restore } = fixture();
+    const errors: string[] = [];
+    let applied = 0;
+    const originalLog = console.log;
+    const originalError = console.error;
+    console.log = () => {};
+    console.error = (message?: unknown) => errors.push(String(message));
+    const watcher = watchAgentenvConfig(configPath, dir, {
+      debounceMs: 50,
+      settleMs: 50,
+      apply: async () => {
+        applied += 1;
+        return { success: true, messages: [], errors: [] };
+      },
+      onBusy: () => {},
+    });
+    try {
+      const touch = (): void => fs.writeFileSync(configPath, '[agents\nbroken');
+      touch();
+      await waitFor(() => errors.some((line) => line.includes('Could not re-read')), 8000, touch);
+      assert.equal(applied, 0);
+    } finally {
+      watcher?.close();
+      console.log = originalLog;
+      console.error = originalError;
+      restore();
+    }
+  });
+});
+
+describe('watchMiseToml — paused while a re-apply writes mise.toml', () => {
+  it('ignores mise file changes while paused', async () => {
+    const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-watch-pause-')));
+    const configPath = path.join(dir, 'agentenv.toml');
+    const miseTomlPath = path.join(dir, 'mise.toml');
+    fs.writeFileSync(configPath, 'scope = "project"\n');
+    fs.writeFileSync(miseTomlPath, '[tools]\n');
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (message?: unknown) => logs.push(String(message));
+    const watcher = watchMiseToml(miseTomlPath, dir, configPath, 50, () => true);
+    try {
+      assert.ok(watcher);
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      logs.length = 0;
+      fs.writeFileSync(miseTomlPath, '[tools]\n# regenerated\n');
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      assert.equal(
+        logs.some((line) => line.includes('Detected change')),
+        false,
+      );
+    } finally {
+      watcher?.close();
+      console.log = originalLog;
+    }
   });
 });

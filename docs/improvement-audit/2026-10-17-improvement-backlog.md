@@ -141,7 +141,7 @@ Themes this round:
   Agents are told to diagnose with `doctor --json`, but a missing custom binary or a stripped managed block doesn't show up there.
 - [x] **FEAT-07** Support version pins and custom tools from the CLI (`agentenv add jq@1.7.1`, `agentenv add --custom …`) — `src/commands/config-edit.ts:161-195` · effort M · impact low ✅ 66a95ec
   `add`/`remove` only toggle boolean keys. `tool_versions` and `custom_tools` need a hand edit or the wizard, and the wizard drops them (BUG-01).
-- [ ] **FEAT-08** Make `update --watch` watch `agentenv.toml` and re-apply, instead of watching the generated `mise.toml` — `src/commands/update.ts:283-383` · effort M · impact low
+- [x] **FEAT-08** Make `update --watch` watch `agentenv.toml` and re-apply, instead of watching the generated `mise.toml` — `src/commands/update.ts:283-383` · effort M · impact low
   Users edit `agentenv.toml`. The only writer of `mise.toml` is `apply`, which already installs, so the current watch almost never does useful work.
 
 - [x] **FEAT-09** Make `doctor` check that the mise shims are not shadowed by other executables earlier on PATH — `src/commands/doctor.ts:344-350`, `toolchain/mise.ts` (`shimsDirOnPath`) · effort M · impact med ✅ 2cfaf08
