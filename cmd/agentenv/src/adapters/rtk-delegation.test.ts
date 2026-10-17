@@ -273,4 +273,72 @@ describe('RtkDelegationAdapter', () => {
     assert.match(cline.message, /cannot uninstall project-level wiring/);
     assert.equal(windsurf.success && cline.success, true);
   });
+
+  it('passes --auto-patch when the agent needs its config patched', async () => {
+    const home = tempDir('agentenv-rtk-deleg-patch-');
+    const rtk = fakeRtkInit();
+    const adapter = new RtkDelegationAdapter(makeConfig(home, rtk.fn), {
+      agentKey: 'gemini_cli',
+      label: 'Gemini CLI',
+      rtkFlags: ['-g', '--gemini'],
+      configDir: path.join(home, '.gemini'),
+      expectedFile: 'RTK.md',
+      autoPatch: true,
+    });
+
+    await adapter.initialize();
+
+    assert.deepEqual(rtk.calls[0].args, ['-g', '--gemini', '--auto-patch']);
+  });
+
+  describe('when the expected hook is not in the agent config', () => {
+    const adapterFor = (home: string, hooksFile: string, rtkInit: RtkInitFn) =>
+      new RtkDelegationAdapter(makeConfig(home, rtkInit), {
+        agentKey: 'vibe',
+        label: 'Mistral Vibe',
+        rtkFlags: ['-g', '--agent', 'vibe'],
+        configDir: path.join(home, '.vibe'),
+        expectedFile: 'RTK.md',
+        expectedContent: { file: hooksFile, text: 'rtk hook vibe' },
+      });
+
+    it('fails when rtk itself says it skipped the patch (declined prompt)', async () => {
+      const home = tempDir('agentenv-rtk-deleg-skipped-');
+      const hooksFile = path.join(home, '.vibe', 'hooks.toml');
+      const skipped: RtkInitFn = () => ({
+        success: true,
+        message: 'rtk init succeeded',
+        stdout: 'Patch hooks.toml with RTK hook? [y/N] Skipped. Add hook manually later.',
+        stderr: '',
+      });
+
+      const result = await adapterFor(home, hooksFile, skipped).initialize();
+
+      assert.equal(result.success, false);
+      assert.ok(result.errors.some((e) => e.includes(hooksFile)));
+    });
+
+    it('only notes it when rtk gave no sign of a skip: rtk resolves the profile dir itself, so the file may be elsewhere', async () => {
+      const home = tempDir('agentenv-rtk-deleg-elsewhere-');
+      const hooksFile = path.join(home, '.vibe', 'hooks.toml');
+
+      const result = await adapterFor(home, hooksFile, fakeRtkInit().fn).initialize();
+
+      assert.equal(result.success, true);
+      assert.deepEqual(result.errors, []);
+      assert.match(result.message, /could not confirm/);
+    });
+
+    it('stays quiet when the hook is where it is expected', async () => {
+      const home = tempDir('agentenv-rtk-deleg-present-');
+      const hooksFile = path.join(home, '.vibe', 'hooks.toml');
+      fs.mkdirSync(path.dirname(hooksFile), { recursive: true });
+      fs.writeFileSync(hooksFile, 'command = "rtk hook vibe"\n');
+
+      const result = await adapterFor(home, hooksFile, fakeRtkInit().fn).initialize();
+
+      assert.equal(result.success, true);
+      assert.doesNotMatch(result.message, /could not confirm/);
+    });
+  });
 });

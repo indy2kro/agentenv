@@ -421,7 +421,10 @@ export function gatherDoctor(sectionFilter?: string, deps: GatherDoctorDeps = {}
         item.detail = 'not managed by mise; install manually';
       } else if (status === 'missing') {
         item.status = 'fail';
-        item.detail = 'not on PATH — run `mise install` in this project';
+        item.detail =
+          scope === 'user'
+            ? 'not on PATH — run `agentenv apply --scope user`'
+            : 'not on PATH — run `mise install` in this project';
       }
       toolItems.push(item);
     }
@@ -451,7 +454,7 @@ export function gatherDoctor(sectionFilter?: string, deps: GatherDoctorDeps = {}
         });
       } else {
         rtkItems.push({ status: 'ok', label: 'rtk', detail: rtkInfo.resolvedPath });
-        const pinned = PINNED_TOOL_VERSIONS.rtk;
+        const pinned = config.tool_versions?.rtk ?? PINNED_TOOL_VERSIONS.rtk;
         if (rtkInfo.version) {
           const detail =
             pinned && !rtkInfo.version.includes(pinned)

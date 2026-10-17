@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { EventEmitter } from 'node:events';
+import { Readable } from 'node:stream';
 import {
   ensureDirOnWindowsUserPath,
   MISE_TOOL_NAMES,
@@ -25,6 +27,8 @@ import {
   miseSpawnOptions,
   pathContainsDir,
   platformUnsupportedHint,
+  runMiseUpgrade,
+  summarizeMiseFailures,
   shimsDir,
   shimsDirOnPath,
   trustMiseToml,
@@ -103,6 +107,13 @@ describe('mise.toml generation', () => {
 
     assert.match(output, /^jq = "2\.0\.0"$/m);
     assert.doesNotMatch(output, /^jq = "latest"$/m);
+  });
+
+  it("lets a user's tool_versions pin override agentenv's built-in pin", () => {
+    const config = { ...DEFAULT_CONFIG, tool_versions: { rtk: '9.9.9' } };
+
+    assert.match(generateMiseToml(config, []), /^rtk = "9.9.9"$/m);
+    assert.equal(getToolsToInstall(config).find((tool) => tool.name === 'rtk')?.version, '9.9.9');
   });
 
   it('records config tool_versions pins in the install planner', () => {
@@ -682,5 +693,80 @@ describe('ensureDirOnWindowsUserPath', () => {
     }));
     assert.equal(result.success, false);
     assert.match(result.message, /access denied/);
+  });
+});
+
+describe('runMiseUpgrade', () => {
+  /** A fake `mise up` child that emits the given chunks, then closes with `code`. */
+  function fakeSpawn(chunks: string[], code: number | null, record: string[][] = []) {
+    return ((_cmd: string, args: readonly string[]) => {
+      record.push([...args]);
+      const child = new EventEmitter() as EventEmitter & { stdout: Readable; stderr: Readable };
+      child.stdout = new Readable({ read() {} });
+      child.stderr = new Readable({ read() {} });
+      setImmediate(() => {
+        for (const chunk of chunks) child.stdout.push(chunk);
+        child.stdout.push(null);
+        child.stderr.push(null);
+        setImmediate(() => child.emit('close', code));
+      });
+      return child;
+    }) as unknown as typeof import('node:child_process').spawn;
+  }
+
+  it('streams mise output as it arrives and returns the collected result', async () => {
+    const seen: string[] = [];
+    const calls: string[][] = [];
+    const result = await runMiseUpgrade(
+      ['jq', 'fd'],
+      '.',
+      (chunk) => seen.push(chunk),
+      fakeSpawn(['upgrading jq\n', 'upgrading fd\n'], 0, calls),
+    );
+
+    assert.deepEqual(calls, [['up', 'jq', 'fd']]);
+    assert.deepEqual(seen, ['upgrading jq\n', 'upgrading fd\n']);
+    assert.equal(result.success, true);
+    assert.equal(result.stdout, 'upgrading jq\nupgrading fd\n');
+    assert.equal(result.exitCode, 0);
+  });
+
+  it('reports a non-zero exit as a failure with its code', async () => {
+    const result = await runMiseUpgrade(['jq'], '.', undefined, fakeSpawn([], 3));
+    assert.equal(result.success, false);
+    assert.equal(result.exitCode, 3);
+  });
+
+  it('has no fixed time limit, so a slow but working upgrade is not killed at 2 minutes', () => {
+    const source = fs.readFileSync(path.join(import.meta.dirname, 'mise.js'), 'utf-8');
+    const body = source.slice(source.indexOf('async function runMiseUpgrade'));
+    assert.doesNotMatch(body.slice(0, body.indexOf('\n}\n')), /timeout:\s*120000/);
+  });
+});
+
+describe('summarizeMiseFailures', () => {
+  const real = [
+    'mise ✗ direnv@2.38.2    371ms · failed: no asset found: direnv.windows-amd64',
+    String.raw`mise WARN  not replacing unmanaged file in shims directory: C:\Users\x\.local\bin\uv.exe`,
+    'mise ERROR Failed to install aqua:direnv/direnv@latest: no asset found: direnv.windows-amd64',
+    'Available assets:',
+    'direnv.windows-386.exe',
+    'mise ERROR Version: 2026.10.11 windows-x64 (2026-10-15)',
+    'mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information',
+  ].join('\n');
+
+  it('names each tool mise failed to install, with its reason, and nothing else', () => {
+    assert.deepEqual(summarizeMiseFailures(real), [
+      'aqua:direnv/direnv@latest — no asset found: direnv.windows-amd64',
+    ]);
+  });
+
+  it('ignores colour codes and returns nothing when no tool failed', () => {
+    const esc = String.fromCharCode(27);
+    assert.deepEqual(
+      summarizeMiseFailures(`${esc}[31mmise ERROR${esc}[0m Failed to install jq@1: boom`),
+      ['jq@1 — boom'],
+    );
+    assert.deepEqual(summarizeMiseFailures('mise ✓ jq@1.8.2  1.0s'), []);
   });
 });

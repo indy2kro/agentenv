@@ -582,3 +582,22 @@ describe('doctor — Windows shell checks', () => {
     );
   });
 });
+
+describe('gatherDoctor — missing tool hint', () => {
+  const missingDeps = (configPath: string): Partial<GatherDoctorDeps> => ({
+    findConfigPath: () => configPath,
+    toolAvailabilityClassification: () => 'missing',
+  });
+  const hint = (configPath: string): string | undefined =>
+    section(gatherDoctor(undefined, baseDeps(missingDeps(configPath))), 'Tools')?.items[0]?.detail;
+
+  it('points a project config at `mise install` in the project', () => {
+    assert.match(hint('/fake/project/agentenv.toml') ?? '', /mise install/);
+  });
+
+  it('points a user config at `agentenv apply --scope user`, not at a project directory', () => {
+    const detail = hint('/fake/home/.config/agentenv/agentenv.toml') ?? '';
+    assert.match(detail, /agentenv apply --scope user/);
+    assert.doesNotMatch(detail, /in this project/);
+  });
+});

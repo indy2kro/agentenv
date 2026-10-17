@@ -1,5 +1,16 @@
 import type { Command, CommanderError } from 'commander';
 
+/** Exit code for a run cancelled with Ctrl+C (128 + SIGINT), the shell convention. */
+export const EXIT_CODE_CANCELLED = 130;
+
+/**
+ * Whether an error is the user aborting an interactive prompt (Ctrl+C), which
+ * @inquirer/prompts reports as an `ExitPromptError`. That's a cancel, not a crash.
+ */
+export function isPromptCancellation(error: unknown): boolean {
+  return error instanceof Error && error.name === 'ExitPromptError';
+}
+
 /**
  * Usage errors (unknown option/command, missing required argument, bad value)
  * must exit 2; help/version are successful informational exits (0).

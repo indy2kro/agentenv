@@ -93,3 +93,34 @@ describe('shell fix state manifest', () => {
     );
   });
 });
+
+describe('shell fix state manifest — corrupt file', () => {
+  it('keeps an unreadable manifest as .corrupt instead of silently overwriting it', () => {
+    const statePath = tempStatePath();
+    fs.mkdirSync(path.dirname(statePath), { recursive: true });
+    fs.writeFileSync(statePath, '{ "version": 1, "entries": [ truncated');
+
+    writeShellFixState(
+      mergeShellFixEntries(null, [entry('/tmp/a.json')], '/usr/bin/bash'),
+      statePath,
+    );
+
+    assert.equal(
+      fs.readFileSync(`${statePath}.corrupt`, 'utf8'),
+      '{ "version": 1, "entries": [ truncated',
+    );
+    assert.equal(readShellFixState(statePath)?.entries.length, 1);
+  });
+
+  it('does not create a .corrupt copy when the existing manifest is valid', () => {
+    const statePath = tempStatePath();
+    const first = mergeShellFixEntries(null, [entry('/tmp/a.json')], '/usr/bin/bash');
+    writeShellFixState(first, statePath);
+    writeShellFixState(
+      mergeShellFixEntries(first, [entry('/tmp/b.json')], '/usr/bin/bash'),
+      statePath,
+    );
+
+    assert.equal(fs.existsSync(`${statePath}.corrupt`), false);
+  });
+});

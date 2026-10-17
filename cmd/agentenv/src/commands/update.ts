@@ -23,6 +23,7 @@ import {
   runMiseUpgrade,
   shimsDir,
   shimsDirOnPath,
+  summarizeMiseFailures,
   toolAvailabilityLine,
   trustMiseToml,
   verifyHintNeeded,
@@ -218,13 +219,41 @@ export async function doUpdate(
       } else {
         log(`  mise up ${targets.join(' ')}${dryRun ? ' (would run)' : ''}`);
         if (!dryRun) {
-          const upgrade = await runMiseUpgradeFn(targets, scopeDir);
+          // Human mode shows mise's own progress live (it can run for minutes);
+          // --json collects everything into the one document instead.
+          let streamed = false;
+          const upgrade = await runMiseUpgradeFn(
+            targets,
+            scopeDir,
+            json
+              ? undefined
+              : (chunk) => {
+                  streamed = true;
+                  process.stdout.write(chunk);
+                },
+          );
           if (upgrade.success) {
-            log(`  ${(upgrade.stdout || upgrade.stderr || '').trim() || 'all tools up to date'}`);
+            if (!streamed) {
+              log(`  ${(upgrade.stdout || upgrade.stderr || '').trim() || 'all tools up to date'}`);
+            }
           } else {
-            logErr(
-              `  mise up failed (exit ${upgrade.exitCode ?? 'null'}): ${normalizeOutput(upgrade.stderr || upgrade.stdout).trim()}`,
-            );
+            const output = `${upgrade.stderr}\n${upgrade.stdout}`;
+            const failures = summarizeMiseFailures(output);
+            const head = `  mise up failed (exit ${upgrade.exitCode ?? 'null'})`;
+            if (failures.length > 0) {
+              // Name what broke; the rest of mise's output was already shown
+              // (human mode) or is still in the JSON document's raw detail.
+              logErr(`${head} for:`);
+              for (const failure of failures) logErr(`    ${failure}`);
+              logErr(
+                '  The other tools were upgraded. Pin a broken tool under [tool_versions], or `agentenv remove <tool>` to stop managing it.',
+              );
+              if (json) logErr(normalizeOutput(upgrade.stderr || upgrade.stdout).trim());
+            } else if (streamed) {
+              logErr(`${head}; see mise's output above.`);
+            } else {
+              logErr(`${head}: ${normalizeOutput(upgrade.stderr || upgrade.stdout).trim()}`);
+            }
             failed = true;
           }
         }
@@ -317,13 +346,22 @@ export function watchMiseToml(
   } catch {
     resolvedDir = path.resolve(scopeDir);
   }
+  // The watch target is the directory the mise file really lives in. In user
+  // scope that is <mise config>/conf.d, not the agentenv config directory
+  // (scopeDir), where a file with the same name is agentenv's own config.
+  let watchDir: string;
+  try {
+    watchDir = fs.realpathSync.native(path.dirname(resolvedPath));
+  } catch {
+    watchDir = path.dirname(resolvedPath);
+  }
   const watchedName = path.basename(resolvedPath);
 
   let timeout: NodeJS.Timeout | null = null;
 
   try {
-    const watcher = fs.watch(resolvedDir, (_eventType, filename) => {
-      // A directory watch fires for every file in resolvedDir; only react
+    const watcher = fs.watch(watchDir, (_eventType, filename) => {
+      // A directory watch fires for every file in watchDir; only react
       // to mise.toml itself. When the platform can't report a filename,
       // don't filter it out — better an extra check than a missed one.
       if (filename && filename !== watchedName) return;
@@ -376,7 +414,7 @@ export function watchMiseToml(
     return watcher;
   } catch (err) {
     console.error(
-      `Failed to watch ${resolvedDir}: ${err instanceof Error ? err.message : String(err)}`,
+      `Failed to watch ${watchDir}: ${err instanceof Error ? err.message : String(err)}`,
     );
     return undefined;
   }

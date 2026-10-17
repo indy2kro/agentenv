@@ -66,6 +66,15 @@ export function writeShellFixState(
   statePath: string = shellFixStatePath(),
 ): void {
   fs.mkdirSync(path.dirname(statePath), { recursive: true });
+  // An existing manifest we can't parse is the only record revert could have
+  // used; keep it next to the new one rather than silently replacing it.
+  if (fs.existsSync(statePath) && readShellFixState(statePath) === null) {
+    try {
+      fs.copyFileSync(statePath, `${statePath}.corrupt`);
+    } catch {
+      // Advisory only — never block recording the new state.
+    }
+  }
   writeFileWithRetry(statePath, `${JSON.stringify(state, null, 2)}\n`);
 }
 

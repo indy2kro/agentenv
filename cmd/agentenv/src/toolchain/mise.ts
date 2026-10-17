@@ -135,7 +135,7 @@ export function generateMiseToml(
       continue;
     }
     const miseName = MISE_TOOL_NAMES[toolKey] || toolKey;
-    const version = PINNED_TOOL_VERSIONS[miseName] || config.tool_versions?.[toolKey] || 'latest';
+    const version = config.tool_versions?.[toolKey] || PINNED_TOOL_VERSIONS[miseName] || 'latest';
     lines.push(`${miseName} = "${version}"`);
   }
 
@@ -556,7 +556,7 @@ export function getToolsToInstall(config: AgentenvConfig): Array<{
       result.push({
         name: key,
         miseName,
-        version: PINNED_TOOL_VERSIONS[miseName] || config.tool_versions?.[key] || 'latest',
+        version: config.tool_versions?.[key] || PINNED_TOOL_VERSIONS[miseName] || 'latest',
         tier: TOOL_TIERS[key] || 3,
       });
     }
@@ -610,33 +610,69 @@ export async function runMiseSelfUpdate(): Promise<{
 export async function runMiseUpgrade(
   tools: string[],
   cwd: string,
+  onOutput?: (chunk: string, stream: 'stdout' | 'stderr') => void,
+  spawnFn: typeof child_process.spawn = child_process.spawn,
 ): Promise<{
   success: boolean;
   stdout: string;
   stderr: string;
   exitCode: number | null;
 }> {
-  try {
-    const result = child_process.spawnSync('mise', ['up', ...tools], {
-      cwd,
-      encoding: 'utf-8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-      timeout: 120000,
+  // Async spawn with no fixed time limit, like runMiseInstall: upgrading a
+  // full tool list routinely takes minutes, a sync call froze the spinner for
+  // all of it, and killing a slow-but-working upgrade at a deadline reported
+  // an empty "failed (exit null)".
+  return new Promise((resolve) => {
+    let child: child_process.ChildProcess;
+    try {
+      child = spawnFn('mise', ['up', ...tools], {
+        cwd,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+    } catch (err) {
+      resolve({
+        success: false,
+        stdout: '',
+        stderr: err instanceof Error ? err.message : String(err),
+        exitCode: null,
+      });
+      return;
+    }
+
+    let stdout = '';
+    let stderr = '';
+    child.stdout?.setEncoding('utf-8').on('data', (chunk: string) => {
+      stdout += chunk;
+      onOutput?.(chunk, 'stdout');
     });
-    return {
-      success: result.status === 0,
-      stdout: result.stdout || '',
-      stderr: result.stderr || '',
-      exitCode: result.status ?? null,
-    };
-  } catch (err) {
-    return {
-      success: false,
-      stdout: '',
-      stderr: err instanceof Error ? err.message : String(err),
-      exitCode: null,
-    };
+    child.stderr?.setEncoding('utf-8').on('data', (chunk: string) => {
+      stderr += chunk;
+      onOutput?.(chunk, 'stderr');
+    });
+    child.on('error', (err) => {
+      resolve({ success: false, stdout, stderr: stderr || err.message, exitCode: null });
+    });
+    child.on('close', (code) => {
+      resolve({ success: code === 0, stdout, stderr, exitCode: code });
+    });
+  });
+}
+
+const ANSI_ESCAPE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*[A-Za-z]`, 'g');
+
+/**
+ * The tools mise reported it could not install, one `spec — reason` line each,
+ * pulled from its `ERROR Failed to install <spec>: <reason>` lines. A failed
+ * `mise up` otherwise buries the one tool that broke under progress bars for
+ * the ones that worked.
+ */
+export function summarizeMiseFailures(output: string): string[] {
+  const failures: string[] = [];
+  for (const line of output.replace(ANSI_ESCAPE, '').split(/\r?\n/)) {
+    const match = /ERROR\s+Failed to install\s+(\S+?):\s+(.+)$/.exec(line);
+    if (match) failures.push(`${match[1]} — ${match[2].trim()}`);
   }
+  return failures;
 }
 
 /**

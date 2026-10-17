@@ -32,6 +32,12 @@ that declares `[[custom_tools]]` at all replaces the user config's list
 entirely, rather than merging entry-by-entry. `scope` itself is never
 inherited — it's intrinsic to whichever file was actually loaded.
 
+Layering applies to what happens on *your machine*: which agents get wired and
+which tools are checked. The files meant to be committed (`mise.toml`,
+`AGENTS.md`, `CLAUDE.md`) are generated from the project file and agentenv's
+defaults only, so they read the same for every teammate regardless of their
+personal user config.
+
 ## Getting started
 
 Run the wizard to build the file interactively, or read this reference and
@@ -384,7 +390,7 @@ existing hand-written user instructions are never replaced.
 |---|---|---|---|
 | `marker_start` | string | `<!-- agentenv-managed-start -->` | Opening marker for the regenerated block. |
 | `marker_end` | string | `<!-- agentenv-managed-end -->` | Closing marker. |
-| `files` | string[] | `["AGENTS.md", "CLAUDE.md"]` | **Parsed but not yet honored** — the generator always writes both files. Reserved for future narrowing. |
+| `files` | string[] | `["AGENTS.md", "CLAUDE.md"]` | Which instruction files apply writes. Omit it to write `AGENTS.md` always and `CLAUDE.md` only when Claude Code is enabled. |
 
 ## `[advanced]`
 

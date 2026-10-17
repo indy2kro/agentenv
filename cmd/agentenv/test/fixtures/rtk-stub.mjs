@@ -60,7 +60,11 @@ switch (flags) {
     fs.writeFileSync(path.join(dir, 'rtk.ts'), '// rtk opencode plugin\nexport const plugin = {};\n');
     break;
   }
-  case '-g --gemini': {
+  case '-g --gemini --auto-patch': {
+    // Without --auto-patch real rtk prompts and skips this patch when there is no TTY.
+    writeJson(path.join(home, '.gemini', 'settings.json'), {
+      hooks: { BeforeTool: [{ hooks: [{ type: 'command', command: 'rtk-hook-gemini.sh' }] }] },
+    });
     fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK stub (Gemini CLI)\n');
     break;
   }
@@ -77,9 +81,9 @@ switch (flags) {
     fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK stub (Cline CLI)\n');
     break;
   }
-  case '-g --agent vibe': {
+  case '-g --agent vibe --auto-patch': {
     // Real rtk 0.49.0 registers the hook in ~/.vibe/hooks.toml.
-    writeFile(path.join(home, '.vibe', 'hooks.toml'), '# rtk hook registry stub\n');
+    writeFile(path.join(home, '.vibe', 'hooks.toml'), 'command = "rtk hook vibe"\n');
     break;
   }
   default: {

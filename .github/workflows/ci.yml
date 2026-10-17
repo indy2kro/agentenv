@@ -70,6 +70,9 @@ jobs:
       - name: Per-file coverage floors
         if: matrix.os == 'ubuntu-latest' && matrix.node-version == '24'
         run: npm run test:coverage:files
+      - name: Audit runtime dependencies
+        if: matrix.os == 'ubuntu-latest' && matrix.node-version == '24'
+        run: npm audit --omit=dev
       - name: Smoke (full CLI pipeline, stub rtk)
         run: npm run smoke
       - name: Verify CLI surface (version/help/completion)
@@ -100,6 +103,40 @@ jobs:
               exit 1
             fi
           done
+
+  # What users actually receive: the packed tarball, installed into a clean
+  # directory, not the in-tree dist/ the build-test job runs.
+  pack-smoke:
+    name: 'Packed tarball smoke (ubuntu, node 24)'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Setup Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: cmd/agentenv/package-lock.json
+      - name: Pack
+        working-directory: cmd/agentenv
+        run: |
+          npm ci
+          npm run build
+          mkdir -p "$RUNNER_TEMP/pack"
+          npm pack --pack-destination "$RUNNER_TEMP/pack"
+      - name: Install the tarball into a clean directory and run it
+        run: |
+          mkdir "$RUNNER_TEMP/consumer" "$RUNNER_TEMP/project"
+          cd "$RUNNER_TEMP/consumer"
+          npm init -y >/dev/null
+          npm install "$RUNNER_TEMP"/pack/*.tgz
+          bin="$RUNNER_TEMP/consumer/node_modules/.bin/agentenv"
+          "$bin" --version
+          cd "$RUNNER_TEMP/project"
+          printf 'scope = "project"\n[agents]\nclaude_code = true\n' > agentenv.toml
+          "$bin" apply --dry-run --json | node -e 'const d = JSON.parse(require("fs").readFileSync(0, "utf8")); if (d.success !== true || d.dryRun !== true) { console.error(d); process.exit(1); }'
 
   acceptance:
     name: 'Acceptance: full setup (${{ matrix.os }})'

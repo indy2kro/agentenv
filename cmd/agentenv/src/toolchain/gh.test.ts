@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
-import { classifyGhAuthStatus, resolveGhAuthProbe } from './gh.js';
+import { classifyGhAuthStatus, ghAuthHostname, resolveGhAuthProbe } from './gh.js';
 import type { GhAuthProbeFn } from './gh.js';
 
 describe('gh auth status probe', () => {
@@ -37,7 +37,16 @@ describe('gh auth status probe', () => {
       !/auth['"\s]+,?\s*['"]setup-git/.test(source),
       'source must never build `gh auth setup-git`',
     );
-    assert.match(source, /'auth', 'status', '--hostname', 'github\.com'/);
+    assert.match(source, /'auth', 'status', '--hostname', ghAuthHostname\(\)/);
+  });
+
+  it('probes GH_HOST (e.g. GitHub Enterprise) when it is a plain hostname, else github.com', () => {
+    assert.equal(ghAuthHostname({}), 'github.com');
+    assert.equal(ghAuthHostname({ GH_HOST: 'ghe.example.com' }), 'ghe.example.com');
+    assert.equal(ghAuthHostname({ GH_HOST: '  ' }), 'github.com');
+    // Never feed something that isn't a bare hostname to the gh command line.
+    assert.equal(ghAuthHostname({ GH_HOST: '--hostname evil' }), 'github.com');
+    assert.equal(ghAuthHostname({ GH_HOST: 'https://ghe.example.com/x' }), 'github.com');
   });
 
   it('classifies exit 1 as unauthenticated unless stderr smells like a network failure', () => {

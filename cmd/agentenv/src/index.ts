@@ -19,7 +19,7 @@ import { shellFixCommand } from './commands/shell-fix.js';
 import { setColorEnabled } from './ui/theme.js';
 import { setQuietEnabled } from './ui/output.js';
 import { setSpinnerEnabled } from './ui/spinner.js';
-import { installExitOverride } from './cli/exit.js';
+import { EXIT_CODE_CANCELLED, installExitOverride, isPromptCancellation } from './cli/exit.js';
 
 const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8'));
 
@@ -71,6 +71,11 @@ program.parseAsync(process.argv).catch((error: unknown) => {
   // The override rethrew a CommanderError after setting process.exitCode
   // (0 for help/version, 2 for usage errors); nothing more to do.
   if (error instanceof CommanderError) return;
+  if (isPromptCancellation(error)) {
+    process.stderr.write('Cancelled.\n');
+    process.exitCode = EXIT_CODE_CANCELLED;
+    return;
+  }
   const debug = process.argv.includes('--debug');
   if (debug) {
     process.stderr.write(

@@ -111,9 +111,15 @@ export function formatResultBox(result: ResultBoxContent): string {
   if (result.summary !== undefined) bodyLines.push(result.summary);
   const widths = bodyLines.map(displayWidth);
   const contentWidth = Math.max(...widths);
-  const mid = bodyLines.map((line, i) => `│ ${line}${' '.repeat(contentWidth - widths[i])} │`);
-  const edge = `┌${'─'.repeat(contentWidth + 2)}┐`;
-  const bottom = `└${'─'.repeat(contentWidth + 2)}┘`;
+  // The frame follows the glyphs: plain ASCII wherever ✅/✗ would fall back too.
+  const ascii = asciiGlyphsEnabled();
+  const side = ascii ? '|' : '│';
+  const mid = bodyLines.map(
+    (line, i) => `${side} ${line}${' '.repeat(contentWidth - widths[i])} ${side}`,
+  );
+  const rule = ascii ? '-' : '─';
+  const edge = ascii ? `+${rule.repeat(contentWidth + 2)}+` : `┌${rule.repeat(contentWidth + 2)}┐`;
+  const bottom = ascii ? edge : `└${rule.repeat(contentWidth + 2)}┘`;
   const plain = [edge, ...mid, bottom].join('\n');
   return severityColor(plain, result.severity);
 }

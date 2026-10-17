@@ -6,7 +6,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { AgentenvConfig, BINARY_MAP, TOOL_DESCRIPTIONS, DEFAULT_CONFIG } from '../config/schema.js';
-import { PLATFORM_UNSUPPORTED_TOOLS, isPlatformUnsupported } from '../toolchain/fallbacks.js';
+import {
+  PLATFORM_UNSUPPORTED_TOOLS,
+  isPlatformUnsupported,
+  requiresFallback,
+} from '../toolchain/fallbacks.js';
 import { backupBeforeFirstEdit, writeFileWithRetry } from '../utils/fs-retry.js';
 
 // Tool categories for organization
@@ -102,6 +106,8 @@ export function generateAgentsMd(config: AgentenvConfig): string {
   // Keep all agentenv-owned content in a single block. User-authored content
   // can safely live before or after it.
   lines.push(markerStart);
+  lines.push('<!-- Managed by agentenv: edits inside this block are overwritten on apply. -->');
+  lines.push('');
 
   // Header
   lines.push('# AI Coding Agent Instructions');
@@ -144,6 +150,14 @@ export function generateAgentsMd(config: AgentenvConfig): string {
     }
   }
 
+  const customLines = customToolLines(config);
+  if (customLines.length > 0) {
+    lines.push('### Custom Tools');
+    lines.push('');
+    lines.push(...customLines);
+    lines.push('');
+  }
+
   // A single rtk section (catalog entry + usage notes combined, rather than
   // repeating the same "rewrites commands to save tokens" claim twice under
   // two separate headings).
@@ -154,8 +168,17 @@ export function generateAgentsMd(config: AgentenvConfig): string {
       '- **rtk** (binary: `rtk`): CLI proxy that reduces LLM token consumption by 60-90% on common dev commands',
     );
     lines.push(
-      '  - Automatically rewrites commands like `grep`, `find`, `cat`, etc. to faster, more token-efficient alternatives; output is truncated to reduce token usage while preserving essential information',
+      '  - Rewrites commands like `grep`, `find`, `cat`, etc. to faster, more token-efficient alternatives; output is truncated to reduce token usage while preserving essential information',
     );
+    // Windsurf and Cline have no command hook: rtk can only tell them to
+    // prefix commands themselves, so don't promise them transparent rewriting.
+    const hookless = (['windsurf', 'cline'] as const).filter((key) => config.agents?.[key]);
+    if (hookless.length > 0) {
+      const names = hookless.map((key) => (key === 'windsurf' ? 'Windsurf' : 'Cline'));
+      lines.push(
+        `  - ${names.join(' and ')} ${names.length > 1 ? 'have' : 'has'} no rewrite hook: prefix shell commands with \`rtk\` yourself`,
+      );
+    }
     lines.push(
       "  - If a rewrite misbehaves (e.g. drops a flag it doesn't understand), run `rtk proxy <cmd>` to execute the original command unmodified",
     );
@@ -253,9 +276,35 @@ const PLATFORM_LABELS: Partial<Record<NodeJS.Platform, string>> = {
 
 /** " (not available on Windows)" for tools with a platform gap, else "". */
 function platformCaveat(tool: string): string {
+  // agentenv never hands these to mise, so `mise install` won't provide them.
+  if (requiresFallback(tool)) return ' (not installed by agentenv; install manually)';
   const gaps = PLATFORM_UNSUPPORTED_TOOLS[tool];
   if (!gaps || gaps.length === 0) return '';
   return ` (not available on ${gaps.map((p) => PLATFORM_LABELS[p] ?? p).join(', ')})`;
+}
+
+/**
+ * The "Custom Tools" bullets: each declared custom binary with its own
+ * description. Mise-sourced ones are on PATH by name; already-installed ones
+ * are listed with their per-OS paths (a committed file is read on several OSes).
+ */
+function customToolLines(config: AgentenvConfig): string[] {
+  const lines: string[] = [];
+  for (const tool of config.custom_tools ?? []) {
+    const description = tool.description?.trim() || 'Custom tool';
+    if (tool.already_installed) {
+      const paths = [
+        tool.path_windows && `Windows: \`${tool.path_windows}\``,
+        tool.path_macos && `macOS: \`${tool.path_macos}\``,
+        tool.path_linux && `Linux: \`${tool.path_linux}\``,
+      ].filter(Boolean);
+      const where = paths.length > 0 ? ` — ${paths.join(', ')}` : '';
+      lines.push(`- **${tool.name}** (installed${where}): ${description}`);
+    } else if (tool.mise_source) {
+      lines.push(`- **${tool.name}** (binary: \`${tool.name}\`): ${description}`);
+    }
+  }
+  return lines;
 }
 
 /**
@@ -287,15 +336,6 @@ function getEnabledToolsForOutput(config: AgentenvConfig): string[] {
   for (const key of toolKeys) {
     if (tools[key]) {
       enabled.push(key);
-    }
-  }
-
-  // Add custom tools that are installable via mise
-  if (config.custom_tools) {
-    for (const ct of config.custom_tools) {
-      if (ct.mise_source) {
-        enabled.push(ct.name);
-      }
     }
   }
 

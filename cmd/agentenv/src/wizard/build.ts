@@ -158,6 +158,12 @@ export interface WizardSelections {
   scope: 'project' | 'user';
   rtkEnabled: boolean;
   integrations?: IntegrationsConfig;
+  /**
+   * The config file being edited. Settings the wizard has no prompt for
+   * (tool_versions, rtk.init, tier0, generate, advanced) carry over from it
+   * instead of being reset to defaults.
+   */
+  base?: AgentenvConfig;
 }
 
 /** Assemble a full AgentenvConfig from picker selections. */
@@ -176,17 +182,23 @@ export function buildConfigFromSelections(sel: WizardSelections): AgentenvConfig
     agents,
     tools,
     custom_tools: sel.customTools.length > 0 ? sel.customTools : undefined,
+    tool_versions: sel.base?.tool_versions,
     integrations: sel.integrations,
     rtk: {
+      ...sel.base?.rtk,
       enabled: sel.rtkEnabled,
-      init: Object.fromEntries(AGENT_KEYS.map((key) => [key, true])),
+      init: {
+        ...Object.fromEntries(AGENT_KEYS.map((key) => [key, true])),
+        ...sel.base?.rtk?.init,
+      },
     },
-    tier0: { check_enabled: true },
-    generate: {
+    tier0: sel.base?.tier0 ?? { check_enabled: true },
+    generate: sel.base?.generate ?? {
       marker_start: '<!-- agentenv-managed-start -->',
       marker_end: '<!-- agentenv-managed-end -->',
       files: ['AGENTS.md', 'CLAUDE.md'],
     },
+    advanced: sel.base?.advanced,
   };
 }
 

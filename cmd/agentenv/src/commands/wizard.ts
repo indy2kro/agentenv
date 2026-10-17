@@ -101,6 +101,16 @@ export async function runConfigWizard(deps: WizardDeps = {}): Promise<void> {
     return;
   }
   const hasExistingConfig = findConfigPathFn() !== undefined;
+  // The file itself, without the user layer: what a save may carry over from.
+  const foundConfig = findConfigPathFn();
+  let fileConfig: AgentenvConfig | undefined;
+  if (foundConfig) {
+    try {
+      fileConfig = loadConfigFn(foundConfig);
+    } catch {
+      fileConfig = undefined;
+    }
+  }
   const detected = detectInstalledAgentsFn();
 
   // Step 1: Select agents (pre-checked = already enabled or detected; one page; no wrap).
@@ -131,7 +141,12 @@ export async function runConfigWizard(deps: WizardDeps = {}): Promise<void> {
 
   // Step 3: Add custom binaries
   console.log('\nStep 3/7: Add custom binaries');
-  const customTools: CustomTool[] = [];
+  const customTools: CustomTool[] = [...(fileConfig?.custom_tools ?? [])];
+  if (customTools.length > 0) {
+    console.log(
+      `  Keeping ${customTools.length} existing custom binar${customTools.length === 1 ? 'y' : 'ies'}`,
+    );
+  }
   let addCustom = await confirmFn({ message: 'Add a custom binary?', default: false });
   while (addCustom) {
     const name = await inputFn({ message: 'Tool name (e.g. "my-tool"):' });
@@ -204,7 +219,6 @@ export async function runConfigWizard(deps: WizardDeps = {}): Promise<void> {
   console.log('\nStep 4/7: Choose configuration scope');
   // Preselect: an explicit `setup --scope`, else the scope of the config that
   // was found (so re-running on a user config doesn't default to project).
-  const foundConfig = findConfigPathFn();
   const foundScope: 'project' | 'user' | undefined = foundConfig
     ? path.resolve(path.dirname(foundConfig)) === path.resolve(userConfigDir())
       ? 'user'
@@ -295,6 +309,7 @@ export async function runConfigWizard(deps: WizardDeps = {}): Promise<void> {
     scope,
     rtkEnabled,
     integrations,
+    base: foundConfig && foundScope === scope ? fileConfig : undefined,
   });
   const diff = diffConfigs(existing, config);
 

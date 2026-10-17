@@ -156,8 +156,11 @@ describe('result box ASCII fallback (AGENTENV_ASCII=1)', () => {
     assert.match(formatResultBox({ severity: 'warn', headline: 'Watch' }), /\[warn\] Watch/);
     const box = formatResultBox({ severity: 'fail', headline: 'Oops' });
     assert.match(box, /\[FAIL\] Oops/);
-    assert.ok(box.startsWith('┌'));
-    assert.ok(box.endsWith('┘'));
+    // The frame is ASCII too, not box-drawing characters.
+    const rows = box.split('\n');
+    assert.match(rows[0], /^\+-+\+$/);
+    assert.match(rows[rows.length - 1], /^\+-+\+$/);
+    assert.ok(/^[ -~\n]+$/.test(box), 'only printable ASCII');
     const frame = box.split('\n').map((line) => displayWidth(line));
     assert.ok(new Set(frame).size === 1, `all rows should share a visual width, got: ${frame}`);
   });

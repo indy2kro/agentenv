@@ -419,3 +419,65 @@ describe('backup reporting', () => {
     }
   });
 });
+
+describe('generateAgentsMd — custom tools', () => {
+  const config: AgentenvConfig = {
+    scope: 'project',
+    agents: { claude_code: true },
+    tools: { ripgrep: true },
+    custom_tools: [
+      { name: 'my-lint', description: 'Project linter', mise_source: 'github:acme/my-lint' },
+      {
+        name: 'corp-cli',
+        description: 'Internal deploy CLI',
+        already_installed: true,
+        path_windows: String.raw`C:\tools\corp.exe`,
+        path_linux: '/opt/corp/bin/corp',
+      },
+    ],
+  };
+
+  it("lists each custom tool with its own description instead of 'Available via agentenv'", () => {
+    const md = generateAgentsMd(config);
+    assert.match(md, /- \*\*my-lint\*\* \(binary: `my-lint`\): Project linter/);
+    assert.doesNotMatch(md, /my-lint.*Available via agentenv/);
+  });
+
+  it('lists already-installed custom binaries with their per-OS paths', () => {
+    const md = generateAgentsMd(config);
+    assert.match(md, /\*\*corp-cli\*\*.*Internal deploy CLI/);
+    assert.ok(md.includes(String.raw`C:\tools\corp.exe`));
+    assert.ok(md.includes('/opt/corp/bin/corp'));
+  });
+});
+
+describe('generateAgentsMd — honesty about what is installed and wired', () => {
+  const base: AgentenvConfig = {
+    scope: 'project',
+    agents: { claude_code: true },
+    tools: { ripgrep: true, tokei: true },
+    rtk: { enabled: true },
+  };
+
+  it('marks tokei as a manual install, since agentenv never installs it', () => {
+    const line = generateAgentsMd(base)
+      .split('\n')
+      .find((l) => l.includes('**tokei**'));
+    assert.ok(line, 'tokei is still listed');
+    assert.match(line, /install manually/);
+  });
+
+  it('does not claim transparent rewriting for agents that have no rtk hook', () => {
+    const hookless = generateAgentsMd({ ...base, agents: { claude_code: true, windsurf: true } });
+    assert.match(hookless, /Windsurf.*prefix.*`rtk`/i);
+
+    const hooked = generateAgentsMd(base);
+    assert.doesNotMatch(hooked, /no rewrite hook/);
+  });
+
+  it('says inside the managed block that edits there are overwritten', () => {
+    const md = generateAgentsMd(base);
+    const block = md.slice(md.indexOf(start), md.indexOf(end));
+    assert.match(block, /overwritten on apply/);
+  });
+});

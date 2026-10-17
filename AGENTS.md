@@ -75,12 +75,15 @@ npm run smoke:real     # build + node scripts/smoke.mjs --real (real mise + rtk 
 - `npm run prepare` wires Husky; the pre-commit hook runs
   `cd cmd/agentenv && npx lint-staged` (eslint --fix + prettier on staged
   `*.ts`).
-- CI (`.github/workflows/ci.yml`) has three jobs: `lint-repo` (ubuntu-only,
+- CI (`.github/workflows/ci.yml`) has four jobs: `lint-repo` (ubuntu-only,
   once — `actionlint` against `.github/workflows/*.yml`, which also
   shellchecks every embedded `run:` script, plus `gitleaks`) on every
   push/PR; `build-test` (windows/macos/ubuntu × Node 22/24 matrix — build,
   lint, format:check, test, stub smoke, and a CLI-surface check that
-  version/help/completion work and cover every command) on every push/PR;
+  version/help/completion work and cover every command, plus an
+  `npm audit --omit=dev` gate on ubuntu/Node 24) on every push/PR;
+  `pack-smoke` (`npm pack`, install the tarball into a clean directory, run
+  `--version` and `apply --dry-run --json`) on every push/PR;
   and `acceptance` (real mise + `npm run smoke:real`, gated on `build-test`)
   on PRs, `main` pushes, and manual dispatch. Treat all four local gates
   (build, lint, format:check, test) as required before considering work

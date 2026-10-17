@@ -16,6 +16,11 @@ export class GeminiCliAdapter extends RtkDelegationAdapter {
       rtkFlags: RTK_INIT_FLAGS.gemini_cli,
       configDir: path.join(homeDir(), '.gemini'),
       expectedFile: 'RTK.md',
+      autoPatch: true,
+      expectedContent: {
+        file: path.join(homeDir(), '.gemini', 'settings.json'),
+        text: 'rtk-hook-gemini',
+      },
     });
   }
 }

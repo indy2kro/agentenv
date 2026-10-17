@@ -405,3 +405,105 @@ describe('watchMiseToml', () => {
     }
   });
 });
+
+describe('watchMiseToml — user-scope layout', () => {
+  it('watches the directory of the mise file (conf.d), not the agentenv config directory', async () => {
+    const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-watch-user-')));
+    const confD = path.join(dir, 'conf.d');
+    fs.mkdirSync(confD);
+    const configPath = path.join(dir, 'agentenv.toml');
+    const miseTomlPath = path.join(confD, 'agentenv.toml');
+    const emptyHome = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-watch-user-home-'));
+    const saved = { ...process.env };
+    process.env.HOME = emptyHome;
+    process.env.USERPROFILE = emptyHome;
+    process.env.XDG_CONFIG_HOME = path.join(emptyHome, 'xdg');
+    fs.writeFileSync(
+      configPath,
+      [
+        'scope = "project"',
+        '[tools]',
+        ...['ripgrep', 'fd', 'jq', 'rtk', 'ast_grep', 'git_delta', 'gh', 'difftastic'].map(
+          (tool) => `${tool} = false`,
+        ),
+        '',
+      ].join('\n'),
+    );
+    fs.writeFileSync(miseTomlPath, '[tools]\n');
+
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (message?: unknown) => logs.push(String(message));
+    const watcher = watchMiseToml(miseTomlPath, dir, configPath, 50);
+    try {
+      assert.ok(watcher, 'watchMiseToml should return a live watcher');
+      // macOS FSEvents can replay the setup writes above just after the watch
+      // starts; let those drain so only what this test does next is observed.
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      logs.length = 0;
+      // Editing the agentenv config itself must not trigger an upgrade run...
+      fs.writeFileSync(configPath, fs.readFileSync(configPath, 'utf-8') + '\n# touched\n');
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      assert.equal(
+        logs.some((line) => line.includes('Detected change')),
+        false,
+        'an agentenv.toml edit must not look like a mise file change',
+      );
+      // ...while a change to the generated mise file in conf.d must.
+      const trigger = (): void => fs.writeFileSync(miseTomlPath, '[tools]\n# regenerated\n');
+      trigger();
+      await waitFor(() => logs.some((line) => line.includes('Detected change')), 8000, trigger);
+    } finally {
+      watcher?.close();
+      console.log = originalLog;
+      for (const key of ['HOME', 'USERPROFILE', 'XDG_CONFIG_HOME']) {
+        if (saved[key] === undefined) delete process.env[key];
+        else process.env[key] = saved[key];
+      }
+    }
+  });
+});
+
+describe('doUpdate — a failed `mise up`', () => {
+  const failingOutput = [
+    'mise ✗ direnv@2.38.2  371ms · failed: no asset found: direnv.windows-amd64',
+    'mise ERROR Failed to install aqua:direnv/direnv@latest: no asset found: direnv.windows-amd64',
+    'Available assets:',
+    'direnv.windows-386.exe',
+  ].join('\n');
+
+  const failingDeps = (): UpdateDeps =>
+    happyDeps({
+      runMiseUpgrade: async (_targets, _cwd, onOutput) => {
+        onOutput?.(`${failingOutput}\n`, 'stderr');
+        return { success: false, stdout: '', stderr: failingOutput, exitCode: 1 };
+      },
+    });
+
+  it('names the tool that broke without repeating output that was already streamed', async () => {
+    const dir = tempConfig('scope = "project"\n');
+    fs.writeFileSync(path.join(dir, 'mise.toml'), '[tools]\n');
+    const { errors } = await withCwd(dir, () =>
+      withCapturedConsole(() => doUpdate({ scope: 'project' }, failingDeps())),
+    );
+    const text = errors.join('\n');
+    assert.match(text, /mise up failed \(exit 1\) for:/);
+    assert.match(text, /aqua:direnv\/direnv@latest — no asset found/);
+    assert.doesNotMatch(text, /Available assets/, 'the streamed output must not be printed twice');
+    assert.equal(process.exitCode, 1);
+    process.exitCode = 0;
+  });
+
+  it('keeps the raw mise output in --json, where nothing was streamed', async () => {
+    const dir = tempConfig('scope = "project"\n');
+    fs.writeFileSync(path.join(dir, 'mise.toml'), '[tools]\n');
+    const { logs } = await withCwd(dir, () =>
+      withCapturedConsole(() => doUpdate({ scope: 'project', json: true }, failingDeps())),
+    );
+    const parsed = JSON.parse(logs[0]);
+    assert.equal(parsed.success, false);
+    assert.ok(parsed.errors.some((e: string) => e.includes('aqua:direnv/direnv@latest')));
+    assert.ok(parsed.errors.some((e: string) => e.includes('Available assets')));
+    process.exitCode = 0;
+  });
+});

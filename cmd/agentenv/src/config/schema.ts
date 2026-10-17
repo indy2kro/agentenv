@@ -622,6 +622,19 @@ export function configToToml(config: AgentenvConfig): string {
       lines.push(`allow_external_requests = ${superpowers.allow_external_requests}`);
   }
 
+  // Advanced (reserved keys, but a save must not delete what the user wrote)
+  const advanced = config.advanced;
+  if (advanced) {
+    const entries: string[] = [];
+    if (advanced.default_mode !== undefined) {
+      entries.push(`default_mode = ${tomlString(advanced.default_mode)}`);
+    }
+    if (advanced.show_diff_preview !== undefined) {
+      entries.push(`show_diff_preview = ${advanced.show_diff_preview}`);
+    }
+    if (entries.length > 0) lines.push('\n[advanced]', ...entries);
+  }
+
   return lines.join('\n');
 }
 

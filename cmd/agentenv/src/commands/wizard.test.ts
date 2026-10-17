@@ -367,3 +367,29 @@ describe('runConfigWizard — scope prompt', () => {
     assert.equal(savedFile, found);
   });
 });
+
+describe('runConfigWizard — editing an existing config', () => {
+  it('keeps custom binaries and tool_versions the wizard has no prompt for', async () => {
+    const existing: AgentenvConfig = {
+      ...DEFAULT_CONFIG,
+      tool_versions: { jq: '1.7.1' },
+      custom_tools: [{ name: 'my-tool', description: 'x', already_installed: true }],
+    };
+    let saved: AgentenvConfig | undefined;
+    const { deps } = fakePrompts(HAPPY_PATH_ANSWERS);
+    await withCapturedOutput(() =>
+      runConfigWizard(
+        baseDeps({
+          ...deps,
+          loadConfig: () => existing,
+          findConfigPath: () => path.join(os.tmpdir(), 'agentenv-wizard-proj', 'agentenv.toml'),
+          saveAndApply: async (config) => {
+            saved = config;
+          },
+        }),
+      ),
+    );
+    assert.deepEqual(saved?.tool_versions, { jq: '1.7.1' });
+    assert.equal(saved?.custom_tools?.[0]?.name, 'my-tool');
+  });
+});

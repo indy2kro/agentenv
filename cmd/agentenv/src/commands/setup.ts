@@ -70,6 +70,20 @@ export interface SaveAndApplyDeps {
   json?: boolean;
 }
 
+/**
+ * The project file's own settings, for generating committed files without the
+ * user layer (see ApplyOptions.fileConfig). Undefined in user scope, or when
+ * the file can't be read back.
+ */
+function projectFileConfig(config: AgentenvConfig, file: string): AgentenvConfig | undefined {
+  if (config.scope !== 'project') return undefined;
+  try {
+    return loadConfig(file);
+  } catch {
+    return undefined;
+  }
+}
+
 /** Save the config and apply it, mirroring the shared setup tail. */
 export async function saveAndApply(
   config: AgentenvConfig,
@@ -96,6 +110,7 @@ export async function saveAndApply(
     // setup already printed the prereq line above, so tell apply not to repeat it.
     apply(config, path.dirname(file), {
       skipPrereqMessage: true,
+      fileConfig: projectFileConfig(config, file),
       skipMiseInstall: deps.skipMiseInstall,
       onMiseInstall: deps.json
         ? undefined
@@ -271,12 +286,13 @@ export async function unattendedSetup(
 
       const includeTier2 = options.tier2 !== false;
       const rtkEnabled = options.rtk !== false;
+      // A bare `--superpowers` arrives as `true`: enabled, at the default ref ('').
       const superpowersRef =
         options.superpowers === undefined
           ? undefined
           : typeof options.superpowers === 'string'
             ? options.superpowers
-            : undefined;
+            : '';
       config = buildDefaultSimpleConfig(agents, includeTier2, rtkEnabled, scope, superpowersRef);
       console.log(
         `Defaults: agents ${agents.join(', ')}, Tier 2 tools ${includeTier2 ? 'on' : 'off'}, rtk ${rtkEnabled ? 'on' : 'off'}, Superpowers ${

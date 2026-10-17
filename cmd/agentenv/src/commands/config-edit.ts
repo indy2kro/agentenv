@@ -158,7 +158,10 @@ async function doConfigEdit(
   }
   if (!json) reportValidation(report, 'Configuration invalid — not editing.');
 
-  const plan = planConfigEdit(config, items, enable);
+  // Plan against the file's own settings: a tool the user config already
+  // enables must still be declarable in (or removable from) this file.
+  const fileConfig = loadConfig(configPath);
+  const plan = planConfigEdit(fileConfig, items, enable);
   if (plan.unknown.length > 0) {
     usageError(
       `Unknown tool/agent key(s) to ${verb}: ${plan.unknown.join(', ')}. Valid keys: ${[...AGENT_KEYS, ...TOOL_KEYS].join(', ')}`,
@@ -167,8 +170,14 @@ async function doConfigEdit(
   }
 
   if (plan.changes.length === 0) {
-    if (json) printJson({ success: true, message: 'Nothing to change.', configPath });
-    else printResult('warn', 'Nothing to change.');
+    if (json) {
+      printJson({
+        success: true,
+        message: 'Nothing to change.',
+        configPath,
+        warnings: report.warnings,
+      });
+    } else printResult('warn', 'Nothing to change.');
     return;
   }
 
@@ -180,6 +189,7 @@ async function doConfigEdit(
         configPath,
         dryRun: true,
         changes: plan.changes,
+        warnings: report.warnings,
       });
     } else {
       console.log(plan.changes.map(changeLine).join('\n'));
@@ -192,13 +202,20 @@ async function doConfigEdit(
   // `config` is the user-layered view used for planning and applying; only
   // the file's own (unlayered) settings plus this edit may be written back,
   // so user-level preferences are never baked into the project agentenv.toml.
-  const persisted = applyConfigEdit(loadConfig(configPath), plan);
+  const persisted = applyConfigEdit(fileConfig, plan);
 
   if (options.apply === false) {
     saveConfig(persisted, configPath);
     const message = `Updated ${plan.changes.length} setting(s)`;
     if (json) {
-      printJson({ success: true, message, configPath, changes: plan.changes, applied: false });
+      printJson({
+        success: true,
+        message,
+        configPath,
+        changes: plan.changes,
+        applied: false,
+        warnings: report.warnings,
+      });
     } else {
       console.log(plan.changes.map(changeLine).join('\n'));
       printResult(
@@ -217,8 +234,13 @@ async function doConfigEdit(
     const result = await applyConfiguration(nextConfig, baseDir, {
       skipMiseInstall: options.skipMiseInstall,
       skipPrereqMessage: true,
+      fileConfig: persisted.scope === 'project' ? persisted : undefined,
     });
-    const applyJson = buildApplyJsonResult(result, { configPath, baseDir, warnings: [] });
+    const applyJson = buildApplyJsonResult(result, {
+      configPath,
+      baseDir,
+      warnings: report.warnings,
+    });
     printJson({ ...applyJson, changes: plan.changes });
     if (!result.success) process.exitCode = 1;
     return;
