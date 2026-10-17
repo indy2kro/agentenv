@@ -419,6 +419,78 @@ direnv = false
     assert.match(revert.stdout, /Nothing to revert/);
   });
 
+  describe('shell-fix with a recorded manifest', () => {
+    /** A sandbox whose manifest says agentenv created `settings.json` with a Git Bash path. */
+    const recorded = (settingsContent: string) => {
+      const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-shellfix-')));
+      const stateDir = path.join(root, 'xdg', 'agentenv');
+      fs.mkdirSync(stateDir, { recursive: true });
+      const settingsFile = path.join(root, 'settings.json');
+      fs.writeFileSync(settingsFile, settingsContent);
+      fs.writeFileSync(
+        path.join(stateDir, 'shell-fix-state.json'),
+        JSON.stringify({
+          version: 1,
+          bashExe: '/usr/bin/bash',
+          recordedAt: '2026-10-17T00:00:00.000Z',
+          entries: [
+            {
+              agent: 'claude_code',
+              file: settingsFile,
+              createdFile: true,
+              fields: [{ key: 'env.CLAUDE_CODE_GIT_BASH_PATH', previous: null }],
+            },
+          ],
+        }),
+      );
+      const env: NodeJS.ProcessEnv = {
+        ...process.env,
+        HOME: root,
+        USERPROFILE: root,
+        XDG_CONFIG_HOME: path.join(root, 'xdg'),
+      };
+      return { env, settingsFile, statePath: path.join(stateDir, 'shell-fix-state.json') };
+    };
+    const ours = '{"env":{"CLAUDE_CODE_GIT_BASH_PATH":"/usr/bin/bash"}}';
+
+    it('shows what was recorded and how to undo it', () => {
+      const { env } = recorded(ours);
+      const result = run(['shell-fix'], clean, env);
+      assert.equal(result.status, 0);
+      assert.match(result.stdout, /Recorded changes \(1\)/);
+      assert.match(result.stdout, /claude_code/);
+      assert.match(result.stdout, /1 recorded Tier 0 shell change/);
+    });
+
+    it('--revert --dry-run previews the undo and changes nothing', () => {
+      const { env, settingsFile, statePath } = recorded(ours);
+      const result = run(['shell-fix', '--revert', '--dry-run'], clean, env);
+      assert.equal(result.status, 0);
+      assert.match(result.stdout, /\(dry run\)/);
+      assert.ok(fs.existsSync(settingsFile), 'the file is still there');
+      assert.ok(fs.existsSync(statePath), 'the manifest is still there');
+    });
+
+    it('--revert undoes the change, removes a file agentenv created, and clears the manifest', () => {
+      const { env, settingsFile, statePath } = recorded(ours);
+      const result = run(['shell-fix', '--revert'], clean, env);
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /Reverted 1 file/);
+      assert.equal(fs.existsSync(settingsFile), false);
+      assert.equal(fs.existsSync(statePath), false);
+    });
+
+    it('--revert leaves a value you changed afterwards alone and exits 1', () => {
+      const edited = '{"env":{"CLAUDE_CODE_GIT_BASH_PATH":"/my/own/bash"}}';
+      const { env, settingsFile, statePath } = recorded(edited);
+      const result = run(['shell-fix', '--revert'], clean, env);
+      assert.equal(result.status, 1);
+      assert.match(result.stdout, /Reverted 0 of 1/);
+      assert.equal(fs.readFileSync(settingsFile, 'utf-8'), edited);
+      assert.ok(fs.existsSync(statePath), 'the manifest keeps what it could not revert');
+    });
+  });
+
   it('rejects shell-fix --revert --json as a usage error', () => {
     assert.equal(run(['shell-fix', '--revert', '--json'], clean, shellEnv).status, 2);
   });
@@ -710,6 +782,66 @@ direnv = false
     const written = fs.readFileSync(projectFile, 'utf-8');
     assert.match(written, /yq = true/);
     assert.match(written, /\[tool_versions\][\s\S]*yq = "4\.40\.0"/);
+  });
+
+  describe('add/remove output paths that need no mise', () => {
+    const project = (toml: string): string => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-edit-out-'));
+      fs.writeFileSync(path.join(dir, 'agentenv.toml'), toml);
+      return dir;
+    };
+    const base =
+      'scope = "project"\n[agents]\nclaude_code = true\n[tools]\nyq = false\njq = true\n';
+
+    it('--dry-run previews the change and leaves the file alone', () => {
+      const dir = project(base);
+      const result = run(['add', 'yq', '--dry-run'], dir, shellEnv);
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /tool yq: false -> true/);
+      assert.match(result.stdout, /Dry run complete/);
+      assert.equal(fs.readFileSync(path.join(dir, 'agentenv.toml'), 'utf-8'), base);
+    });
+
+    it('--dry-run --json lists the planned changes', () => {
+      const result = run(['add', 'yq', '--dry-run', '--json'], project(base), shellEnv);
+      const json = JSON.parse(result.stdout);
+      assert.equal(json.dryRun, true);
+      assert.deepEqual(json.changes, [{ kind: 'tool', key: 'yq', from: false, to: true }]);
+    });
+
+    it('reports "Nothing to change" in both human and JSON form', () => {
+      const dir = project(base);
+      assert.match(run(['add', 'jq'], dir, shellEnv).stdout, /Nothing to change\./);
+      const json = JSON.parse(run(['add', 'jq', '--json'], dir, shellEnv).stdout);
+      assert.equal(json.success, true);
+      assert.equal(json.message, 'Nothing to change.');
+    });
+
+    it('--no-apply saves the change and says how to apply it', () => {
+      const dir = project(base);
+      const result = run(['add', 'yq', '--no-apply'], dir, shellEnv);
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /Updated 1 setting\(s\)/);
+      assert.match(fs.readFileSync(path.join(dir, 'agentenv.toml'), 'utf-8'), /yq = true/);
+    });
+
+    it('remove --no-apply disables a tool', () => {
+      const dir = project(base);
+      assert.equal(run(['remove', 'jq', '--no-apply'], dir, shellEnv).status, 0);
+      assert.match(fs.readFileSync(path.join(dir, 'agentenv.toml'), 'utf-8'), /jq = false/);
+    });
+
+    it('fails with exit 1 when the requested scope has no config', () => {
+      const result = run(['add', 'jq', '--scope', 'user'], project(base), shellEnv);
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /No agentenv\.toml found at .*scope user/);
+    });
+
+    it('refuses an invalid config instead of editing it', () => {
+      const dir = project('scope = "project"\n[tools]\nnot_a_tool = true\n');
+      const result = run(['add', 'jq', '--no-apply'], dir, shellEnv);
+      assert.equal(result.status, 1);
+    });
   });
 
   it('remove rejects a version suffix as a usage error', () => {
