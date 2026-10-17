@@ -697,6 +697,21 @@ direnv = false
     assert.match(fs.readFileSync(projectFile, 'utf-8'), /yq = true/);
   });
 
+  it('add --json carries the config validation warnings', () => {
+    const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-add-warn-'));
+    fs.writeFileSync(
+      path.join(projectDir, 'agentenv.toml'),
+      'scope = "project"\n[agents]\nclaude_code = true\n[advanced]\nbogus_key = 1\n',
+    );
+    const result = run(['add', 'yq', '--no-apply', '--json'], projectDir, shellEnv);
+    const json = JSON.parse(result.stdout);
+    assert.equal(json.success, true);
+    assert.ok(
+      json.warnings?.some((w: string) => w.includes('bogus_key')),
+      `expected the unknown-key warning, got ${JSON.stringify(json.warnings)}`,
+    );
+  });
+
   it('exits 1 for uninstall with no config (operational failure)', () => {
     const missing = run(['uninstall'], empty, shellEnv);
     assert.equal(missing.status, 1);

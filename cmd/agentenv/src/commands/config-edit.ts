@@ -170,8 +170,14 @@ async function doConfigEdit(
   }
 
   if (plan.changes.length === 0) {
-    if (json) printJson({ success: true, message: 'Nothing to change.', configPath });
-    else printResult('warn', 'Nothing to change.');
+    if (json) {
+      printJson({
+        success: true,
+        message: 'Nothing to change.',
+        configPath,
+        warnings: report.warnings,
+      });
+    } else printResult('warn', 'Nothing to change.');
     return;
   }
 
@@ -183,6 +189,7 @@ async function doConfigEdit(
         configPath,
         dryRun: true,
         changes: plan.changes,
+        warnings: report.warnings,
       });
     } else {
       console.log(plan.changes.map(changeLine).join('\n'));
@@ -201,7 +208,14 @@ async function doConfigEdit(
     saveConfig(persisted, configPath);
     const message = `Updated ${plan.changes.length} setting(s)`;
     if (json) {
-      printJson({ success: true, message, configPath, changes: plan.changes, applied: false });
+      printJson({
+        success: true,
+        message,
+        configPath,
+        changes: plan.changes,
+        applied: false,
+        warnings: report.warnings,
+      });
     } else {
       console.log(plan.changes.map(changeLine).join('\n'));
       printResult(
@@ -222,7 +236,11 @@ async function doConfigEdit(
       skipPrereqMessage: true,
       fileConfig: persisted.scope === 'project' ? persisted : undefined,
     });
-    const applyJson = buildApplyJsonResult(result, { configPath, baseDir, warnings: [] });
+    const applyJson = buildApplyJsonResult(result, {
+      configPath,
+      baseDir,
+      warnings: report.warnings,
+    });
     printJson({ ...applyJson, changes: plan.changes });
     if (!result.success) process.exitCode = 1;
     return;
