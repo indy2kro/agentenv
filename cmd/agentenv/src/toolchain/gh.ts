@@ -13,6 +13,19 @@ export interface GhAuthProbeResult {
   status: GhAuthStatus;
 }
 
+/**
+ * The host `gh auth status` is asked about: `GH_HOST` (what gh itself honors
+ * for GitHub Enterprise) when it is a plain hostname, otherwise github.com.
+ * Anything else — a URL, a flag-looking value — falls back rather than reaching
+ * gh's command line.
+ */
+export function ghAuthHostname(env: NodeJS.ProcessEnv = process.env): string {
+  const host = env.GH_HOST?.trim();
+  return host && /^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:\d+)?$/.test(host)
+    ? host
+    : 'github.com';
+}
+
 /** Injectable so tests never spawn a real `gh` binary. */
 export type GhAuthProbeFn = () => GhAuthProbeResult;
 
@@ -45,11 +58,15 @@ export const defaultGhAuthProbe: GhAuthProbeFn = () => {
   if (!ghPath) return { status: 'not_installed' };
 
   try {
-    const result = child_process.spawnSync(ghPath, ['auth', 'status', '--hostname', 'github.com'], {
-      encoding: 'utf-8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-      timeout: 15000,
-    });
+    const result = child_process.spawnSync(
+      ghPath,
+      ['auth', 'status', '--hostname', ghAuthHostname()],
+      {
+        encoding: 'utf-8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: 15000,
+      },
+    );
     return { status: classifyGhAuthStatus(result.status, result.stderr ?? '') };
   } catch {
     return { status: 'unknown' };
