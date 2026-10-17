@@ -217,6 +217,7 @@ async function doConfigEdit(
     const result = await applyConfiguration(nextConfig, baseDir, {
       skipMiseInstall: options.skipMiseInstall,
       skipPrereqMessage: true,
+      fileConfig: persisted.scope === 'project' ? persisted : undefined,
     });
     const applyJson = buildApplyJsonResult(result, { configPath, baseDir, warnings: [] });
     printJson({ ...applyJson, changes: plan.changes });

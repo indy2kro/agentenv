@@ -305,6 +305,26 @@ describe('apply pipeline', () => {
     assert.equal(fs.existsSync(path.join(base, 'RTK.md')), false);
   });
 
+  it('generates the committed files from fileConfig, not the user-layered config', async () => {
+    const home = tempDir('agentenv-home-');
+    const base = tempDir('agentenv-base-');
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+
+    // The layered view (project + this developer's user config) enables yq;
+    // the project file itself does not.
+    const layered: AgentenvConfig = { ...CONFIG, tools: { ...CONFIG.tools, yq: true } };
+    const result = await applyConfiguration(layered, base, {
+      skipMiseInstall: true,
+      rtkInit: fakeRtkInit().fn,
+      fileConfig: CONFIG,
+    });
+    assert.equal(result.success, true, result.errors.join('; '));
+
+    assert.doesNotMatch(fs.readFileSync(path.join(base, 'mise.toml'), 'utf-8'), /^yq = /m);
+    assert.doesNotMatch(fs.readFileSync(path.join(base, 'AGENTS.md'), 'utf-8'), /\*\*yq\*\*/);
+  });
+
   it("warns (does not fail) when rtk's own --agent enum rejects a value, e.g. Vibe on rtk 0.49.0", async () => {
     const home = tempDir('agentenv-home-');
     const base = tempDir('agentenv-base-');

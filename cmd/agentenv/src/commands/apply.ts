@@ -152,18 +152,21 @@ export function buildApplyDryRunPlan(
   files: GeneratedFile[],
   agents: string[],
   integrations: Array<{ getName(): string }>,
+  fileConfig?: AgentenvConfig,
 ): ApplyDryRunPlan {
-  const enabledToolCount = Object.values(config.tools ?? {}).filter((on) => on === true).length;
+  // Committed outputs come from the file's own settings, as in applyConfiguration.
+  const generated = fileConfig ?? config;
+  const enabledToolCount = Object.values(generated.tools ?? {}).filter((on) => on === true).length;
   const miseTomlPath = miseTomlPathFor(config.scope, baseDir);
-  const miseContent = generateMiseToml(config, config.custom_tools ?? []);
+  const miseContent = generateMiseToml(generated, generated.custom_tools ?? []);
   const miseStatus: 'create' | 'update' | 'unchanged' = !fs.existsSync(miseTomlPath)
     ? 'create'
     : fs.readFileSync(miseTomlPath, 'utf-8') === miseContent
       ? 'unchanged'
       : 'update';
 
-  const markerStart = config.generate?.marker_start ?? '<!-- agentenv-managed-start -->';
-  const markerEnd = config.generate?.marker_end ?? '<!-- agentenv-managed-end -->';
+  const markerStart = generated.generate?.marker_start ?? '<!-- agentenv-managed-start -->';
+  const markerEnd = generated.generate?.marker_end ?? '<!-- agentenv-managed-end -->';
   const generatedFiles: DryRunFileStatus[] = files.map((file) => {
     const plan = planMarkerUpdate(file.path, file.content, markerStart, markerEnd);
     return plan.status === 'error'
@@ -217,6 +220,13 @@ export interface ApplyOptions {
   fixPath?: boolean;
   /** Injectable Superpowers adapter dependencies (tests pass a claude stub). */
   superpowersDeps?: SuperpowersAdapterDeps;
+  /**
+   * The config file's own settings, without the user layer. The committed
+   * outputs (mise.toml, AGENTS.md, CLAUDE.md) are generated from this so they
+   * read the same for every teammate; only local actions (agent wiring) use
+   * the layered `config`. Defaults to `config`.
+   */
+  fileConfig?: AgentenvConfig;
   /**
    * Optional hooks around the (slow, tens-of-seconds) mise install step, so
    * the CLI layer can show mise's own progress live instead of only seeing
@@ -327,6 +337,8 @@ export async function applyConfiguration(
   };
   const messages = track([], 'message');
   const errors = track([], 'error');
+  // What the committed files and tool installs are generated from.
+  const generated = options.fileConfig ?? config;
 
   // Step 0 — self-diagnose the prerequisite before touching anything, so a
   // missing mise fails loudly with install instructions instead of half
@@ -362,18 +374,18 @@ export async function applyConfiguration(
   }
 
   // Step 2 — mise.toml (declares the tools).
-  const enabledToolCount = Object.values(config.tools ?? {}).filter((on) => on === true).length;
+  const enabledToolCount = Object.values(generated.tools ?? {}).filter((on) => on === true).length;
   const misePath = miseTomlPathFor(config.scope, baseDir);
   let miseTomlWritten = false;
   try {
-    saveMiseToml(generateMiseToml(config, config.custom_tools ?? []), misePath);
+    saveMiseToml(generateMiseToml(generated, generated.custom_tools ?? []), misePath);
     miseTomlWritten = true;
     messages.push(`Tools: wrote ${misePath} (${enabledToolCount} enabled)`);
     if (config.scope === 'user') {
       const legacy = removeLegacyUserMiseToml(baseDir);
       if (legacy) messages.push(`Tools: removed superseded ${legacy}`);
     }
-    const platformSkip = platformUnsupportedHint(config);
+    const platformSkip = platformUnsupportedHint(generated);
     if (platformSkip) messages.push(platformSkip);
   } catch (error) {
     errors.push(
@@ -393,7 +405,7 @@ export async function applyConfiguration(
     const trust = trustMiseToml(misePath, baseDir);
     (trust.success ? messages : errors).push(trust.message);
 
-    const eulaAhead = eulaPreflightHint(config);
+    const eulaAhead = eulaPreflightHint(generated);
     if (eulaAhead) messages.push(eulaAhead);
 
     options.onMiseInstall?.onStart?.();
@@ -410,7 +422,7 @@ export async function applyConfiguration(
     }
 
     if (install.success) {
-      const availability = verifyToolAvailability(config, {
+      const availability = verifyToolAvailability(generated, {
         cwd: baseDir,
         miseTomlPath: misePath,
       });
@@ -427,10 +439,10 @@ export async function applyConfiguration(
   }
 
   // Step 4 — instruction files for the agents.
-  const markerStart = config.generate?.marker_start ?? '<!-- agentenv-managed-start -->';
-  const markerEnd = config.generate?.marker_end ?? '<!-- agentenv-managed-end -->';
+  const markerStart = generated.generate?.marker_start ?? '<!-- agentenv-managed-start -->';
+  const markerEnd = generated.generate?.marker_end ?? '<!-- agentenv-managed-end -->';
   for (const file of [
-    ...generateInstructionFiles(config, baseDir),
+    ...generateInstructionFiles(generated, baseDir),
     ...userScopeInstructionFiles(config, baseDir, options),
   ]) {
     const update = updateWithMarkers(file.path, file.content, markerStart, markerEnd);
@@ -585,14 +597,24 @@ export const applyCommand = new Command()
       if (!json) reportValidation(report, 'Configuration invalid — not applying.');
 
       const baseDir = baseDirForConfig(configPath, config.scope);
+      // Committed files come from the project file alone (see ApplyOptions.fileConfig).
+      const fileConfig = config.scope === 'project' ? loadConfig(configPath) : undefined;
       if (dryRun) {
         const files = [
-          ...generateInstructionFiles(config, baseDir),
+          ...generateInstructionFiles(fileConfig ?? config, baseDir),
           ...userScopeInstructionFiles(config, baseDir, options),
         ];
         const agents = [...getEnabledAgents(config)];
         const integrations = enabledIntegrations(config, options);
-        const plan = buildApplyDryRunPlan(config, baseDir, configPath, files, agents, integrations);
+        const plan = buildApplyDryRunPlan(
+          config,
+          baseDir,
+          configPath,
+          files,
+          agents,
+          integrations,
+          fileConfig,
+        );
 
         if (json) {
           const payload: ApplyDryRunJsonResult = { success: true, dryRun: true, ...plan };
@@ -634,6 +656,7 @@ export const applyCommand = new Command()
       const result = await withSpinner('Applying configuration...', (spinner: Spinner) =>
         applyConfiguration(config, baseDir, {
           skipMiseInstall: options.skipMiseInstall === true,
+          fileConfig,
           tier0Mode,
           fixPath: options.fixPath === true,
           // Streamed mise install progress is human-only chrome — it would
