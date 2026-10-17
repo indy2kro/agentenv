@@ -199,13 +199,19 @@ export class RtkDelegationAdapter extends BaseAdapter {
     const run = resolveRtkInit(this.config.rtkInit)(initFlags, this.config.baseDir);
     if (run.success) {
       const missing = this.missingExpectedContent();
-      if (missing) {
+      // A declined patch prompt is a real failure. A merely absent file is not
+      // proof: rtk resolves the profile directory itself (on Windows through
+      // the OS, ignoring HOME/USERPROFILE), so it may have written the hook
+      // somewhere other than where agentenv looks.
+      if (missing && /skipped/i.test(run.stdout)) {
         result.success = false;
         result.errors.push(missing);
         return result;
       }
       if (!existed && fs.existsSync(expectedPath)) result.filesCreated.push(expectedPath);
-      result.message = rtkMessage(run);
+      result.message = missing
+        ? `${rtkMessage(run)} (could not confirm: ${missing})`
+        : rtkMessage(run);
     } else {
       result.success = false;
       result.errors.push(run.message + (run.stderr ? `: ${run.stderr.trim()}` : ''));
