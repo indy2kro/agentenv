@@ -507,3 +507,62 @@ describe('doUpdate — a failed `mise up`', () => {
     process.exitCode = 0;
   });
 });
+
+describe('doUpdate — --check reports what is actually outdated', () => {
+  const outdated = [
+    { tool: 'jq', current: '1.7.0', latest: '1.8.2' },
+    { tool: 'node', current: '24.21.0', latest: '24.22.0' },
+  ];
+
+  it('lists the outdated tools among the ones it would upgrade, and ignores the rest', async () => {
+    const dir = tempConfig('scope = "project"\n[tools]\njq = true\nripgrep = true\n');
+    fs.writeFileSync(path.join(dir, 'mise.toml'), '[tools]\n');
+    const { logs } = await withCwd(dir, () =>
+      withCapturedConsole(() =>
+        doUpdate(
+          { scope: 'project', check: true },
+          happyDeps({ getOutdatedTools: () => outdated }),
+        ),
+      ),
+    );
+    const text = logs.join('\n');
+    assert.match(text, /jq 1\.7\.0 -> 1\.8\.2/);
+    assert.doesNotMatch(text, /node 24\.21\.0/, 'node is not one of the managed tools');
+    process.exitCode = 0;
+  });
+
+  it('says so when everything is current, and when mise cannot be asked', async () => {
+    const dir = tempConfig('scope = "project"\n[tools]\njq = true\n');
+    fs.writeFileSync(path.join(dir, 'mise.toml'), '[tools]\n');
+    const run = async (result: typeof outdated | null) =>
+      (
+        await withCwd(dir, () =>
+          withCapturedConsole(() =>
+            doUpdate(
+              { scope: 'project', check: true },
+              happyDeps({ getOutdatedTools: () => result }),
+            ),
+          ),
+        )
+      ).logs.join('\n');
+    assert.match(await run([]), /up to date/);
+    assert.match(await run(null), /could not check/);
+    process.exitCode = 0;
+  });
+
+  it('puts the outdated list in --json', async () => {
+    const dir = tempConfig('scope = "project"\n[tools]\njq = true\n');
+    fs.writeFileSync(path.join(dir, 'mise.toml'), '[tools]\n');
+    const { logs } = await withCwd(dir, () =>
+      withCapturedConsole(() =>
+        doUpdate(
+          { scope: 'project', check: true, json: true },
+          happyDeps({ getOutdatedTools: () => outdated }),
+        ),
+      ),
+    );
+    const parsed = JSON.parse(logs[0]);
+    assert.deepEqual(parsed.outdated, [{ tool: 'jq', current: '1.7.0', latest: '1.8.2' }]);
+    process.exitCode = 0;
+  });
+});

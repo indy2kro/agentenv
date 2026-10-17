@@ -191,7 +191,8 @@ agentenv update            # mise self-update + mise up for enabled tools
 agentenv update --self     # only the mise binary
 agentenv update --tools    # only the tools
 agentenv update --scope project|user
-agentenv update --dry-run  # plan only (alias: --check)
+agentenv update --dry-run  # plan only (alias: --check); lists which tools actually have a newer
+                           # version (`outdated` in --json). Exit stays 0: it reports, it does not gate.
 agentenv update --watch    # watch mise.toml and auto-run mise up on change
 agentenv update --json     # one JSON document ({success, messages, errors, elapsedMs}); not with --watch
 ```

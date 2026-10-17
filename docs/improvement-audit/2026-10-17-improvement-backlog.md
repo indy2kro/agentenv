@@ -131,7 +131,7 @@ Themes this round:
   apply/update/uninstall/add/remove accept `--scope`, but the read-only checks only use the nearest config. From inside a project there is no way to inspect the user-scope setup.
 - [x] **FEAT-02** Add a `fix` command field to status drift entries and doctor items in `--json` — `src/commands/status.ts:81-127`, `commands/doctor.ts:50-54` · effort M · impact med ✅ 2f4081e
   The generated instructions send agents to `doctor --json`/`status --json` (FEAT-01, 2026-10-15), but the remediation is only free text in `detail`. An agent has to guess which command to run.
-- [ ] **FEAT-03** Make `update --check` report which tools actually have newer versions (`mise outdated --json`), and say so in the JSON and the exit code — `src/commands/update.ts:151,194-244` · effort M · impact med
+- [x] **FEAT-03** Make `update --check` report which tools actually have newer versions (`mise outdated --json`), and say so in the JSON and the exit code — `src/commands/update.ts:151,194-244` · effort M · impact med
   Today `--check` only prints the `mise up <list>` it would run. Neither a person nor an agent can tell whether an update is pending.
 - [ ] **FEAT-04** Add `apply --only files|tools|agents` to run a single step — `src/commands/apply.ts:313-474` · effort M · impact med
   Regenerating `AGENTS.md` today also runs `mise install` and every `rtk init`, several of them global. `--skip-mise-install` still re-wires every agent.

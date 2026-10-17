@@ -280,6 +280,41 @@ export function shimsDirOnPath(): boolean {
   return pathContainsDir(process.env.PATH ?? '', shimsDir());
 }
 
+export interface OutdatedTool {
+  tool: string;
+  current: string;
+  latest: string;
+}
+
+/**
+ * Parse `mise outdated --json` (an object keyed by tool name with `current` and
+ * `latest` versions) into rows. Empty output means nothing is outdated; output
+ * that isn't that object returns null, meaning "couldn't tell".
+ */
+export function parseOutdated(raw: string): OutdatedTool[] | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
+  const rows: OutdatedTool[] = [];
+  for (const [tool, entry] of Object.entries(parsed as Record<string, unknown>)) {
+    const { current, latest } = (entry ?? {}) as { current?: unknown; latest?: unknown };
+    if (typeof current === 'string' && typeof latest === 'string') {
+      rows.push({ tool, current, latest });
+    }
+  }
+  return rows;
+}
+
+/** Ask mise which installed tools have a newer version; null when mise couldn't answer. */
+export function getOutdatedTools(cwd: string): OutdatedTool[] | null {
+  const result = runMiseCaptured(['outdated', '--json'], { cwd, timeoutMs: 60000 });
+  return result.status === 0 ? parseOutdated(result.stdout) : null;
+}
+
 export interface ShadowedShim {
   binary: string;
   /** The executable that wins over the mise shim. */

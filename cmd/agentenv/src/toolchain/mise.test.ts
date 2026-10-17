@@ -23,6 +23,7 @@ import {
   miseGlobalConfigDir,
   miseGlobalConfigPath,
   miseTomlPathFor,
+  parseOutdated,
   miseInstallInstructions,
   miseInstallOutcome,
   miseSpawnOptions,
@@ -835,5 +836,41 @@ describe('findShadowedShims', () => {
       exists: (file) => file === '/usr/local/bin/jq',
     });
     assert.deepEqual(shadowed, [{ binary: 'jq', shadowedBy: '/usr/local/bin/jq' }]);
+  });
+});
+
+describe('parseOutdated', () => {
+  const real = JSON.stringify({
+    direnv: {
+      name: 'direnv',
+      requested: 'latest',
+      current: '2.37.1',
+      bump: null,
+      latest: '2.38.2',
+    },
+    node: { name: 'node', requested: '24', current: '24.21.0', bump: null, latest: '24.22.0' },
+  });
+
+  it('reads mise outdated --json into tool/current/latest rows', () => {
+    assert.deepEqual(parseOutdated(real), [
+      { tool: 'direnv', current: '2.37.1', latest: '2.38.2' },
+      { tool: 'node', current: '24.21.0', latest: '24.22.0' },
+    ]);
+  });
+
+  it('treats an empty report as nothing outdated, and unreadable output as unknown', () => {
+    assert.deepEqual(parseOutdated('{}'), []);
+    assert.equal(parseOutdated(''), null);
+    assert.equal(parseOutdated('not json'), null);
+    assert.equal(parseOutdated('[1, 2]'), null);
+  });
+
+  it('skips entries that lack a current or latest version', () => {
+    assert.deepEqual(
+      parseOutdated(
+        JSON.stringify({ a: { name: 'a', latest: '2' }, b: { current: '1', latest: '2' } }),
+      ),
+      [{ tool: 'b', current: '1', latest: '2' }],
+    );
   });
 });

@@ -11,10 +11,12 @@ import {
   baseDirForConfig,
 } from '../config/scopes.js';
 import type { ScopeValue } from '../config/scopes.js';
+import type { OutdatedTool } from '../toolchain/mise.js';
 import { shellFixStatePath } from '../shell/shell-fix-state.js';
 import {
   ensureGlobalShimsDir,
   getMiseVersion,
+  getOutdatedTools,
   getUpgradeableTools,
   isMiseInstalled,
   miseActivationHint,
@@ -58,6 +60,8 @@ export interface UpdateDeps {
   runMiseSelfUpdate?: typeof runMiseSelfUpdate;
   trustMiseToml?: typeof trustMiseToml;
   runMiseUpgrade?: typeof runMiseUpgrade;
+  /** Which tools have a newer version (`mise outdated --json`); tests stub it. */
+  getOutdatedTools?: typeof getOutdatedTools;
   verifyToolAvailability?: typeof verifyToolAvailability;
   loadConfig?: typeof loadConfig;
   /** Skips the real `watchMiseToml` call entirely (tests never want a live fs.watch). */
@@ -78,6 +82,7 @@ export async function doUpdate(
   const runMiseSelfUpdateFn = deps.runMiseSelfUpdate ?? runMiseSelfUpdate;
   const trustMiseTomlFn = deps.trustMiseToml ?? trustMiseToml;
   const runMiseUpgradeFn = deps.runMiseUpgrade ?? runMiseUpgrade;
+  const getOutdatedToolsFn = deps.getOutdatedTools ?? getOutdatedTools;
   const verifyToolAvailabilityFn = deps.verifyToolAvailability ?? verifyToolAvailability;
   const loadConfigFn = deps.loadConfig ?? loadConfig;
   const watchMiseTomlFn = deps.watchMiseToml ?? watchMiseToml;
@@ -95,8 +100,10 @@ export async function doUpdate(
     if (json) errors.push(line);
     else console.error(line);
   };
+  // Filled by --check/--dry-run: the managed tools that have a newer version.
+  let outdated: OutdatedTool[] | undefined;
   const finish = (success: boolean, elapsedMs?: number): void => {
-    if (json) printJson({ success, messages, errors, elapsedMs });
+    if (json) printJson({ success, messages, errors, elapsedMs, outdated });
   };
 
   if (!isMiseInstalledFn()) {
@@ -218,6 +225,18 @@ export async function doUpdate(
         log('  No upgradeable tools: everything enabled is pinned to a version.');
       } else {
         log(`  mise up ${targets.join(' ')}${dryRun ? ' (would run)' : ''}`);
+        if (dryRun) {
+          const all = getOutdatedToolsFn(scopeDir);
+          if (all === null) {
+            log('  could not check for newer versions (mise outdated failed)');
+          } else {
+            outdated = all.filter((row) => targets.includes(row.tool));
+            if (outdated.length === 0) log('  all upgradeable tools are up to date');
+            for (const row of outdated) {
+              log('  outdated: ' + row.tool + ' ' + row.current + ' -> ' + row.latest);
+            }
+          }
+        }
         if (!dryRun) {
           // Human mode shows mise's own progress live (it can run for minutes);
           // --json collects everything into the one document instead.
