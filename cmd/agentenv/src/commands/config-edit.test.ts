@@ -84,3 +84,42 @@ describe('applyConfigEdit', () => {
     assert.equal(next.agents?.claude_code, true);
   });
 });
+
+describe('planConfigEdit — version pins (tool@version)', () => {
+  const base = (): AgentenvConfig => ({ ...DEFAULT_CONFIG, tools: { jq: false } });
+
+  it('enables the tool and pins it in one plan', () => {
+    const plan = planConfigEdit(base(), ['jq@1.7.1'], true);
+    assert.deepEqual(plan.unknown, []);
+    assert.deepEqual(plan.changes, [
+      { kind: 'tool', key: 'jq', from: false, to: true },
+      { kind: 'pin', key: 'jq', from: null, to: '1.7.1' },
+    ]);
+  });
+
+  it('only pins an already-enabled tool, and changes an existing pin', () => {
+    const enabled: AgentenvConfig = { ...DEFAULT_CONFIG, tools: { jq: true } };
+    assert.deepEqual(planConfigEdit(enabled, ['jq@2.0.0'], true).changes, [
+      { kind: 'pin', key: 'jq', from: null, to: '2.0.0' },
+    ]);
+    const pinned: AgentenvConfig = { ...enabled, tool_versions: { jq: '1.7.1' } };
+    assert.deepEqual(planConfigEdit(pinned, ['jq@2.0.0'], true).changes, [
+      { kind: 'pin', key: 'jq', from: '1.7.1', to: '2.0.0' },
+    ]);
+    assert.deepEqual(planConfigEdit(pinned, ['jq@1.7.1'], true).changes, []);
+  });
+
+  it('rejects a version on remove, on an agent, or with nothing after the @', () => {
+    assert.deepEqual(planConfigEdit(base(), ['jq@1.7.1'], false).unknown, ['jq@1.7.1']);
+    assert.deepEqual(planConfigEdit(base(), ['copilot@1'], true).unknown, ['copilot@1']);
+    assert.deepEqual(planConfigEdit(base(), ['jq@'], true).unknown, ['jq@']);
+  });
+
+  it('applyConfigEdit writes the pin without touching other pins', () => {
+    const config: AgentenvConfig = { ...base(), tool_versions: { fd: '10.0.0' } };
+    const next = applyConfigEdit(config, planConfigEdit(config, ['jq@1.7.1'], true));
+    assert.deepEqual(next.tool_versions, { fd: '10.0.0', jq: '1.7.1' });
+    assert.equal(next.tools?.jq, true);
+    assert.deepEqual(config.tool_versions, { fd: '10.0.0' });
+  });
+});

@@ -697,6 +697,27 @@ direnv = false
     assert.match(fs.readFileSync(projectFile, 'utf-8'), /yq = true/);
   });
 
+  it('add tool@version enables the tool and records the pin in the project file', () => {
+    const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-add-pin-'));
+    const projectFile = path.join(projectDir, 'agentenv.toml');
+    fs.writeFileSync(projectFile, 'scope = "project"\n[tools]\nyq = false\n');
+    const result = run(['add', 'yq@4.40.0', '--no-apply', '--json'], projectDir, shellEnv);
+    const json = JSON.parse(result.stdout);
+    assert.equal(json.success, true);
+    assert.ok(
+      json.changes.some((c: { kind: string; to: string }) => c.kind === 'pin' && c.to === '4.40.0'),
+    );
+    const written = fs.readFileSync(projectFile, 'utf-8');
+    assert.match(written, /yq = true/);
+    assert.match(written, /\[tool_versions\][\s\S]*yq = "4\.40\.0"/);
+  });
+
+  it('remove rejects a version suffix as a usage error', () => {
+    const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-remove-pin-'));
+    fs.writeFileSync(path.join(projectDir, 'agentenv.toml'), 'scope = "project"\n');
+    assert.equal(run(['remove', 'jq@1.0', '--no-apply'], projectDir, shellEnv).status, 2);
+  });
+
   it('add --json carries the config validation warnings', () => {
     const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-add-warn-'));
     fs.writeFileSync(

@@ -240,6 +240,7 @@ names. An item already at the target value is a silent no-op.
 
 ```sh
 agentenv add jq claude_code           # enable, then apply
+agentenv add jq@1.7.1                 # enable and pin to that version ([tool_versions]); tools only
 agentenv remove tokei                 # disable, then apply
 agentenv add jq --dry-run             # preview the change, apply nothing
 agentenv add jq --no-apply            # save the change without applying
