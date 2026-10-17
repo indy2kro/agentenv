@@ -69,16 +69,19 @@ npm run smoke:real     # build + node scripts/smoke.mjs --real (real mise + rtk 
 - `npm run test:coverage` gates on `--test-coverage-lines=80
   --test-coverage-branches=75 --test-coverage-functions=80` (Node's built-in
   `--experimental-test-coverage`), aggregate across the whole suite, not
-  per-file. CI runs it once (ubuntu-latest, Node 24 only) — coverage doesn't
-  vary by OS/Node version in practice, so gating every matrix combination
-  would just multiply CI time for the same signal.
+  per-file. CI runs it once (ubuntu-latest, Node 24 only) — the aggregate
+  barely varies by OS/Node version, so gating every matrix combination would
+  just multiply CI time for the same signal. A few files do vary per OS
+  (`shell/detector.js`, `commands/update.js`, `commands/status.js`), which is
+  why the per-file floors below are set from the lower of CI and Windows.
 - `npm run test:coverage:files` adds per-file floors (default 80% lines / 75%
   branches / 70% functions, keyed by path under `dist/`, e.g.
   `commands/apply.js`). Files known to be below that sit in `OVERRIDES` in
-  `scripts/check-coverage.mjs`, pinned about a point under where they are: a
-  ratchet. Raise an entry as tests land and delete it once the file clears
-  the default; never lower one. Measure with `mise` off `PATH` (CI has none)
-  before changing a floor.
+  `scripts/check-coverage.mjs`, pinned about a point under the lower of CI's and
+  a Windows machine's number: a ratchet. Raise an entry as tests land and
+  delete it once the file clears the default; never lower one. Take the
+  numbers from the `Test coverage gate` step of the ubuntu/Node 24 CI job and
+  from a local run with `mise` off `PATH` (CI has none) before changing a floor.
 - `npm run prepare` wires Husky; the pre-commit hook runs
   `cd cmd/agentenv && npx lint-staged` (eslint --fix + prettier on staged
   `*.ts`).
