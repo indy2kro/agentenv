@@ -135,7 +135,7 @@ export function generateMiseToml(
       continue;
     }
     const miseName = MISE_TOOL_NAMES[toolKey] || toolKey;
-    const version = PINNED_TOOL_VERSIONS[miseName] || config.tool_versions?.[toolKey] || 'latest';
+    const version = config.tool_versions?.[toolKey] || PINNED_TOOL_VERSIONS[miseName] || 'latest';
     lines.push(`${miseName} = "${version}"`);
   }
 
@@ -556,7 +556,7 @@ export function getToolsToInstall(config: AgentenvConfig): Array<{
       result.push({
         name: key,
         miseName,
-        version: PINNED_TOOL_VERSIONS[miseName] || config.tool_versions?.[key] || 'latest',
+        version: config.tool_versions?.[key] || PINNED_TOOL_VERSIONS[miseName] || 'latest',
         tier: TOOL_TIERS[key] || 3,
       });
     }

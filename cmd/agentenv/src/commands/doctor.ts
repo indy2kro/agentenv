@@ -451,7 +451,7 @@ export function gatherDoctor(sectionFilter?: string, deps: GatherDoctorDeps = {}
         });
       } else {
         rtkItems.push({ status: 'ok', label: 'rtk', detail: rtkInfo.resolvedPath });
-        const pinned = PINNED_TOOL_VERSIONS.rtk;
+        const pinned = config.tool_versions?.rtk ?? PINNED_TOOL_VERSIONS.rtk;
         if (rtkInfo.version) {
           const detail =
             pinned && !rtkInfo.version.includes(pinned)

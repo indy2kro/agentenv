@@ -105,6 +105,13 @@ describe('mise.toml generation', () => {
     assert.doesNotMatch(output, /^jq = "latest"$/m);
   });
 
+  it("lets a user's tool_versions pin override agentenv's built-in pin", () => {
+    const config = { ...DEFAULT_CONFIG, tool_versions: { rtk: '9.9.9' } };
+
+    assert.match(generateMiseToml(config, []), /^rtk = "9.9.9"$/m);
+    assert.equal(getToolsToInstall(config).find((tool) => tool.name === 'rtk')?.version, '9.9.9');
+  });
+
   it('records config tool_versions pins in the install planner', () => {
     const config = { ...DEFAULT_CONFIG, tool_versions: { jq: '1.4.0' } };
     const tools = getToolsToInstall(config);
