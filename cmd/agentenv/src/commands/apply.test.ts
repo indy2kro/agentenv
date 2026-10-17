@@ -391,9 +391,15 @@ describe('apply pipeline', () => {
     assert.equal(result.success, true, result.errors.join('; '));
 
     assert.ok(
-      claude.calls.some((c) => c[0] === 'plugin' && c[1] === 'marketplace' && c[2] === 'add'),
+      claude.calls.every((c) => c[1] !== 'marketplace'),
+      'the official marketplace is built in; nothing is added',
     );
-    assert.ok(claude.calls.some((c) => c[0] === 'plugin' && c[1] === 'install'));
+    assert.ok(
+      claude.calls.some(
+        (c) =>
+          c[0] === 'plugin' && c[1] === 'install' && c[2] === 'superpowers@claude-plugins-official',
+      ),
+    );
     assert.ok(
       fs.existsSync(path.join(base, '.agentenv-state', 'integrations', 'superpowers.json')),
       'missing superpowers marker',

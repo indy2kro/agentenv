@@ -262,9 +262,10 @@ export async function runConfigWizard(deps: WizardDeps = {}): Promise<void> {
     );
     console.log('    - it can register a SessionStart hook in the Claude Code setup');
     console.log('    - the optional visual companion can make external requests');
-    console.log('  The next prompts pin the ref and the two permissions below.\n');
+    console.log('  The next prompts record the ref (the official marketplace installs its current');
+    console.log('  release, so it is not enforced) and set the two permissions below.\n');
     const ref = await inputFn({
-      message: 'Superpowers ref to pin (tag/branch/commit):',
+      message: 'Superpowers ref to record (informational, not enforced):',
       default:
         existingSuperpowers?.ref ?? DEFAULT_CONFIG.integrations?.superpowers?.ref ?? 'v6.3.0',
     });

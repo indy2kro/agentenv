@@ -407,13 +407,14 @@ agentenv calls a third-party installer and reports
 ### Superpowers
 
 The [Superpowers](https://github.com/obra/superpowers) skill/methodology system
-installed through its *own* native installers. Disabled by default.
+installed through Claude Code's built-in official marketplace
+(`claude plugin install superpowers@claude-plugins-official`). Disabled by default.
 
 ```toml
 [integrations.superpowers]
 enabled = true
 source = "github:obra/superpowers"
-ref = "v6.3.0"          # tag/branch/commit; defaults to the shipped pin
+ref = "v6.3.0"          # recorded for your own reference; NOT enforced (see below)
 scope = "user"          # where to install; "project" | "user"
 agents = ["claude_code"]
 allow_hooks = true      # Superpowers registers a SessionStart hook
@@ -424,15 +425,15 @@ allow_external_requests = false
 |---|---|---|---|
 | `enabled` | boolean | `false` | Run the integration on `apply`. |
 | `source` | string | `github:obra/superpowers` | Installer source to pass through. |
-| `ref` | string | `v6.3.0` | Ref to install (pinned). |
+| `ref` | string | `v6.3.0` | Recorded in the state marker and shown by `status`. **Not enforced**: the official marketplace cannot pin a version, so apply installs its current release and says so. |
 | `scope` | `"project"` \| `"user"` | inherits top-level `scope` | Where the integration is installed. |
 | `agents` | string[] | `["claude_code", "codex_cli", "copilot", "opencode"]` | Agents to target. |
 | `allow_hooks` | boolean | `false` | Allow the integration to register hooks. |
 | `allow_external_requests` | boolean | `false` | Allow outbound requests. |
 
-Not every agent has a documented, strict, ref-pinnable installer. Superpowers
+Only Claude Code has a documented, non-interactive installer. Superpowers
 targets that agentenv can't automate are reported as `unsupported` with manual
-install hints — never run unpinned or unreviewed (see
+install hints — never run unreviewed (see
 [`research/superpowers-install-mechanisms.md`](research/superpowers-install-mechanisms.md)).
 
 ## Validation
