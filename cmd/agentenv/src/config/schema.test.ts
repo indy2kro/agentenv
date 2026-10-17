@@ -997,3 +997,16 @@ describe('generate marker validation', () => {
     assert.deepEqual(withMarkers('<!-- s -->', '<!-- e -->').errors, []);
   });
 });
+
+describe('configToToml — advanced table', () => {
+  it('round-trips [advanced] instead of dropping it on save', () => {
+    const parsed = toml.parse(
+      configToToml({
+        scope: 'project',
+        advanced: { default_mode: 'simple', show_diff_preview: false },
+      }),
+    ) as AgentenvConfig;
+    assert.equal(parsed.advanced?.default_mode, 'simple');
+    assert.equal(parsed.advanced?.show_diff_preview, false);
+  });
+});
