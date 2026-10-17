@@ -502,3 +502,51 @@ describe('Copilot and OpenCode failure paths', () => {
     });
   }
 });
+
+for (const [label, AdapterCtor] of [
+  ['Codex CLI', CodexCliAdapter],
+  ['GitHub Copilot', CopilotAdapter],
+  ['Windsurf', WindsurfAdapter],
+  ['Cline CLI', ClineAdapter],
+] as const) {
+  describe(`${label} adapter in user scope`, () => {
+    it('does not run its project-only rtk init, and says why', async () => {
+      await withHome(tempHome(), async () => {
+        const home = process.env.HOME as string;
+        const rtk = fakeRtkInit();
+        const adapter = new AdapterCtor({
+          enabled: true,
+          baseDir: path.join(home, '.config', 'agentenv'),
+          rtkEnabled: true,
+          rtkInit: rtk.fn,
+          scope: 'user',
+        });
+
+        const result = await adapter.initialize();
+
+        assert.equal(result.success, true, result.errors.join('; '));
+        assert.deepEqual(rtk.calls, [], 'rtk init must not run');
+        assert.match(result.message, /user scope/);
+        assert.match(result.message, /agentenv apply/);
+      });
+    });
+
+    it('still runs rtk init in project scope', async () => {
+      await withHome(tempHome(), async () => {
+        const home = process.env.HOME as string;
+        const rtk = fakeRtkInit();
+        const adapter = new AdapterCtor({
+          enabled: true,
+          baseDir: home,
+          rtkEnabled: true,
+          rtkInit: rtk.fn,
+          scope: 'project',
+        });
+
+        await adapter.initialize();
+
+        assert.equal(rtk.calls.length, 1);
+      });
+    });
+  });
+}

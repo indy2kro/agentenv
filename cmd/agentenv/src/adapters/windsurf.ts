@@ -17,6 +17,7 @@ export class WindsurfAdapter extends RtkDelegationAdapter {
       configDir: path.join(homeDir(), '.windsurf'),
       // rtk 0.49.0 writes .windsurfrules into the project dir, not RTK.md.
       expectedFile: '.windsurfrules',
+      projectOnly: true,
     });
   }
 }

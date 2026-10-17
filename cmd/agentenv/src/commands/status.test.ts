@@ -675,3 +675,35 @@ describe('gatherStatus — fix commands on drift', () => {
     assert.equal('fix' in (report.agents[0] ?? {}), false);
   });
 });
+
+describe('gatherStatus — project-only rtk wiring in user scope', () => {
+  const run = (scope: 'project' | 'user') =>
+    gatherStatus({
+      findConfigPath: () => '/tmp/agentenv.toml',
+      loadConfig: () =>
+        ({ ...noopConfig, scope, agents: { codex_cli: true }, rtk: { enabled: true } }) as never,
+      resolveScopeDir: () => '/tmp',
+      validateConfig: () => ({ errors: [], warnings: [] }),
+      getEnabledAgents: () => ['codex_cli'],
+      detectShell: () =>
+        ({
+          isWindows: false,
+          isPosixCompatible: true,
+          currentShell: 'bash',
+          missingUtilities: [],
+        }) as never,
+      isAgentInstalled: () => true,
+      fileExists: () => false,
+      hasManagedMarker: () => true,
+    });
+
+  it('is not drift in user scope: apply deliberately skips that wiring there', async () => {
+    const report = await run('user');
+    assert.equal(report.agents[0]?.configured, false);
+    assert.equal(report.agents[0]?.drift, false);
+  });
+
+  it('is still drift in project scope', async () => {
+    assert.equal((await run('project')).agents[0]?.drift, true);
+  });
+});

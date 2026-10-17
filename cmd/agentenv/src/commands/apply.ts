@@ -283,6 +283,7 @@ function adaptersFor(
     enabled: true,
     baseDir,
     rtkEnabled: config.rtk?.enabled === true,
+    scope: config.scope,
     rtkInit: options.rtkInit,
   };
   const adapters: BaseAdapter[] = [];

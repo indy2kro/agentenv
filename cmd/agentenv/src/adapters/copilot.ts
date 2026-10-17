@@ -10,7 +10,12 @@ import * as path from 'path';
 import { BaseAdapter, AdapterConfig, AdapterResult } from './base.js';
 import { isAgentInstalled } from './detect.js';
 import { uninstallViaRtk } from './rtk-delegation.js';
-import { RTK_INIT_FLAGS, resolveRtkInit, rtkMessage } from '../toolchain/rtk.js';
+import {
+  RTK_INIT_FLAGS,
+  projectOnlyRtkSkipMessage,
+  resolveRtkInit,
+  rtkMessage,
+} from '../toolchain/rtk.js';
 import { copilotConfigDir, homeDir } from './agent-dirs.js';
 
 export class CopilotAdapter extends BaseAdapter {
@@ -80,6 +85,11 @@ export class CopilotAdapter extends BaseAdapter {
 
     if (!this.config.enabled) {
       result.message = 'GitHub Copilot adapter not enabled';
+      return result;
+    }
+
+    if (this.config.scope === 'user') {
+      result.message = projectOnlyRtkSkipMessage('GitHub Copilot');
       return result;
     }
 

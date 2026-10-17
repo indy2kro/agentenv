@@ -15,6 +15,7 @@ import {
   RTK_AGENT_MIN_VERSIONS,
   checkRtkInstallation,
   isRtkAgentSupportedByVersion,
+  projectOnlyRtkSkipMessage,
   resolveRtkInit,
   rtkMessage,
 } from '../toolchain/rtk.js';
@@ -39,6 +40,8 @@ export interface RtkDelegationOptions {
    * exiting 0 (Gemini's settings.json, Vibe's hooks.toml).
    */
   autoPatch?: boolean;
+  /** `rtk init` only works inside a project: skipped in user scope (see projectOnlyRtkSkipMessage). */
+  projectOnly?: boolean;
   /** After a successful `rtk init`, `file` must contain `text`, else the wiring didn't land. */
   expectedContent?: { file: string; text: string };
 }
@@ -168,6 +171,11 @@ export class RtkDelegationAdapter extends BaseAdapter {
 
     if (!this.config.enabled) {
       result.message = `${this.opts.label} adapter not enabled`;
+      return result;
+    }
+
+    if (this.opts.projectOnly && this.config.scope === 'user') {
+      result.message = projectOnlyRtkSkipMessage(this.opts.label);
       return result;
     }
 

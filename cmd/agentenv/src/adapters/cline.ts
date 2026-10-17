@@ -16,6 +16,7 @@ export class ClineAdapter extends RtkDelegationAdapter {
       rtkFlags: RTK_INIT_FLAGS.cline,
       configDir: path.join(homeDir(), '.cline'),
       expectedFile: 'RTK.md',
+      projectOnly: true,
     });
   }
 }
