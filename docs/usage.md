@@ -121,7 +121,7 @@ The single pipeline all of `setup`/`configure`/`apply` funnel into. Reads
 |---|---|
 | `--skip-mise-install` | Generate files only — no `mise install`, no verification. For CI dry-runs or when mise isn't available. |
 | `--only <steps>` | Run just some parts, comma-separated: `files` (`mise.toml` + `AGENTS.md`/`CLAUDE.md`), `tools` (declare + `mise install` + verify), `agents` (Tier 0, per-agent wiring, integrations). E.g. `apply --only files` regenerates the instructions without installing anything or touching `~/.claude`, `~/.cursor`, … An unknown step is a usage error (exit `2`). `--dry-run` still shows the whole plan. |
-| `--dry-run` | Show what would be written/changed without changing anything: `mise.toml` and each generated file's `[create]`/`[update]`/`[unchanged]` status, plus the per-agent Tier 0 plan on Windows. |
+| `--dry-run` | Show what would be written/changed without changing anything: `mise.toml` and each generated file's `[create]`/`[update]`/`[unchanged]` status, plus the per-agent Tier 0 plan on Windows, and the main file each wired agent will write (`agentFiles` in `--json`) with the ones outside the project flagged, since most agents are wired through files in your home directory. |
 | `--shell-fix <mode>` | Override `[tier0].mode` for this run: `auto` (default; the Windows shell fix only writes files with a TTY), `always` (write even without one — pass this when an AI agent runs `apply`, which never has a TTY), or `never`. |
 | `--scope <scope>` | config scope to apply: `project`\|`user` (default: nearest config), matching `update`/`uninstall`/`setup`. |
 | `--fix-path` | Windows only, opt-in: add the mise shims directory to your *user* PATH (persistent; open a new terminal afterwards). Idempotent. |

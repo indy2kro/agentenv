@@ -882,3 +882,47 @@ describe('parseOnly', () => {
     assert.ok(parseOnly('').error);
   });
 });
+
+describe('buildApplyDryRunPlan — agent files', () => {
+  const plan = (config: AgentenvConfig, agents: string[]) => {
+    const dir = tempDir('agentenv-dryrun-agents-');
+    return {
+      dir,
+      plan: buildApplyDryRunPlan(config, dir, path.join(dir, 'agentenv.toml'), [], agents, []),
+    };
+  };
+  const rtkOn = (overrides: Partial<AgentenvConfig> = {}): AgentenvConfig => ({
+    ...DEFAULT_CONFIG,
+    rtk: { enabled: true },
+    ...overrides,
+  });
+
+  it('lists the file each agent will touch and flags the ones outside the project', () => {
+    const { dir, plan: p } = plan(rtkOn({ scope: 'project' }), [
+      'claude_code',
+      'cursor',
+      'windsurf',
+    ]);
+    const byAgent = Object.fromEntries(p.agentFiles.map((entry) => [entry.agent, entry]));
+
+    assert.equal(byAgent.windsurf.path, path.join(dir, '.windsurfrules'));
+    assert.equal(byAgent.windsurf.global, false);
+    assert.equal(byAgent.claude_code.global, true, "Claude's settings live in the home directory");
+    assert.match(byAgent.cursor.path, /RTK\.md$/);
+    assert.equal(byAgent.cursor.global, true);
+    assert.equal(byAgent.cursor.label, 'Cursor');
+  });
+
+  it('lists nothing when rtk is off: no agent is wired', () => {
+    const { plan: p } = plan({ ...DEFAULT_CONFIG, rtk: { enabled: false } }, ['claude_code']);
+    assert.deepEqual(p.agentFiles, []);
+  });
+
+  it('leaves out agents whose project-only wiring is skipped in user scope', () => {
+    const { plan: p } = plan(rtkOn({ scope: 'user' }), ['codex_cli', 'windsurf', 'gemini_cli']);
+    assert.deepEqual(
+      p.agentFiles.map((entry) => entry.agent),
+      ['gemini_cli'],
+    );
+  });
+});

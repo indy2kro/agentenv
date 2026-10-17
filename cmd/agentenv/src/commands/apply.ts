@@ -1,6 +1,7 @@
 import { printJson } from '../cli/json.js';
 import { Command } from 'commander';
 import * as fs from 'fs';
+import * as path from 'path';
 import {
   ClaudeCodeAdapter,
   CodexCliAdapter,
@@ -62,6 +63,7 @@ import {
   miseTomlPathFor,
   removeLegacyUserMiseToml,
 } from '../toolchain/mise.js';
+import { AGENT_CONFIG_FILES } from './agent-files.js';
 import { normalizeOutput } from '../utils/output.js';
 import { colorizeLine, theme } from '../ui/theme.js';
 import { renderLogo, setQuietEnabled } from '../ui/output.js';
@@ -117,6 +119,14 @@ export interface DryRunTier0Agent {
   needsFix: boolean;
 }
 
+/** A file an agent's wiring will write, and whether it is outside the directory being applied. */
+export interface DryRunAgentFile {
+  agent: string;
+  label: string;
+  path: string;
+  global: boolean;
+}
+
 export interface ApplyDryRunPlan {
   configPath: string;
   baseDir: string;
@@ -127,6 +137,8 @@ export interface ApplyDryRunPlan {
   };
   generatedFiles: DryRunFileStatus[];
   agents: string[];
+  /** The main file each wired agent will touch; empty when rtk is off (no agent is wired). */
+  agentFiles: DryRunAgentFile[];
   rtkEnabled: boolean;
   integrations: string[];
   /** Per-agent Tier 0 shell-fix plan on Windows with Git Bash found; null everywhere else. */
@@ -174,6 +186,24 @@ export function buildApplyDryRunPlan(
       : { path: file.path, status: plan.status };
   });
 
+  // Which agent files get written, so a project apply can't quietly change the
+  // user's home directory: most agents are wired through global config.
+  const agentFiles: DryRunAgentFile[] = [];
+  if (config.rtk?.enabled === true) {
+    for (const agent of agents) {
+      const meta = AGENT_CONFIG_FILES[agent as AgentKey];
+      if (!meta || (meta.projectOnly && config.scope === 'user')) continue;
+      const file = meta.check(baseDir);
+      const relative = path.relative(baseDir, file);
+      agentFiles.push({
+        agent,
+        label: meta.label,
+        path: file,
+        global: relative.startsWith('..') || path.isAbsolute(relative),
+      });
+    }
+  }
+
   let tier0: DryRunTier0Agent[] | null = null;
   if (process.platform === 'win32') {
     const shell = detectShell();
@@ -191,6 +221,7 @@ export function buildApplyDryRunPlan(
     misePlan: { miseTomlPath, enabledToolCount, status: miseStatus },
     generatedFiles,
     agents,
+    agentFiles,
     rtkEnabled: config.rtk?.enabled === true,
     integrations: integrations.map((integration) => integration.getName()),
     tier0,
@@ -696,6 +727,17 @@ export const applyCommand = new Command()
         console.log(
           `  Agents:         ${agents.join(', ') || '(none)'}${config.rtk?.enabled === true ? ' (rtk rewriting on)' : ''}`,
         );
+        for (const entry of plan.agentFiles) {
+          console.log(
+            `    ${entry.label}: ${entry.path}${entry.global ? '  (outside this directory)' : ''}`,
+          );
+        }
+        const outside = plan.agentFiles.filter((entry) => entry.global);
+        if (outside.length > 0 && config.scope !== 'user') {
+          console.log(
+            `  Note: ${outside.length} agent(s) are wired through files outside this project (your home directory); \`apply\` will change them.`,
+          );
+        }
         console.log(
           `  Integrations:   ${integrations.length > 0 ? integrations.map((i) => i.getName()).join(', ') : '(none)'}`,
         );
