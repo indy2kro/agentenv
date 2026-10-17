@@ -286,12 +286,13 @@ export async function unattendedSetup(
 
       const includeTier2 = options.tier2 !== false;
       const rtkEnabled = options.rtk !== false;
+      // A bare `--superpowers` arrives as `true`: enabled, at the default ref ('').
       const superpowersRef =
         options.superpowers === undefined
           ? undefined
           : typeof options.superpowers === 'string'
             ? options.superpowers
-            : undefined;
+            : '';
       config = buildDefaultSimpleConfig(agents, includeTier2, rtkEnabled, scope, superpowersRef);
       console.log(
         `Defaults: agents ${agents.join(', ')}, Tier 2 tools ${includeTier2 ? 'on' : 'off'}, rtk ${rtkEnabled ? 'on' : 'off'}, Superpowers ${

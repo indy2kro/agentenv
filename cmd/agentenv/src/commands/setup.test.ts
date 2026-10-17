@@ -129,6 +129,41 @@ describe('unattended setup pipeline', () => {
     assert.match(toml, /\[integrations\.superpowers\]/);
   });
 
+  it('enables Superpowers at the default ref for a bare --superpowers flag', async () => {
+    const dir = tempDir('agentenv-setup-');
+    const xdgDir = tempDir('agentenv-xdg-');
+    let saved: import('../config/schema.js').AgentenvConfig | undefined;
+    const stubApply: typeof applyConfiguration = async (config) => {
+      saved = config;
+      return { success: true, messages: [], errors: [] };
+    };
+    const originalLog = console.log;
+    const originalCwd = process.cwd();
+    const originalXdg = process.env.XDG_CONFIG_HOME;
+    console.log = () => {};
+    try {
+      fs.mkdirSync(path.join(xdgDir, 'agentenv'), { recursive: true });
+      process.env.XDG_CONFIG_HOME = xdgDir;
+      process.chdir(dir);
+      // commander passes `true` (not a string) for `--superpowers` with no ref.
+      await unattendedSetup(
+        { yes: true, agents: 'claude_code', superpowers: true, tier2: false, rtk: false },
+        {
+          misePrereqCheckDeps: { isInstalled: () => true, version: () => '3.2.1' },
+          applyConfiguration: stubApply,
+        },
+      );
+    } finally {
+      process.chdir(originalCwd);
+      if (originalXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = originalXdg;
+      console.log = originalLog;
+    }
+
+    assert.equal(saved?.integrations?.superpowers?.enabled, true);
+    assert.ok(saved?.integrations?.superpowers?.ref, 'falls back to the default ref');
+  });
+
   it('leaves an existing hand-written config byte-identical and applies it in place via --config', async () => {
     const dir = tempDir('agentenv-inplace-');
     const cwdDir = tempDir('agentenv-cwd-');
