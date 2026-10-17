@@ -772,6 +772,30 @@ direnv = false
     assert.equal(run(['doctor', '--scope', 'nope'], clean).status, 2);
   });
 
+  it('uninstall warns when a target is also enabled in the user config', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-uninstall-home-'));
+    const userDir = path.join(home, '.config', 'agentenv');
+    fs.mkdirSync(userDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(userDir, 'agentenv.toml'),
+      'scope = "user"\n[tools]\nripgrep = true\n',
+    );
+    const env: NodeJS.ProcessEnv = { ...noMiseEnv, HOME: home, USERPROFILE: home };
+    delete env.XDG_CONFIG_HOME;
+    const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-uninstall-project-'));
+    fs.writeFileSync(
+      path.join(projectDir, 'agentenv.toml'),
+      'scope = "project"\n[tools]\nripgrep = true\nfd = false\njq = false\n',
+    );
+
+    const result = run(['uninstall', 'ripgrep', '--dry-run', '--json'], projectDir, env);
+    const json = JSON.parse(result.stdout);
+    assert.ok(
+      json.warnings?.some((w: string) => w.includes('ripgrep') && w.includes('user config')),
+      `expected the shared-store warning, got ${JSON.stringify(json)}`,
+    );
+  });
+
   it('exits 1 for uninstall with no config (operational failure)', () => {
     const missing = run(['uninstall'], empty, shellEnv);
     assert.equal(missing.status, 1);

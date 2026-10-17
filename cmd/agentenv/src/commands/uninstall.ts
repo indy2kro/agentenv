@@ -17,6 +17,7 @@ import {
   findConfigPath,
   parseScopeFlag,
   baseDirForConfig,
+  userConfigDir,
 } from '../config/scopes.js';
 import type { ScopeValue } from '../config/scopes.js';
 import { RTK_INIT_FLAGS } from '../toolchain/rtk.js';
@@ -78,6 +79,45 @@ export function calculateUninstallTargets(config: AgentenvConfig): UninstallTarg
     targets.push({ key: custom.name, miseName: custom.mise_source, binary: custom.name });
   }
   return targets;
+}
+
+/**
+ * The mise names being uninstalled that the user-scope config also enables.
+ * `mise uninstall` empties the shared mise store, so those disappear for every
+ * project and for the user config too.
+ */
+export function sharedWithUserConfig(
+  requested: UninstallTarget[],
+  userConfig: AgentenvConfig | undefined,
+): string[] {
+  if (!userConfig) return [];
+  const declared = new Set(calculateUninstallTargets(userConfig).map((target) => target.miseName));
+  return requested
+    .filter((target) => declared.has(target.miseName))
+    .map((target) => target.miseName);
+}
+
+export function sharedUninstallWarning(names: string[], userConfigPath: string): string {
+  const [subject, effect] = names.length === 1 ? ['is', 'it goes'] : ['are', 'they go'];
+  return `${names.join(', ')} ${subject} also enabled in your user config (${userConfigPath}); mise uninstall is store-wide, so ${effect} away for every project too. Reinstall with \`agentenv apply --scope user\`.`;
+}
+
+/** The user-scope config (without layering), when a project config is being uninstalled. */
+function loadUserConfigForWarning(
+  config: AgentenvConfig,
+  configPath: string,
+): { userConfig?: AgentenvConfig; userConfigPath: string } {
+  const userConfigPath = path.join(userConfigDir(), 'agentenv.toml');
+  if (config.scope === 'user' || path.resolve(configPath) === path.resolve(userConfigPath)) {
+    return { userConfigPath };
+  }
+  try {
+    return fs.existsSync(userConfigPath)
+      ? { userConfig: loadConfig(userConfigPath), userConfigPath }
+      : { userConfigPath };
+  } catch {
+    return { userConfigPath };
+  }
 }
 
 /**
@@ -362,6 +402,7 @@ export interface UninstallJsonResult {
   success: boolean;
   message: string;
   configPath?: string;
+  warnings?: string[];
   dryRun?: boolean;
   toUninstall?: string[];
   alreadyGone?: string[];
@@ -603,6 +644,11 @@ export async function doUninstall(options: UninstallCommandOptions): Promise<voi
   const miseToml = miseTomlPathFor(config.scope, scopeDir);
   const miseTomlPath = fs.existsSync(miseToml) ? miseToml : undefined;
 
+  const { userConfig, userConfigPath } = loadUserConfigForWarning(config, configPath);
+  const shared = sharedWithUserConfig(requested, userConfig);
+  const warnings = shared.length > 0 ? [sharedUninstallWarning(shared, userConfigPath)] : [];
+  if (!json) for (const warning of warnings) console.warn('warning: ' + warning);
+
   // 4. Dry run never mutates; single allowlisted probe when mise is present.
   if (options.dryRun) {
     if (!isMiseInstalled()) {
@@ -612,6 +658,7 @@ export async function doUninstall(options: UninstallCommandOptions): Promise<voi
           success: true,
           message: 'nothing was uninstalled (mise not installed)',
           configPath,
+          warnings,
           dryRun: true,
           toUninstall: [],
           alreadyGone: [],
@@ -633,6 +680,7 @@ export async function doUninstall(options: UninstallCommandOptions): Promise<voi
         success: true,
         message: 'no changes were made',
         configPath,
+        warnings,
         dryRun: true,
         toUninstall: plan.toUninstall,
         alreadyGone: plan.alreadyGone,
@@ -704,6 +752,7 @@ export async function doUninstall(options: UninstallCommandOptions): Promise<voi
       success: true,
       message: `Removed ${plan.toUninstall.length} tool(s)`,
       configPath,
+      warnings,
       toUninstall: plan.toUninstall,
       alreadyGone: plan.alreadyGone,
     });
