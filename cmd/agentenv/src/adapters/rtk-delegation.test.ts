@@ -273,4 +273,43 @@ describe('RtkDelegationAdapter', () => {
     assert.match(cline.message, /cannot uninstall project-level wiring/);
     assert.equal(windsurf.success && cline.success, true);
   });
+
+  it('passes --auto-patch when the agent needs its config patched', async () => {
+    const home = tempDir('agentenv-rtk-deleg-patch-');
+    const rtk = fakeRtkInit();
+    const adapter = new RtkDelegationAdapter(makeConfig(home, rtk.fn), {
+      agentKey: 'gemini_cli',
+      label: 'Gemini CLI',
+      rtkFlags: ['-g', '--gemini'],
+      configDir: path.join(home, '.gemini'),
+      expectedFile: 'RTK.md',
+      autoPatch: true,
+    });
+
+    await adapter.initialize();
+
+    assert.deepEqual(rtk.calls[0].args, ['-g', '--gemini', '--auto-patch']);
+  });
+
+  it('fails when rtk reports success but the hook was not written to the agent config', async () => {
+    const home = tempDir('agentenv-rtk-deleg-verify-');
+    const hooksFile = path.join(home, '.vibe', 'hooks.toml');
+    const adapter = new RtkDelegationAdapter(makeConfig(home, fakeRtkInit().fn), {
+      agentKey: 'vibe',
+      label: 'Mistral Vibe',
+      rtkFlags: ['-g', '--agent', 'vibe'],
+      configDir: path.join(home, '.vibe'),
+      expectedFile: 'RTK.md',
+      expectedContent: { file: hooksFile, text: 'rtk hook vibe' },
+    });
+
+    const result = await adapter.initialize();
+
+    assert.equal(result.success, false);
+    assert.ok(result.errors.some((e) => e.includes(hooksFile)));
+
+    fs.mkdirSync(path.dirname(hooksFile), { recursive: true });
+    fs.writeFileSync(hooksFile, 'command = "rtk hook vibe"\n');
+    assert.equal((await adapter.initialize()).success, true);
+  });
 });

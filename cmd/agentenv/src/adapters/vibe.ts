@@ -17,6 +17,8 @@ export class VibeAdapter extends RtkDelegationAdapter {
       configDir: path.join(homeDir(), '.vibe'),
       // rtk 0.49.0 registers the hook globally in ~/.vibe/hooks.toml (no RTK.md).
       expectedFile: path.join(homeDir(), '.vibe', 'hooks.toml'),
+      autoPatch: true,
+      expectedContent: { file: path.join(homeDir(), '.vibe', 'hooks.toml'), text: 'rtk hook vibe' },
     });
   }
 }

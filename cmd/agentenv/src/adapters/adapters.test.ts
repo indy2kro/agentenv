@@ -42,7 +42,13 @@ function fakeRtkInit(): { fn: RtkInitFn; calls: RtkCall[] } {
       const dir = path.join(home, '.config', 'opencode', 'plugins');
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(path.join(dir, 'rtk.ts'), 'export const rtkPlugin = true;\n');
-    } else if (joined === '-g --gemini') {
+    } else if (joined === '-g --gemini --auto-patch') {
+      const home = process.env.HOME || process.env.USERPROFILE || '';
+      fs.mkdirSync(path.join(home, '.gemini'), { recursive: true });
+      fs.writeFileSync(
+        path.join(home, '.gemini', 'settings.json'),
+        '{"hooks":{"BeforeTool":[{"hooks":[{"command":"rtk-hook-gemini.sh"}]}]}}\n',
+      );
       fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK (Gemini CLI)\n');
     } else if (joined === '-g --agent cursor') {
       fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK (Cursor)\n');
@@ -50,7 +56,10 @@ function fakeRtkInit(): { fn: RtkInitFn; calls: RtkCall[] } {
       fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK (Windsurf)\n');
     } else if (joined === '--agent cline') {
       fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK (Cline CLI)\n');
-    } else if (joined === '-g --agent vibe') {
+    } else if (joined === '-g --agent vibe --auto-patch') {
+      const home = process.env.HOME || process.env.USERPROFILE || '';
+      fs.mkdirSync(path.join(home, '.vibe'), { recursive: true });
+      fs.writeFileSync(path.join(home, '.vibe', 'hooks.toml'), 'command = "rtk hook vibe"\n');
       fs.writeFileSync(path.join(cwd, 'RTK.md'), '# RTK (Mistral Vibe)\n');
     } else {
       calls[calls.length - 1].args = ['UNEXPECTED', ...args];
@@ -347,11 +356,11 @@ describe('rtkMessage transparency log', () => {
 });
 
 for (const [label, AdapterCtor, rtkFlags, configDirName] of [
-  ['Gemini CLI', GeminiCliAdapter, ['-g', '--gemini'], '.gemini'],
+  ['Gemini CLI', GeminiCliAdapter, ['-g', '--gemini', '--auto-patch'], '.gemini'],
   ['Cursor', CursorAdapter, ['-g', '--agent', 'cursor'], '.cursor'],
   ['Windsurf', WindsurfAdapter, ['-g', '--agent', 'windsurf'], '.windsurf'],
   ['Cline CLI', ClineAdapter, ['--agent', 'cline'], '.cline'],
-  ['Mistral Vibe', VibeAdapter, ['-g', '--agent', 'vibe'], '.vibe'],
+  ['Mistral Vibe', VibeAdapter, ['-g', '--agent', 'vibe', '--auto-patch'], '.vibe'],
 ] as const) {
   describe(`${label} adapter`, () => {
     it('delegates hooks to rtk init and creates configDir', async () => {

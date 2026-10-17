@@ -33,6 +33,14 @@ export interface RtkDelegationOptions {
    * directory itself if it isn't already there).
    */
   extraGlobalDirs?: string[];
+  /**
+   * Pass `--auto-patch` to `rtk init`. Without it rtk asks "Patch <file> with
+   * RTK hook? [y/N]" and, with no TTY answering, skips the patch while still
+   * exiting 0 (Gemini's settings.json, Vibe's hooks.toml).
+   */
+  autoPatch?: boolean;
+  /** After a successful `rtk init`, `file` must contain `text`, else the wiring didn't land. */
+  expectedContent?: { file: string; text: string };
 }
 
 /**
@@ -185,8 +193,17 @@ export class RtkDelegationAdapter extends BaseAdapter {
       ? this.opts.expectedFile
       : path.join(this.config.baseDir, this.opts.expectedFile);
     const existed = fs.existsSync(expectedPath);
-    const run = resolveRtkInit(this.config.rtkInit)(this.opts.rtkFlags, this.config.baseDir);
+    const initFlags = this.opts.autoPatch
+      ? [...this.opts.rtkFlags, '--auto-patch']
+      : this.opts.rtkFlags;
+    const run = resolveRtkInit(this.config.rtkInit)(initFlags, this.config.baseDir);
     if (run.success) {
+      const missing = this.missingExpectedContent();
+      if (missing) {
+        result.success = false;
+        result.errors.push(missing);
+        return result;
+      }
       if (!existed && fs.existsSync(expectedPath)) result.filesCreated.push(expectedPath);
       result.message = rtkMessage(run);
     } else {
@@ -195,6 +212,21 @@ export class RtkDelegationAdapter extends BaseAdapter {
     }
 
     return result;
+  }
+
+  /** An error message when rtk reported success but its hook isn't in the agent's config. */
+  private missingExpectedContent(): string | null {
+    const expected = this.opts.expectedContent;
+    if (!expected) return null;
+    let content = '';
+    try {
+      content = fs.readFileSync(expected.file, 'utf-8');
+    } catch {
+      // Treated as missing below.
+    }
+    return content.includes(expected.text)
+      ? null
+      : `rtk init reported success but ${expected.file} has no rtk hook; add it manually or re-run with a TTY`;
   }
 
   async cleanup(): Promise<AdapterResult> {
