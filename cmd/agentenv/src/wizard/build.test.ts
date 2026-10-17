@@ -90,6 +90,32 @@ describe('wizard build helpers', () => {
     assert.equal(config.tools?.fzf, false);
   });
 
+  it('buildConfigFromSelections keeps the base config settings the wizard does not ask about', () => {
+    const base = {
+      tool_versions: { jq: '1.7.1' },
+      rtk: { enabled: true, init: { claude_code: false } },
+      tier0: { check_enabled: false },
+      generate: { marker_start: '<!-- a -->', marker_end: '<!-- b -->', files: ['AGENTS.md'] },
+      advanced: { default_mode: 'simple' },
+    };
+    const config = buildConfigFromSelections({
+      agents: ['codex_cli'],
+      tools: ['jq'],
+      customTools: [],
+      scope: 'project',
+      rtkEnabled: false,
+      base,
+    });
+
+    assert.deepEqual(config.tool_versions, { jq: '1.7.1' });
+    assert.equal(config.rtk?.enabled, false);
+    assert.equal(config.rtk?.init?.claude_code, false);
+    assert.equal(config.rtk?.init?.codex_cli, true);
+    assert.equal(config.tier0?.check_enabled, false);
+    assert.deepEqual(config.generate, base.generate);
+    assert.deepEqual(config.advanced, base.advanced);
+  });
+
   it('formatDiffLines renders added/removed/changed entries', () => {
     const diff: ConfigDiffEntry[] = [
       { kind: 'added', key: 'agents.opencode', newValue: true },
