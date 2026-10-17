@@ -32,6 +32,15 @@ invent CLI flags.
 
 ## Findings
 
+> **Correction (2026-10-17):** the `marketplace add obra/superpowers-marketplace#<ref>`
+> step below does not work for the plugin's ref. That repo has no tag or branch
+> named after Superpowers releases (`claude plugin marketplace add
+> obra/superpowers-marketplace#v6.3.0` fails with "Remote branch v6.3.0 not
+> found in upstream origin"), so `#<ref>` can only pin the *catalog*. agentenv now
+> runs only `claude plugin install superpowers@claude-plugins-official`, from
+> Claude Code's built-in official marketplace; that cannot pin a ref, so the
+> `ref` config key was removed (a stale one is ignored with a warning).
+
 ### Claude Code — fully documented, non-interactive, ref-pinnable ✅
 
 Two-step process, both scriptable outside an interactive session:

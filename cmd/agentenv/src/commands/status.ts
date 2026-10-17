@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import * as fs from 'fs';
 import * as path from 'path';
 import { isAgentInstalled, resolveBinary } from '../adapters/detect.js';
-import { claudeConfigDir, homeDir, opencodeConfigDir } from '../adapters/agent-dirs.js';
+import { homeDir } from '../adapters/agent-dirs.js';
 import {
   BINARY_MAP,
   TOOL_DESCRIPTIONS,
@@ -14,10 +14,19 @@ import {
   validateConfig,
 } from '../config/schema.js';
 import type { AgentKey, AgentenvConfig, CustomTool } from '../config/schema.js';
-import { findConfigPath, resolveScopeDir, userConfigDir } from '../config/scopes.js';
+import {
+  findConfigPath,
+  findConfigPathInScope,
+  parseScopeFlag,
+  resolveScopeDir,
+  userConfigDir,
+} from '../config/scopes.js';
+import type { ScopeValue } from '../config/scopes.js';
 import { checkAgentShellConfiguration, detectShell } from '../shell/detector.js';
 import type { ShellInfo } from '../shell/detector.js';
 import { requestedInstructionFiles } from '../generate/agentsmd.js';
+import { AGENT_CONFIG_FILES } from './agent-files.js';
+import { userScopeInstructionFiles } from './apply.js';
 import { SuperpowersAdapter, ghAuthLine } from '../integrations/index.js';
 import type { IntegrationResult, IntegrationState } from '../integrations/base.js';
 import { resolveGhAuthProbe } from '../toolchain/gh.js';
@@ -35,47 +44,6 @@ import { colorizeLine, failGlyph, successGlyph, theme } from '../ui/theme.js';
 import { renderLogo, resolveResultLine, setQuietEnabled } from '../ui/output.js';
 import type { ResultBoxContent } from '../ui/output.js';
 
-const AGENT_CONFIG_FILES: Record<
-  AgentKey,
-  { label: string; check: (baseDir: string) => string; contains?: string }
-> = {
-  claude_code: {
-    label: 'Claude Code',
-    check: () => path.join(claudeConfigDir(), 'settings.json'),
-    // settings.json usually exists already; only the rtk hook entry means wired.
-    contains: 'rtk hook claude',
-  },
-  // Written by `rtk init --codex` in the project dir (project-scoped; not -g).
-  codex_cli: { label: 'Codex CLI', check: (baseDir) => path.join(baseDir, 'RTK.md') },
-  copilot: {
-    label: 'GitHub Copilot',
-    // copilot-instructions.md may be the user's own; the rtk hook file is ours.
-    check: (baseDir) => path.join(baseDir, '.github', 'hooks', 'rtk-rewrite.json'),
-  },
-  opencode: {
-    label: 'OpenCode',
-    check: () => path.join(opencodeConfigDir(), 'plugins', 'rtk.ts'),
-  },
-  // `-g --gemini` (verified live against a real rtk install): writes
-  // GEMINI.md — not RTK.md — into Gemini's own global config dir.
-  gemini_cli: { label: 'Gemini CLI', check: () => path.join(homeDir(), '.gemini', 'GEMINI.md') },
-  // `-g --agent cursor` writes into the shared Claude Code anchor, not
-  // Cursor's own config dir or baseDir — see adapters/cursor.ts's
-  // extraGlobalDirs comment; confirmed live.
-  cursor: { label: 'Cursor', check: () => path.join(claudeConfigDir(), 'RTK.md') },
-  // Verified against rtk 0.49.0: `-g --agent windsurf` writes .windsurfrules into
-  // the project dir (no RTK.md).
-  windsurf: { label: 'Windsurf', check: (baseDir) => path.join(baseDir, '.windsurfrules') },
-  // `--agent cline` (project-scoped; not -g) writes RTK.md in baseDir.
-  cline: { label: 'Cline CLI', check: (baseDir) => path.join(baseDir, 'RTK.md') },
-  // Verified against rtk 0.49.0: `-g --agent vibe` registers ~/.vibe/hooks.toml.
-  vibe: {
-    label: 'Mistral Vibe',
-    check: () => path.join(homeDir(), '.vibe', 'hooks.toml'),
-    contains: 'rtk',
-  },
-};
-
 export { AGENT_CONFIG_FILES };
 
 export interface StatusAgent {
@@ -84,6 +52,8 @@ export interface StatusAgent {
   installed: boolean;
   configured: boolean;
   drift: boolean;
+  /** The command that fixes this drift; present only when `drift` is true. */
+  fix?: string;
 }
 export interface StatusTool {
   key: string;
@@ -97,6 +67,8 @@ export interface StatusTool {
   pinned: string | null;
   /** Best-match installed version from `mise ls --json`, or `null` when moot/unknown. */
   installed: string | null;
+  /** The command that fixes this drift; present only when `drift` is true. */
+  fix?: string;
 }
 export interface StatusCustomTool {
   name: string;
@@ -107,6 +79,8 @@ export interface StatusGenerated {
   label: string;
   exists: boolean;
   managed: boolean;
+  /** The command that regenerates it; present only when it is missing or unmanaged. */
+  fix?: string;
 }
 export interface StatusIntegrationAgent {
   agent: string;
@@ -117,7 +91,6 @@ export interface StatusIntegration {
   key: string;
   enabled: boolean;
   source: string | null;
-  ref: string | null;
   scope: string | null;
   agents: string[];
   states: StatusIntegrationAgent[];
@@ -355,6 +328,8 @@ export async function gatherStatus(deps: StatusDeps = {}): Promise<StatusReport>
 
   const resolveDir = deps.resolveScopeDir ?? resolveScopeDir;
   const baseDir = resolveBaseDir(configPath, config.scope, resolveDir);
+  // What a script (or an agent) should run to repair any drift reported below.
+  const applyFix = config.scope === 'user' ? 'agentenv apply --scope user' : 'agentenv apply';
   const validation = (deps.validateConfig ?? validateConfig)(config);
   const shell = (deps.detectShell ?? detectShell)();
   const enabledAgents = (deps.getEnabledAgents ?? getEnabledAgents)(config) as AgentKey[];
@@ -379,6 +354,8 @@ export async function gatherStatus(deps: StatusDeps = {}): Promise<StatusReport>
     const configured =
       exists(configFile) &&
       (meta.contains === undefined || fileContains(configFile, meta.contains));
+    const drift =
+      installed && !configured && rtkEnabled && !(meta.projectOnly && config.scope === 'user');
     return {
       key: agent,
       label: meta.label,
@@ -387,7 +364,8 @@ export async function gatherStatus(deps: StatusDeps = {}): Promise<StatusReport>
       // With rtk rewriting off, apply() never writes any of these
       // rtk-owned files for this agent by design — a missing one isn't
       // drift, it's the intended state.
-      drift: installed && !configured && rtkEnabled,
+      drift,
+      ...(drift ? { fix: applyFix } : {}),
     };
   });
 
@@ -430,6 +408,7 @@ export async function gatherStatus(deps: StatusDeps = {}): Promise<StatusReport>
       drift: resolution === 'missing' || versionDrift,
       pinned,
       installed,
+      ...(resolution === 'missing' || versionDrift ? { fix: applyFix } : {}),
     };
   });
 
@@ -439,6 +418,18 @@ export async function gatherStatus(deps: StatusDeps = {}): Promise<StatusReport>
   });
 
   const requestedFiles = requestedInstructionFiles(config);
+  // In user scope apply also writes each enabled agent's own instruction file
+  // (e.g. ~/.claude/CLAUDE.md), the ones the agents actually load.
+  const home = homeDir();
+  const agentFiles = userScopeInstructionFiles(config, baseDir, {}).map(
+    (file): [string, string, boolean] => [
+      path.relative(home, file.path).startsWith('..')
+        ? file.path
+        : `~/${path.relative(home, file.path).replace(/\\/g, '/')}`,
+      file.path,
+      true,
+    ],
+  );
   const generatedEntries: Array<[string, string, boolean]> = [
     ['mise.toml', miseTomlPathFor(config.scope, baseDir), false],
     ...requestedFiles.map((name): [string, string, boolean] => [
@@ -446,13 +437,19 @@ export async function gatherStatus(deps: StatusDeps = {}): Promise<StatusReport>
       path.join(baseDir, name),
       true,
     ]),
+    ...agentFiles,
   ];
   const generated: StatusGenerated[] = generatedEntries.map(([label, file, markerCheck]) => {
     const generatedExists = exists(file);
     const managed =
       generatedExists &&
       (markerCheck ? (deps.hasManagedMarker ?? hasManagedMarker)(file, config) : true);
-    return { label, exists: generatedExists, managed };
+    return {
+      label,
+      exists: generatedExists,
+      managed,
+      ...(!generatedExists || !managed ? { fix: applyFix } : {}),
+    };
   });
 
   const integrations: StatusIntegration[] = [];
@@ -477,7 +474,6 @@ export async function gatherStatus(deps: StatusDeps = {}): Promise<StatusReport>
       key: integrationKey,
       enabled: true,
       source: result.source ?? null,
-      ref: result.ref ?? null,
       scope: result.scope,
       agents: superpowersConfig.agents ?? [],
       states: result.agents.map(({ agent, state, detail }) => ({
@@ -498,7 +494,6 @@ export async function gatherStatus(deps: StatusDeps = {}): Promise<StatusReport>
       key: integrationKey,
       enabled: false,
       source: null,
-      ref: null,
       scope: null,
       agents: [],
       states: [],
@@ -771,7 +766,6 @@ export function renderStatus(report: StatusReport): string {
     }
     chunks.push('    enabled: yes');
     chunks.push(`    source: ${integration.source ?? '(unset)'}`);
-    chunks.push(`    ref: ${integration.ref ?? '(unset)'}`);
     chunks.push(`    scope: ${integration.scope}`);
     for (const agentState of integration.states) {
       const label = AGENT_CONFIG_FILES[agentState.agent as AgentKey]?.label ?? agentState.agent;
@@ -797,21 +791,31 @@ export const statusCommand = new Command()
   .description('Show current configuration and environment status')
   .option('--json', 'emit a machine-readable JSON document on stdout')
   .option('--short', 'collapsed one-line-per-area report (no per-item detail)')
-  .action(async (options: { json?: boolean; short?: boolean }) => {
-    const json = options.json === true;
-    const short = options.short === true;
-    if (json) setQuietEnabled(true);
+  .option('--scope <scope>', 'config scope to inspect: project|user (default: nearest config)')
+  .action(
+    async (options: { json?: boolean; short?: boolean; scope?: ScopeValue }, command: Command) => {
+      const scope = parseScopeFlag(options.scope);
+      if (scope.error) {
+        command.error(scope.error);
+        return;
+      }
+      const json = options.json === true;
+      const short = options.short === true;
+      if (json) setQuietEnabled(true);
 
-    renderLogo();
-    const report = await gatherStatus();
+      renderLogo();
+      const report = await gatherStatus(
+        scope.scope ? { findConfigPath: () => findConfigPathInScope(scope.scope) } : {},
+      );
 
-    if (json) {
-      console.log(JSON.stringify(statusToJson(report), null, 2));
-    } else {
-      process.stdout.write(short ? renderStatusShort(report) : renderStatus(report));
-      const summary = statusSummary(report);
-      console.log(resolveResultLine(summary));
-    }
+      if (json) {
+        console.log(JSON.stringify(statusToJson(report), null, 2));
+      } else {
+        process.stdout.write(short ? renderStatusShort(report) : renderStatus(report));
+        const summary = statusSummary(report);
+        console.log(resolveResultLine(summary));
+      }
 
-    if (report.exitCode === 1) process.exitCode = 1;
-  });
+      if (report.exitCode === 1) process.exitCode = 1;
+    },
+  );

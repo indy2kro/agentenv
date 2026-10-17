@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-10-17
 
-Target: 40 · Found: 39 deduplicated items (37 audited + 2 from user feedback) · Completed: 22/39
+Target: 40 · Found: 39 deduplicated items (37 audited + 2 from user feedback) · Completed: 38/39
 
 > **How to use this document — read before implementing anything.**
 > As you finish each item, change `- [ ]` to `- [x]`, append ` ✅ <commit-sha>`,
@@ -56,9 +56,9 @@ Themes this round:
 
 - [x] **SWEEP-01** [bug] Generate committed project files and run agent wiring from the project layer (plus defaults), not the user-layered config. Keep layering for local-only behavior — `src/config/schema.ts:461-476`, `commands/apply.ts:558,587-595`, `commands/status.ts:329`, `generate/agentsmd.ts:90-160`, `toolchain/mise.ts:103-140` · effort M · impact high ✅ 4d14341
   Reproduced: a project `agentenv.toml` enabling 2 agents and 7 tools produced an `AGENTS.md`/`mise.toml` listing ~30 tools and wired all 9 agents, because `~/.config/agentenv/agentenv.toml` enables them. That included `rtk init -g` for gemini/cursor/opencode/windsurf/vibe. So committed files differ per teammate, and a project apply changes global agent config. Decide whether layered agents/tools should be generated at all in project scope, and document the rule in `docs/configuration.md`. Follows up SWEEP-02 (2026-10-15), which only fixed *saving*.
-- [ ] **SWEEP-02** [bug] In user scope, don't run project-only `rtk init`s (codex `--codex`, copilot `--copilot`, cline, windsurf rules) with cwd `~/.config/agentenv`. Use the `-g` variant where rtk has one, otherwise skip with a message — `src/toolchain/rtk.ts:25-39`, `adapters/codex.ts:108-112`, `adapters/copilot.ts`, `adapters/cline.ts`, `adapters/windsurf.ts` · effort M · impact med
+- [x] **SWEEP-02** [bug] In user scope, don't run project-only `rtk init`s (codex `--codex`, copilot `--copilot`, cline, windsurf rules) with cwd `~/.config/agentenv`. Use the `-g` variant where rtk has one, otherwise skip with a message — `src/toolchain/rtk.ts:25-39`, `adapters/codex.ts:108-112`, `adapters/copilot.ts`, `adapters/cline.ts`, `adapters/windsurf.ts` · effort M · impact med ✅ 25ca45d
   Observed on the audit machine: `~/.config/agentenv` holds `RTK.md`, `.github/copilot-instructions.md`, `.clinerules`, `.windsurfrules` and an `AGENTS.md` ending in `@RTK.md`, while `~/.codex` has no `RTK.md`. A user-scope Codex therefore never gets the rtk guidance, and the files that were written are read by no agent.
-- [ ] **SWEEP-03** [test] Raise the per-file coverage floors and the weakest files. Branches: `apply.ts` 62%, `shell-fix.ts` 64%, `setup.ts` 67%, `status.ts` 67%, `config-edit.ts` 69%, `uninstall.ts` 70%, `wizard.ts` 70%, `index.ts` 50%. Lines: `uninstall.ts` 75%, `detector.ts` 79%, `superpowers.ts` 80%, `mise.ts` 80%. Also key floors and rows by dist-relative path instead of basename — `cmd/agentenv/scripts/check-coverage.mjs:17-21,35-45` · effort M · impact med
+- [ ] **SWEEP-03** (partly done: per-file floors are now keyed by path, the defaults raised and the weak files ratcheted; adding tests to lift the weakest files is still open) [test] Raise the per-file coverage floors and the weakest files. Branches: `apply.ts` 62%, `shell-fix.ts` 64%, `setup.ts` 67%, `status.ts` 67%, `config-edit.ts` 69%, `uninstall.ts` 70%, `wizard.ts` 70%, `index.ts` 50%. Lines: `uninstall.ts` 75%, `detector.ts` 79%, `superpowers.ts` 80%, `mise.ts` 80%. Also key floors and rows by dist-relative path instead of basename — `cmd/agentenv/scripts/check-coverage.mjs:17-21,35-45` · effort M · impact med
   `DEFAULT_FLOOR` is 60% branches, far below the 75% global gate, so the command layer can keep slipping. Because rows are keyed by basename, the `index.js: {branches: 50}` override also loosens `adapters/index.js` and `integrations/index.js`, and `ui/output.js`/`utils/output.js` collide. Follows up SWEEP-06 (2026-10-15).
 - [x] **SWEEP-04** [ci] Add release-shaped gates to CI. (1) A packed-tarball smoke job: `npm pack`, install the `.tgz` into a clean dir, run `agentenv --version` and `apply --dry-run --json`. (2) An `npm audit --omit=dev` step — `.github/workflows/ci.yml:16-75`, `release.yml:113` · effort S · impact med ✅ 6c6b833
   CI only tests `dist/` in-tree, and release only runs `npm pack --dry-run`. A broken `files` list, a missing shebang or an ESM path issue would first show up for users after publish. The audit is only run by hand during these audits.
@@ -79,9 +79,9 @@ Themes this round:
   A mise-sourced custom tool renders as "Available via agentenv" with its name as the binary. Path-based custom tools, the main reason to declare one, are never shown to the agent.
 - [x] **BUG-07** `agentenv add <key>` plans against the user-layered view, so adding a tool the user config already enables reports "Nothing to change" — `src/commands/config-edit.ts:147,161-173,195` · effort S · impact med ✅ 4886395
   A developer whose personal config enables `jq` can't make the shared project require it with `add`, so teammates without that user config never get it. Plan against the unlayered project file. Do this together with SWEEP-01.
-- [ ] **BUG-08** The Superpowers ref is appended to the marketplace repo (`obra/superpowers-marketplace#v6.3.0`), which has no such tag — `src/integrations/superpowers.ts:237-243`, `config/schema.ts:226` · effort M · impact med
+- [x] **BUG-08** (resolved: install from the official marketplace, and the `ref` setting was removed entirely) The Superpowers ref is appended to the marketplace repo (`obra/superpowers-marketplace#v6.3.0`), which has no such tag — `src/integrations/superpowers.ts:237-243`, `config/schema.ts:226` · effort M · impact med
   `git ls-remote --tags` shows the marketplace repo only has `v1.0.12`, while `v6.3.0` is an `obra/superpowers` tag. So the default ref either fails `claude plugin marketplace add`, or (with a valid catalog ref) pins the catalog, not the plugin. Re-check the pinning design in `docs/research/superpowers-install-mechanisms.md` against a real `claude` CLI before changing the code.
-- [ ] **BUG-09** In user scope, `status` checks `~/.config/agentenv/AGENTS.md`/`CLAUDE.md` instead of the per-agent files apply actually manages (`~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, …) — `src/commands/status.ts:441-455`, `commands/apply.ts:299-310` · effort M · impact med
+- [x] **BUG-09** In user scope, `status` checks `~/.config/agentenv/AGENTS.md`/`CLAUDE.md` instead of the per-agent files apply actually manages (`~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, …) — `src/commands/status.ts:441-455`, `commands/apply.ts:299-310` · effort M · impact med ✅ b3fb09b
   A removed or stale managed block in the file Claude/Codex actually load is never reported as drift for user-scope installs. Reuse `userScopeInstructionFiles()` for the check.
 - [x] **BUG-10** `agentenv update` runs `mise up` synchronously with a 120 s timeout and no output. Upgrading a full tool list gets killed and is reported as `failed (exit null): ` — `src/toolchain/mise.ts:610-640`, `commands/update.ts:219-229` · effort M · impact med ✅ bfef4a3
   `spawnSync` freezes the spinner, and ~30 `latest` tools routinely take longer than 2 minutes. When it times out, the error message is empty. Stream the output with the async spawn that `runMiseInstall` uses, and report a timeout as a timeout.
@@ -98,7 +98,7 @@ Themes this round:
 
 ## UX & affordances   (UX-NN)
 
-- [ ] **UX-01** `setup --yes --json` scrapes console output instead of reusing apply's structured result — `src/commands/setup.ts:301-330` · effort M · impact med
+- [x] **UX-01** `setup --yes --json` scrapes console output instead of reusing apply's structured result — `src/commands/setup.ts:301-330` · effort M · impact med ✅ 23bcc1c
   There is no `configPath`/`baseDir`/`warnings`, errors carry the `✗`/`[FAIL]` glyph, warnings are mixed into `messages`, and the result-box text ends up in the document. Have `saveAndApply` return the `ApplyResult` and build the document with `buildApplyJsonResult`, as `add --json` does. Follows up FEAT-02 (2026-10-15).
 - [x] **UX-02** Apply's success line says "everything is configured and verified" even with `--skip-mise-install`, when nothing was installed or verified — `src/commands/apply.ts:671-676` · effort S · impact low ✅ 46dcd58
   CI setups that skip installs get a false verification claim. Say "files written; tools not installed (--skip-mise-install)" instead.
@@ -106,7 +106,7 @@ Themes this round:
   Aborting a prompt is a normal cancel. Catch `ExitPromptError`, print "Cancelled", exit 130, and document it in `docs/guides/exit-codes.md`.
 - [x] **UX-04** Doctor's missing-tool hint always says "run `mise install` in this project", also in user scope — `src/commands/doctor.ts:422-425` · effort S · impact low ✅ d56805c
   In user scope the fix is `agentenv apply --scope user`, so the hint sends users to the wrong directory.
-- [ ] **UX-05** Agent wiring output dumps rtk's whole stdout on one line, cut off with `...` after 400 characters — `src/toolchain/rtk.ts:195-207`, `commands/apply.ts:441-457` · effort S · impact low
+- [x] **UX-05** Agent wiring output dumps rtk's whole stdout on one line, cut off with `...` after 400 characters — `src/toolchain/rtk.ts:195-207`, `commands/apply.ts:441-457` · effort S · impact low (decided to keep as is: it is the only record of what rtk changed, and it exposed the Gemini/Vibe bug) ✅ (dropped)
   Lines like "Cursor: … RTK hook registered … Legacy [tee] config detected … sqlite recall store …" bury the one fact that matters (which file was wired), and they hid BUG-02's "Skipped" prompts. Keep a short summary on the console and put the full output under `--debug`/JSON.
 - [x] **UX-06** Put a "managed by agentenv — edits inside this block are overwritten on apply" note inside the generated block — `src/generate/agentsmd.ts:102-104,502-536` · effort S · impact low ✅ d118119
   People and agents editing a committed `AGENTS.md` can't tell that the region between the HTML comments is regenerated, and apply silently discards their edits.
@@ -114,10 +114,10 @@ Themes this round:
   `apply --json` includes `report.warnings`, but the add/remove path hardcodes an empty list, so an agent editing the config never sees unknown-key or path warnings.
 - [x] **UX-08** The gh auth probe hardcodes `--hostname github.com`, so GitHub Enterprise users always see an auth warning — `src/toolchain/gh.ts:43-52` · effort S · impact low ✅ 814b427
   `GH_HOST` and a gh login to an enterprise host are ignored, so status shows a false "not authenticated" on GHE-only machines.
-- [ ] **UX-09** Warn before `uninstall` removes tool versions from the shared mise store that other configs still declare — `src/commands/uninstall.ts:673-695` · effort M · impact low
+- [x] **UX-09** Warn before `uninstall` removes tool versions from the shared mise store that other configs still declare — `src/commands/uninstall.ts:673-695` · effort M · impact low ✅ e87a212
   `mise uninstall --all` affects the whole store. Cleaning one project can break the user-scope config and every other project that uses the same tool. At least name the user-scope config when it also enables a target.
 
-- [ ] **UX-10** Stop counting "not managed by mise; install manually" tools as `doctor` warnings — `src/commands/doctor.ts:416-421` · effort S · impact low
+- [x] **UX-10** Stop counting "not managed by mise; install manually" tools as `doctor` warnings — `src/commands/doctor.ts:416-421` · effort S · impact low ✅ 41e05a4
   From a real run on Windows: `tokei`, `rga` and `jless` can never be installed through mise there, yet each is a `[warn]`, so the box says "8 warnings" and never turns green. Show them as informational (or list them once, collapsed), and keep `warn` for things the user can act on. Same for `status`, which prints them as `-`.
 
 ## Accessibility   (A11Y-NN)
@@ -127,24 +127,24 @@ Themes this round:
 
 ## New functionality   (FEAT-NN)
 
-- [ ] **FEAT-01** Add `--scope` to `status` and `doctor` — `src/commands/status.ts:794-795`, `commands/doctor.ts:539-543` · effort S · impact med
+- [x] **FEAT-01** Add `--scope` to `status` and `doctor` — `src/commands/status.ts:794-795`, `commands/doctor.ts:539-543` · effort S · impact med ✅ 54aec59
   apply/update/uninstall/add/remove accept `--scope`, but the read-only checks only use the nearest config. From inside a project there is no way to inspect the user-scope setup.
-- [ ] **FEAT-02** Add a `fix` command field to status drift entries and doctor items in `--json` — `src/commands/status.ts:81-127`, `commands/doctor.ts:50-54` · effort M · impact med
+- [x] **FEAT-02** Add a `fix` command field to status drift entries and doctor items in `--json` — `src/commands/status.ts:81-127`, `commands/doctor.ts:50-54` · effort M · impact med ✅ 2f4081e
   The generated instructions send agents to `doctor --json`/`status --json` (FEAT-01, 2026-10-15), but the remediation is only free text in `detail`. An agent has to guess which command to run.
-- [ ] **FEAT-03** Make `update --check` report which tools actually have newer versions (`mise outdated --json`), and say so in the JSON and the exit code — `src/commands/update.ts:151,194-244` · effort M · impact med
+- [x] **FEAT-03** Make `update --check` report which tools actually have newer versions (`mise outdated --json`), and say so in the JSON and the exit code — `src/commands/update.ts:151,194-244` · effort M · impact med
   Today `--check` only prints the `mise up <list>` it would run. Neither a person nor an agent can tell whether an update is pending.
-- [ ] **FEAT-04** Add `apply --only files|tools|agents` to run a single step — `src/commands/apply.ts:313-474` · effort M · impact med
+- [x] **FEAT-04** Add `apply --only files|tools|agents` to run a single step — `src/commands/apply.ts:313-474` · effort M · impact med
   Regenerating `AGENTS.md` today also runs `mise install` and every `rtk init`, several of them global. `--skip-mise-install` still re-wires every agent.
-- [ ] **FEAT-05** Make `apply --dry-run` list the files each agent adapter will touch, and flag global (`-g`) writes made from a project-scope apply — `src/commands/apply.ts:588-631`, `toolchain/rtk.ts:29-38` · effort M · impact med
+- [x] **FEAT-05** Make `apply --dry-run` list the files each agent adapter will touch, and flag global (`-g`) writes made from a project-scope apply — `src/commands/apply.ts:588-631`, `toolchain/rtk.ts:29-38` · effort M · impact med
   A project apply runs `rtk init -g` for opencode/gemini/cursor/windsurf/vibe, and cursor's also registers the Claude Code hook. Users can't preview that the agent config in their home directory will change. Do this after SWEEP-01.
-- [ ] **FEAT-06** Make `doctor` check `custom_tools`, Superpowers and the managed instruction blocks, as `status` does — `src/commands/doctor.ts:398-508` · effort M · impact low
+- [x] **FEAT-06** Make `doctor` check `custom_tools`, Superpowers and the managed instruction blocks, as `status` does — `src/commands/doctor.ts:398-508` · effort M · impact low ✅ 4bb9e82
   Agents are told to diagnose with `doctor --json`, but a missing custom binary or a stripped managed block doesn't show up there.
-- [ ] **FEAT-07** Support version pins and custom tools from the CLI (`agentenv add jq@1.7.1`, `agentenv add --custom …`) — `src/commands/config-edit.ts:161-195` · effort M · impact low
+- [x] **FEAT-07** Support version pins and custom tools from the CLI (`agentenv add jq@1.7.1`, `agentenv add --custom …`) — `src/commands/config-edit.ts:161-195` · effort M · impact low ✅ 66a95ec
   `add`/`remove` only toggle boolean keys. `tool_versions` and `custom_tools` need a hand edit or the wizard, and the wizard drops them (BUG-01).
-- [ ] **FEAT-08** Make `update --watch` watch `agentenv.toml` and re-apply, instead of watching the generated `mise.toml` — `src/commands/update.ts:283-383` · effort M · impact low
+- [x] **FEAT-08** Make `update --watch` watch `agentenv.toml` and re-apply, instead of watching the generated `mise.toml` — `src/commands/update.ts:283-383` · effort M · impact low
   Users edit `agentenv.toml`. The only writer of `mise.toml` is `apply`, which already installs, so the current watch almost never does useful work.
 
-- [ ] **FEAT-09** Make `doctor` check that the mise shims are not shadowed by other executables earlier on PATH — `src/commands/doctor.ts:344-350`, `toolchain/mise.ts` (`shimsDirOnPath`) · effort M · impact med
+- [x] **FEAT-09** Make `doctor` check that the mise shims are not shadowed by other executables earlier on PATH — `src/commands/doctor.ts:344-350`, `toolchain/mise.ts` (`shimsDirOnPath`) · effort M · impact med ✅ 2cfaf08
   From a real run: `agentenv doctor` said "shims on PATH — ok" and every tool `[ok]`, while `mise doctor` warned that ast-grep, bat, delta, fd, fzf, gh, jq, node and rg all resolve to other copies first (WinGet Links, `C:Program Filesphp85g.exe`, …) because `~/.local/bin` comes late. The agent then runs a different version than the one agentenv pinned. Compare each enabled tool's first PATH hit with its shim, and tell the user to move the shims dir earlier. Do this together with FEAT-02.
 
 ---

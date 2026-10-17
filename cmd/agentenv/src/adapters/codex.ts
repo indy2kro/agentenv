@@ -10,7 +10,12 @@ import * as path from 'path';
 import { BaseAdapter, AdapterConfig, AdapterResult } from './base.js';
 import { isAgentInstalled } from './detect.js';
 import { uninstallViaRtk } from './rtk-delegation.js';
-import { RTK_INIT_FLAGS, resolveRtkInit, rtkMessage } from '../toolchain/rtk.js';
+import {
+  RTK_INIT_FLAGS,
+  projectOnlyRtkSkipMessage,
+  resolveRtkInit,
+  rtkMessage,
+} from '../toolchain/rtk.js';
 import { writeFileWithRetry } from '../utils/fs-retry.js';
 import { codexConfigDir } from './agent-dirs.js';
 
@@ -87,7 +92,10 @@ export class CodexCliAdapter extends BaseAdapter {
       }
     }
 
-    result.message = 'Codex CLI adapter initialized';
+    result.message =
+      this.config.rtkEnabled && this.config.scope === 'user'
+        ? `Codex CLI adapter initialized (${projectOnlyRtkSkipMessage('Codex CLI')})`
+        : 'Codex CLI adapter initialized';
     return result;
   }
 
@@ -102,6 +110,11 @@ export class CodexCliAdapter extends BaseAdapter {
 
     if (!this.config.enabled) {
       result.message = 'Codex CLI adapter not enabled';
+      return result;
+    }
+
+    if (this.config.scope === 'user') {
+      result.message = projectOnlyRtkSkipMessage('Codex CLI');
       return result;
     }
 

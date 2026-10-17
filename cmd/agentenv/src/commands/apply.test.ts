@@ -7,6 +7,7 @@ import {
   applyConfiguration,
   buildApplyDryRunPlan,
   buildApplyJsonResult,
+  parseOnly,
   applySuccessSummary,
   resolveTier0WriteFiles,
   shouldRunMiseInstall,
@@ -377,7 +378,6 @@ describe('apply pipeline', () => {
         superpowers: {
           enabled: true,
           source: 'github:obra/superpowers',
-          ref: 'v6.3.0',
           allow_hooks: true,
         },
       },
@@ -391,9 +391,15 @@ describe('apply pipeline', () => {
     assert.equal(result.success, true, result.errors.join('; '));
 
     assert.ok(
-      claude.calls.some((c) => c[0] === 'plugin' && c[1] === 'marketplace' && c[2] === 'add'),
+      claude.calls.every((c) => c[1] !== 'marketplace'),
+      'the official marketplace is built in; nothing is added',
     );
-    assert.ok(claude.calls.some((c) => c[0] === 'plugin' && c[1] === 'install'));
+    assert.ok(
+      claude.calls.some(
+        (c) =>
+          c[0] === 'plugin' && c[1] === 'install' && c[2] === 'superpowers@claude-plugins-official',
+      ),
+    );
     assert.ok(
       fs.existsSync(path.join(base, '.agentenv-state', 'integrations', 'superpowers.json')),
       'missing superpowers marker',
@@ -420,7 +426,6 @@ describe('apply pipeline', () => {
         superpowers: {
           enabled: true,
           source: 'github:obra/superpowers',
-          ref: 'v6.3.0',
           allow_hooks: false,
         },
       },
@@ -802,5 +807,122 @@ describe('applySuccessSummary', () => {
     assert.match(applySuccessSummary(false), /verified/);
     assert.doesNotMatch(applySuccessSummary(true), /verified/);
     assert.match(applySuccessSummary(true), /--skip-mise-install/);
+  });
+});
+
+describe('apply --only', () => {
+  const setup = () => {
+    const home = tempDir('agentenv-home-');
+    const base = tempDir('agentenv-base-');
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    delete process.env.XDG_CONFIG_HOME;
+    return { home, base, rtk: fakeRtkInit() };
+  };
+  const has = (dir: string, ...names: string[]): boolean[] =>
+    names.map((name) => fs.existsSync(path.join(dir, name)));
+
+  it('files: writes mise.toml and the instruction files only; no wiring, no install', async () => {
+    const { home, base, rtk } = setup();
+    const result = await applyConfiguration(CONFIG, base, {
+      skipMiseInstall: true,
+      rtkInit: rtk.fn,
+      only: ['files'],
+    });
+    assert.equal(result.success, true, result.errors.join('; '));
+    assert.deepEqual(has(base, 'mise.toml', 'AGENTS.md', 'CLAUDE.md'), [true, true, true]);
+    assert.equal(rtk.calls.length, 0, 'no rtk init');
+    assert.equal(fs.existsSync(path.join(home, '.claude', 'settings.json')), false);
+  });
+
+  it('agents: wires the agents only; no mise.toml, no instruction files', async () => {
+    const { home, base, rtk } = setup();
+    const result = await applyConfiguration(CONFIG, base, {
+      skipMiseInstall: true,
+      rtkInit: rtk.fn,
+      only: ['agents'],
+    });
+    assert.equal(result.success, true, result.errors.join('; '));
+    assert.ok(rtk.calls.length > 0, 'rtk init ran');
+    assert.ok(fs.existsSync(path.join(home, '.claude', 'settings.json')));
+    assert.deepEqual(has(base, 'mise.toml', 'AGENTS.md', 'CLAUDE.md'), [false, false, false]);
+  });
+
+  it('tools: declares the tools in mise.toml but writes no instruction files and wires nothing', async () => {
+    const { base, rtk } = setup();
+    const result = await applyConfiguration(CONFIG, base, {
+      skipMiseInstall: true,
+      rtkInit: rtk.fn,
+      only: ['tools'],
+    });
+    assert.equal(result.success, true, result.errors.join('; '));
+    assert.deepEqual(has(base, 'mise.toml', 'AGENTS.md'), [true, false]);
+    assert.equal(rtk.calls.length, 0);
+  });
+
+  it('without --only everything still runs', async () => {
+    const { base, rtk } = setup();
+    await applyConfiguration(CONFIG, base, { skipMiseInstall: true, rtkInit: rtk.fn });
+    assert.deepEqual(has(base, 'mise.toml', 'AGENTS.md'), [true, true]);
+    assert.ok(rtk.calls.length > 0);
+  });
+});
+
+describe('parseOnly', () => {
+  it('accepts one or several steps and dedupes', () => {
+    assert.deepEqual(parseOnly('files'), { steps: ['files'] });
+    assert.deepEqual(parseOnly('files, agents,files'), { steps: ['files', 'agents'] });
+  });
+
+  it('is absent when the flag is, and an error naming the valid steps otherwise', () => {
+    assert.deepEqual(parseOnly(undefined), {});
+    const bad = parseOnly('files,bogus');
+    assert.match(bad.error ?? '', /bogus/);
+    assert.match(bad.error ?? '', /files, tools, agents/);
+    assert.ok(parseOnly('').error);
+  });
+});
+
+describe('buildApplyDryRunPlan — agent files', () => {
+  const plan = (config: AgentenvConfig, agents: string[]) => {
+    const dir = tempDir('agentenv-dryrun-agents-');
+    return {
+      dir,
+      plan: buildApplyDryRunPlan(config, dir, path.join(dir, 'agentenv.toml'), [], agents, []),
+    };
+  };
+  const rtkOn = (overrides: Partial<AgentenvConfig> = {}): AgentenvConfig => ({
+    ...DEFAULT_CONFIG,
+    rtk: { enabled: true },
+    ...overrides,
+  });
+
+  it('lists the file each agent will touch and flags the ones outside the project', () => {
+    const { dir, plan: p } = plan(rtkOn({ scope: 'project' }), [
+      'claude_code',
+      'cursor',
+      'windsurf',
+    ]);
+    const byAgent = Object.fromEntries(p.agentFiles.map((entry) => [entry.agent, entry]));
+
+    assert.equal(byAgent.windsurf.path, path.join(dir, '.windsurfrules'));
+    assert.equal(byAgent.windsurf.global, false);
+    assert.equal(byAgent.claude_code.global, true, "Claude's settings live in the home directory");
+    assert.match(byAgent.cursor.path, /RTK\.md$/);
+    assert.equal(byAgent.cursor.global, true);
+    assert.equal(byAgent.cursor.label, 'Cursor');
+  });
+
+  it('lists nothing when rtk is off: no agent is wired', () => {
+    const { plan: p } = plan({ ...DEFAULT_CONFIG, rtk: { enabled: false } }, ['claude_code']);
+    assert.deepEqual(p.agentFiles, []);
+  });
+
+  it('leaves out agents whose project-only wiring is skipped in user scope', () => {
+    const { plan: p } = plan(rtkOn({ scope: 'user' }), ['codex_cli', 'windsurf', 'gemini_cli']);
+    assert.deepEqual(
+      p.agentFiles.map((entry) => entry.agent),
+      ['gemini_cli'],
+    );
   });
 });

@@ -1,6 +1,7 @@
 import { printJson } from '../cli/json.js';
 import { Command } from 'commander';
 import * as fs from 'fs';
+import * as path from 'path';
 import {
   ClaudeCodeAdapter,
   CodexCliAdapter,
@@ -62,6 +63,7 @@ import {
   miseTomlPathFor,
   removeLegacyUserMiseToml,
 } from '../toolchain/mise.js';
+import { AGENT_CONFIG_FILES } from './agent-files.js';
 import { normalizeOutput } from '../utils/output.js';
 import { colorizeLine, theme } from '../ui/theme.js';
 import { renderLogo, setQuietEnabled } from '../ui/output.js';
@@ -117,6 +119,14 @@ export interface DryRunTier0Agent {
   needsFix: boolean;
 }
 
+/** A file an agent's wiring will write, and whether it is outside the directory being applied. */
+export interface DryRunAgentFile {
+  agent: string;
+  label: string;
+  path: string;
+  global: boolean;
+}
+
 export interface ApplyDryRunPlan {
   configPath: string;
   baseDir: string;
@@ -127,6 +137,8 @@ export interface ApplyDryRunPlan {
   };
   generatedFiles: DryRunFileStatus[];
   agents: string[];
+  /** The main file each wired agent will touch; empty when rtk is off (no agent is wired). */
+  agentFiles: DryRunAgentFile[];
   rtkEnabled: boolean;
   integrations: string[];
   /** Per-agent Tier 0 shell-fix plan on Windows with Git Bash found; null everywhere else. */
@@ -174,6 +186,24 @@ export function buildApplyDryRunPlan(
       : { path: file.path, status: plan.status };
   });
 
+  // Which agent files get written, so a project apply can't quietly change the
+  // user's home directory: most agents are wired through global config.
+  const agentFiles: DryRunAgentFile[] = [];
+  if (config.rtk?.enabled === true) {
+    for (const agent of agents) {
+      const meta = AGENT_CONFIG_FILES[agent as AgentKey];
+      if (!meta || (meta.projectOnly && config.scope === 'user')) continue;
+      const file = meta.check(baseDir);
+      const relative = path.relative(baseDir, file);
+      agentFiles.push({
+        agent,
+        label: meta.label,
+        path: file,
+        global: relative.startsWith('..') || path.isAbsolute(relative),
+      });
+    }
+  }
+
   let tier0: DryRunTier0Agent[] | null = null;
   if (process.platform === 'win32') {
     const shell = detectShell();
@@ -191,10 +221,36 @@ export function buildApplyDryRunPlan(
     misePlan: { miseTomlPath, enabledToolCount, status: miseStatus },
     generatedFiles,
     agents,
+    agentFiles,
     rtkEnabled: config.rtk?.enabled === true,
     integrations: integrations.map((integration) => integration.getName()),
     tier0,
   };
+}
+
+/** The independent parts of an apply, selectable with `--only`. */
+export const APPLY_STEPS = ['files', 'tools', 'agents'] as const;
+export type ApplyStep = (typeof APPLY_STEPS)[number];
+
+/**
+ * Parse `--only <steps>` (comma-separated). Absent when the flag is; an error
+ * naming the valid steps for anything else, so a typo never silently runs
+ * everything or nothing.
+ */
+export function parseOnly(value: string | undefined): { steps?: ApplyStep[]; error?: string } {
+  if (value === undefined) return {};
+  const requested = value
+    .split(',')
+    .map((step) => step.trim())
+    .filter((step) => step !== '');
+  const unknown = requested.filter((step) => !(APPLY_STEPS as readonly string[]).includes(step));
+  if (requested.length === 0 || unknown.length > 0) {
+    const got = requested.length === 0 ? '(nothing)' : unknown.join(', ');
+    return {
+      error: 'invalid --only ' + got + ' (expected one or more of: ' + APPLY_STEPS.join(', ') + ')',
+    };
+  }
+  return { steps: [...new Set(requested)] as ApplyStep[] };
 }
 
 export interface ApplyOptions {
@@ -218,6 +274,12 @@ export interface ApplyOptions {
   tier0Mode?: 'auto' | 'always' | 'never';
   /** Add the mise shims dir to the Windows user PATH (`apply --fix-path`). */
   fixPath?: boolean;
+  /**
+   * Run only these parts (`apply --only`): `files` writes mise.toml and the
+   * instruction files, `tools` declares and installs the tools, `agents` does
+   * the shell fix, per-agent wiring and integrations. Everything when unset.
+   */
+  only?: ApplyStep[];
   /** Injectable Superpowers adapter dependencies (tests pass a claude stub). */
   superpowersDeps?: SuperpowersAdapterDeps;
   /**
@@ -283,6 +345,7 @@ function adaptersFor(
     enabled: true,
     baseDir,
     rtkEnabled: config.rtk?.enabled === true,
+    scope: config.scope,
     rtkInit: options.rtkInit,
   };
   const adapters: BaseAdapter[] = [];
@@ -346,11 +409,13 @@ export async function applyConfiguration(
   const errors = track([], 'error');
   // What the committed files and tool installs are generated from.
   const generated = options.fileConfig ?? config;
+  const runs = (step: ApplyStep): boolean =>
+    options.only === undefined || options.only.includes(step);
 
   // Step 0 — self-diagnose the prerequisite before touching anything, so a
   // missing mise fails loudly with install instructions instead of half
   // configuring the project.
-  if (!options.skipMiseInstall) {
+  if (!options.skipMiseInstall && runs('tools')) {
     if (!isMiseInstalled()) {
       errors.push('Prerequisite check failed: mise is not installed.');
       errors.push("agentenv uses mise to install and manage this project's tools.");
@@ -363,7 +428,7 @@ export async function applyConfiguration(
   }
 
   // Step 1 — Tier 0 shell compatibility fix.
-  if (config.tier0?.check_enabled !== false) {
+  if (runs('agents') && config.tier0?.check_enabled !== false) {
     const enabledAgents = getEnabledAgents(config) as AgentKey[];
     const tier0Mode = options.tier0Mode ?? config.tier0?.mode ?? 'auto';
     const writeShellFixFiles = resolveTier0WriteFiles(tier0Mode, process.stdin.isTTY === true);
@@ -384,24 +449,27 @@ export async function applyConfiguration(
   const enabledToolCount = Object.values(generated.tools ?? {}).filter((on) => on === true).length;
   const misePath = miseTomlPathFor(config.scope, baseDir);
   let miseTomlWritten = false;
-  try {
-    saveMiseToml(generateMiseToml(generated, generated.custom_tools ?? []), misePath);
-    miseTomlWritten = true;
-    messages.push(`Tools: wrote ${misePath} (${enabledToolCount} enabled)`);
-    if (config.scope === 'user') {
-      const legacy = removeLegacyUserMiseToml(baseDir);
-      if (legacy) messages.push(`Tools: removed superseded ${legacy}`);
+  // mise.toml is both a generated file and the declaration the install reads.
+  if (runs('files') || runs('tools')) {
+    try {
+      saveMiseToml(generateMiseToml(generated, generated.custom_tools ?? []), misePath);
+      miseTomlWritten = true;
+      messages.push(`Tools: wrote ${misePath} (${enabledToolCount} enabled)`);
+      if (config.scope === 'user') {
+        const legacy = removeLegacyUserMiseToml(baseDir);
+        if (legacy) messages.push(`Tools: removed superseded ${legacy}`);
+      }
+      const platformSkip = platformUnsupportedHint(generated);
+      if (platformSkip) messages.push(platformSkip);
+    } catch (error) {
+      errors.push(
+        `Unable to write ${misePath}: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
-    const platformSkip = platformUnsupportedHint(generated);
-    if (platformSkip) messages.push(platformSkip);
-  } catch (error) {
-    errors.push(
-      `Unable to write ${misePath}: ${error instanceof Error ? error.message : String(error)}`,
-    );
   }
 
   // Step 3 — global shims config + trust + install + verify.
-  if (shouldRunMiseInstall(miseTomlWritten, options.skipMiseInstall === true)) {
+  if (runs('tools') && shouldRunMiseInstall(miseTomlWritten, options.skipMiseInstall === true)) {
     const shims = ensureGlobalShimsDir(shellFixStatePath());
     (shims.success ? messages : errors).push(shims.message);
     if (options.fixPath) {
@@ -448,16 +516,19 @@ export async function applyConfiguration(
   // Step 4 — instruction files for the agents.
   const markerStart = generated.generate?.marker_start ?? '<!-- agentenv-managed-start -->';
   const markerEnd = generated.generate?.marker_end ?? '<!-- agentenv-managed-end -->';
-  for (const file of [
-    ...generateInstructionFiles(generated, baseDir),
-    ...userScopeInstructionFiles(config, baseDir, options),
-  ]) {
+  const instructionFiles = runs('files')
+    ? [
+        ...generateInstructionFiles(generated, baseDir),
+        ...userScopeInstructionFiles(config, baseDir, options),
+      ]
+    : [];
+  for (const file of instructionFiles) {
     const update = updateWithMarkers(file.path, file.content, markerStart, markerEnd);
     (update.success ? messages : errors).push(update.message);
   }
 
   // Step 5 - per-agent wiring.
-  for (const adapter of adaptersFor(config, baseDir, options)) {
+  for (const adapter of runs('agents') ? adaptersFor(config, baseDir, options) : []) {
     const result = await adapter.initialize();
     if (result.success) {
       messages.push(`${adapter.getName()}: ${result.message}`);
@@ -477,7 +548,7 @@ export async function applyConfiguration(
   }
 
   // Step 6 - optional upstream integrations (Superpowers).
-  for (const adapter of enabledIntegrations(config, options)) {
+  for (const adapter of runs('agents') ? enabledIntegrations(config, options) : []) {
     const result = await adapter.apply(baseDir, config.integrations?.superpowers);
     for (const line of integrationResultLines(result)) messages.push(`Superpowers: ${line}`);
     for (const error of result.errors) errors.push(`Superpowers: ${error}`);
@@ -502,6 +573,10 @@ export const applyCommand = new Command()
     'Tier 0 Windows shell fix: auto (default; only writes files with a TTY) | always (write even without a TTY — for an agent running apply) | never',
   )
   .option('--scope <scope>', 'config scope to apply: project|user (default: nearest config)')
+  .option(
+    '--only <steps>',
+    'run only some parts: files (mise.toml + AGENTS.md/CLAUDE.md), tools (install), agents (wiring); comma-separated',
+  )
   .option('--fix-path', 'Windows: add the mise shims directory to your user PATH (opt-in)')
   .option('--json', 'emit a machine-readable JSON document on stdout')
   .action(
@@ -513,6 +588,7 @@ export const applyCommand = new Command()
         scope?: ScopeValue;
         json?: boolean;
         fixPath?: boolean;
+        only?: string;
       },
       command: Command,
     ) => {
@@ -525,6 +601,12 @@ export const applyCommand = new Command()
       const scope = parseScopeFlag(options.scope);
       if (scope.error) {
         command.error(scope.error);
+        return;
+      }
+
+      const only = parseOnly(options.only);
+      if (only.error) {
+        command.error(only.error);
         return;
       }
 
@@ -609,10 +691,10 @@ export const applyCommand = new Command()
       if (dryRun) {
         const files = [
           ...generateInstructionFiles(fileConfig ?? config, baseDir),
-          ...userScopeInstructionFiles(config, baseDir, options),
+          ...userScopeInstructionFiles(config, baseDir, {}),
         ];
         const agents = [...getEnabledAgents(config)];
-        const integrations = enabledIntegrations(config, options);
+        const integrations = enabledIntegrations(config, {});
         const plan = buildApplyDryRunPlan(
           config,
           baseDir,
@@ -645,6 +727,17 @@ export const applyCommand = new Command()
         console.log(
           `  Agents:         ${agents.join(', ') || '(none)'}${config.rtk?.enabled === true ? ' (rtk rewriting on)' : ''}`,
         );
+        for (const entry of plan.agentFiles) {
+          console.log(
+            `    ${entry.label}: ${entry.path}${entry.global ? '  (outside this directory)' : ''}`,
+          );
+        }
+        const outside = plan.agentFiles.filter((entry) => entry.global);
+        if (outside.length > 0 && config.scope !== 'user') {
+          console.log(
+            `  Note: ${outside.length} agent(s) are wired through files outside this project (your home directory); \`apply\` will change them.`,
+          );
+        }
         console.log(
           `  Integrations:   ${integrations.length > 0 ? integrations.map((i) => i.getName()).join(', ') : '(none)'}`,
         );
@@ -665,6 +758,7 @@ export const applyCommand = new Command()
           skipMiseInstall: options.skipMiseInstall === true,
           fileConfig,
           tier0Mode,
+          only: only.steps,
           fixPath: options.fixPath === true,
           // Streamed mise install progress is human-only chrome — it would
           // otherwise interleave raw text into the JSON document.

@@ -1,5 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import {
   agentShellItem,
   renderDoctor,
@@ -7,6 +10,7 @@ import {
   wantsDoctorSection,
   gatherDoctor,
   nativeUnixToolsItem,
+  scopedDoctorDeps,
 } from './doctor.js';
 import type { DoctorSection, GatherDoctorDeps } from './doctor.js';
 import { LOGO } from '../ui/output.js';
@@ -599,5 +603,182 @@ describe('gatherDoctor — missing tool hint', () => {
     const detail = hint('/fake/home/.config/agentenv/agentenv.toml') ?? '';
     assert.match(detail, /agentenv apply --scope user/);
     assert.doesNotMatch(detail, /in this project/);
+  });
+});
+
+describe('gatherDoctor — tools mise does not manage', () => {
+  it('does not warn about a manual-install tool: agentenv cannot fix it and it never will', () => {
+    const sections = gatherDoctor(
+      undefined,
+      baseDeps({
+        loadConfig: () => ({ ...DEFAULT_CONFIG, agents: {}, tools: { tokei: true } }),
+        toolAvailabilityClassification: () => 'manual',
+      }),
+    );
+    const item = section(sections, 'Tools')?.items.find((i) => i.label.startsWith('tokei'));
+    assert.equal(item?.status, 'ok');
+    assert.match(item?.detail ?? '', /install manually/);
+  });
+});
+
+describe('gatherDoctor — shadowed mise shims', () => {
+  const toolsConfig = () => ({
+    ...DEFAULT_CONFIG,
+    agents: {},
+    tools: { ripgrep: true, jq: true },
+  });
+  const tools = (deps: Partial<GatherDoctorDeps>) =>
+    section(gatherDoctor(undefined, baseDeps({ loadConfig: toolsConfig, ...deps })), 'Tools');
+
+  it('warns, naming each shadowing executable, when other copies win over the shims', () => {
+    const asked: string[][] = [];
+    const item = tools({
+      findShadowedShims: (binaries) => {
+        asked.push(binaries);
+        return [{ binary: 'rg', shadowedBy: '/opt/php/rg' }];
+      },
+    })?.items.find((i) => i.label === 'PATH order');
+
+    assert.equal(item?.status, 'warn');
+    assert.match(item?.detail ?? '', /rg → \/opt\/php\/rg/);
+    assert.match(item?.detail ?? '', /\/fake\/shims/);
+    assert.deepEqual(asked[0].sort(), ['jq', 'rg']);
+  });
+
+  it('adds no item when nothing is shadowed', () => {
+    const items = tools({ findShadowedShims: () => [] })?.items ?? [];
+    assert.equal(
+      items.some((i) => i.label === 'PATH order'),
+      false,
+    );
+  });
+});
+
+describe('gatherDoctor — machine-readable fix commands', () => {
+  it('gives a missing tool the command to run, scope-aware', () => {
+    const missing = (configPath: string) =>
+      section(
+        gatherDoctor(
+          undefined,
+          baseDeps({
+            findConfigPath: () => configPath,
+            toolAvailabilityClassification: () => 'missing',
+          }),
+        ),
+        'Tools',
+      )?.items[0];
+    assert.equal(missing('/fake/project/agentenv.toml')?.fix, 'agentenv apply');
+    assert.equal(
+      missing('/fake/home/.config/agentenv/agentenv.toml')?.fix,
+      'agentenv apply --scope user',
+    );
+  });
+
+  it('gives an unset shims_dir the command to run and leaves healthy items without a fix', () => {
+    const sections = gatherDoctor(
+      undefined,
+      baseDeps({ readFileSync: (() => '') as unknown as typeof import('fs').readFileSync }),
+    );
+    const mise = section(sections, 'Mise');
+    assert.equal(mise?.items.find((i) => i.label === 'shims_dir')?.fix, 'agentenv apply');
+    assert.equal(mise?.items.find((i) => i.label === 'mise')?.fix, undefined);
+  });
+});
+
+describe('gatherDoctor — generated files and custom tools', () => {
+  const MARKER = '<!-- agentenv-managed-start -->';
+  const files = (deps: Partial<GatherDoctorDeps>) =>
+    section(gatherDoctor(undefined, baseDeps(deps)), 'Generated files');
+
+  it('is ok when every generated file exists with its managed block', () => {
+    const items = files({
+      readFileSync: (() => `${MARKER}\n[settings]\nshims_dir = "/fake/shims"\n`) as never,
+    })?.items;
+    assert.ok(items && items.length >= 2);
+    assert.ok(
+      items.every((item) => item.status === 'ok'),
+      JSON.stringify(items),
+    );
+  });
+
+  it('warns, with the command to regenerate it, when a generated file is missing', () => {
+    const items = files({ existsSync: (file) => !String(file).endsWith('AGENTS.md') })?.items;
+    const agents = items?.find((item) => item.label === 'AGENTS.md');
+    assert.equal(agents?.status, 'warn');
+    assert.match(agents?.detail ?? '', /missing/);
+    assert.equal(agents?.fix, 'agentenv apply');
+  });
+
+  it('warns when an instruction file exists but has lost its managed block', () => {
+    const items = files({
+      readFileSync: (() => '[settings]\nshims_dir = "/fake/shims"\n') as never,
+    })?.items;
+    const agents = items?.find((item) => item.label === 'AGENTS.md');
+    assert.equal(agents?.status, 'warn');
+    assert.match(agents?.detail ?? '', /no agentenv managed block/);
+  });
+
+  it('checks already-installed custom binaries for this OS and stays absent when there are none', () => {
+    const withCustom = (exists: boolean) =>
+      section(
+        gatherDoctor(
+          undefined,
+          baseDeps({
+            existsSync: (file) => (String(file).includes('corp-cli') ? exists : true),
+            loadConfig: () => ({
+              ...DEFAULT_CONFIG,
+              agents: {},
+              tools: {},
+              custom_tools: [
+                {
+                  name: 'corp-cli',
+                  description: 'x',
+                  already_installed: true,
+                  path_windows: '/opt/corp-cli',
+                  path_macos: '/opt/corp-cli',
+                  path_linux: '/opt/corp-cli',
+                },
+              ],
+            }),
+          }),
+        ),
+        'Custom tools',
+      )?.items[0];
+    assert.equal(withCustom(true)?.status, 'ok');
+    assert.equal(withCustom(false)?.status, 'warn');
+    assert.match(withCustom(false)?.detail ?? '', /\/opt\/corp-cli/);
+
+    assert.equal(section(gatherDoctor(undefined, baseDeps()), 'Custom tools'), undefined);
+  });
+});
+
+describe('scopedDoctorDeps', () => {
+  it('changes nothing without --scope', () => {
+    assert.deepEqual(scopedDoctorDeps(undefined), {});
+  });
+
+  it('makes doctor inspect the requested scope even when a project config is nearer', () => {
+    const userDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-doctor-scope-'));
+    fs.mkdirSync(path.join(userDir, 'agentenv'), { recursive: true });
+    fs.writeFileSync(path.join(userDir, 'agentenv', 'agentenv.toml'), 'scope = "user"\n');
+    const prior = process.env.XDG_CONFIG_HOME;
+    process.env.XDG_CONFIG_HOME = userDir;
+    try {
+      const deps = scopedDoctorDeps('user');
+      const userFile = path.join(userDir, 'agentenv', 'agentenv.toml');
+      assert.equal(deps.findConfigPath?.(), userFile);
+
+      const config = section(
+        gatherDoctor(
+          undefined,
+          baseDeps({ ...deps, userConfigDir: () => path.join(userDir, 'agentenv') }),
+        ),
+        'Config',
+      );
+      assert.match(config?.items[0]?.detail ?? '', /user scope/);
+    } finally {
+      if (prior === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = prior;
+    }
   });
 });

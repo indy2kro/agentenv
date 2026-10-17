@@ -148,7 +148,6 @@ marker_end   = "<!-- agentenv-managed-end -->"
 [integrations.superpowers]
 enabled = false
 # source = "github:obra/superpowers"
-# ref = "v6.3.0"
 # scope = "user"
 # agents = ["claude_code"]
 # allow_hooks = false
@@ -407,13 +406,13 @@ agentenv calls a third-party installer and reports
 ### Superpowers
 
 The [Superpowers](https://github.com/obra/superpowers) skill/methodology system
-installed through its *own* native installers. Disabled by default.
+installed through Claude Code's built-in official marketplace
+(`claude plugin install superpowers@claude-plugins-official`). Disabled by default.
 
 ```toml
 [integrations.superpowers]
 enabled = true
 source = "github:obra/superpowers"
-ref = "v6.3.0"          # tag/branch/commit; defaults to the shipped pin
 scope = "user"          # where to install; "project" | "user"
 agents = ["claude_code"]
 allow_hooks = true      # Superpowers registers a SessionStart hook
@@ -424,15 +423,20 @@ allow_external_requests = false
 |---|---|---|---|
 | `enabled` | boolean | `false` | Run the integration on `apply`. |
 | `source` | string | `github:obra/superpowers` | Installer source to pass through. |
-| `ref` | string | `v6.3.0` | Ref to install (pinned). |
 | `scope` | `"project"` \| `"user"` | inherits top-level `scope` | Where the integration is installed. |
 | `agents` | string[] | `["claude_code", "codex_cli", "copilot", "opencode"]` | Agents to target. |
 | `allow_hooks` | boolean | `false` | Allow the integration to register hooks. |
 | `allow_external_requests` | boolean | `false` | Allow outbound requests. |
 
-Not every agent has a documented, strict, ref-pinnable installer. Superpowers
+There is no version pin: the official marketplace installs its current
+Superpowers release. Earlier versions of agentenv had a `ref` key; it did
+nothing useful, so it was removed. A leftover `ref` in an existing config is
+ignored with a warning (and dropped the next time agentenv saves the file), so
+nothing breaks — just delete the line.
+
+Only Claude Code has a documented, non-interactive installer. Superpowers
 targets that agentenv can't automate are reported as `unsupported` with manual
-install hints — never run unpinned or unreviewed (see
+install hints — never run unreviewed (see
 [`research/superpowers-install-mechanisms.md`](research/superpowers-install-mechanisms.md)).
 
 ## Validation

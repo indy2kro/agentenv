@@ -10,6 +10,8 @@ import {
   executeUnwire,
   parseAgentList,
   resolveToolArgs,
+  sharedUninstallWarning,
+  sharedWithUserConfig,
   uninstallPlan,
   renderUninstallSummary,
 } from './uninstall.js';
@@ -293,5 +295,30 @@ describe('executeUnwire', () => {
     } finally {
       delete process.env.CLAUDE_CONFIG_DIR;
     }
+  });
+});
+
+describe('sharedWithUserConfig', () => {
+  const targets = calculateUninstallTargets(config({ ripgrep: true, fd: true, jq: true }));
+
+  it('names the targets the user config also enables, by mise name', () => {
+    const shared = sharedWithUserConfig(targets, config({ ripgrep: true, jq: true, bat: true }));
+    assert.deepEqual(shared.sort(), ['jq', 'ripgrep']);
+  });
+
+  it('is empty when the user config declares none of them, or there is no user config', () => {
+    assert.deepEqual(sharedWithUserConfig(targets, config({ bat: true })), []);
+    assert.deepEqual(sharedWithUserConfig(targets, undefined), []);
+  });
+
+  it('describes the store-wide effect and how to reinstall', () => {
+    const message = sharedUninstallWarning(
+      ['ripgrep', 'jq'],
+      '/home/me/.config/agentenv/agentenv.toml',
+    );
+    assert.match(message, /ripgrep, jq/);
+    assert.match(message, /user config/);
+    assert.match(message, /every project/);
+    assert.match(message, /agentenv apply --scope user/);
   });
 });

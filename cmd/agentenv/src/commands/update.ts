@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { loadConfig, validateConfig } from '../config/schema.js';
 import type { AgentenvConfig } from '../config/schema.js';
+import { applyConfiguration } from './apply.js';
 import {
   configFilePath,
   findConfigPath,
@@ -11,10 +12,12 @@ import {
   baseDirForConfig,
 } from '../config/scopes.js';
 import type { ScopeValue } from '../config/scopes.js';
+import type { OutdatedTool } from '../toolchain/mise.js';
 import { shellFixStatePath } from '../shell/shell-fix-state.js';
 import {
   ensureGlobalShimsDir,
   getMiseVersion,
+  getOutdatedTools,
   getUpgradeableTools,
   isMiseInstalled,
   miseActivationHint,
@@ -58,10 +61,14 @@ export interface UpdateDeps {
   runMiseSelfUpdate?: typeof runMiseSelfUpdate;
   trustMiseToml?: typeof trustMiseToml;
   runMiseUpgrade?: typeof runMiseUpgrade;
+  /** Which tools have a newer version (`mise outdated --json`); tests stub it. */
+  getOutdatedTools?: typeof getOutdatedTools;
   verifyToolAvailability?: typeof verifyToolAvailability;
   loadConfig?: typeof loadConfig;
   /** Skips the real `watchMiseToml` call entirely (tests never want a live fs.watch). */
   watchMiseToml?: typeof watchMiseToml;
+  /** Same, for the agentenv.toml watcher. */
+  watchAgentenvConfig?: typeof watchAgentenvConfig;
 }
 
 export async function doUpdate(
@@ -78,9 +85,11 @@ export async function doUpdate(
   const runMiseSelfUpdateFn = deps.runMiseSelfUpdate ?? runMiseSelfUpdate;
   const trustMiseTomlFn = deps.trustMiseToml ?? trustMiseToml;
   const runMiseUpgradeFn = deps.runMiseUpgrade ?? runMiseUpgrade;
+  const getOutdatedToolsFn = deps.getOutdatedTools ?? getOutdatedTools;
   const verifyToolAvailabilityFn = deps.verifyToolAvailability ?? verifyToolAvailability;
   const loadConfigFn = deps.loadConfig ?? loadConfig;
   const watchMiseTomlFn = deps.watchMiseToml ?? watchMiseToml;
+  const watchAgentenvConfigFn = deps.watchAgentenvConfig ?? watchAgentenvConfig;
 
   // In --json mode every line that would otherwise print live is collected
   // instead, so the command emits exactly one JSON document at the end —
@@ -95,8 +104,10 @@ export async function doUpdate(
     if (json) errors.push(line);
     else console.error(line);
   };
+  // Filled by --check/--dry-run: the managed tools that have a newer version.
+  let outdated: OutdatedTool[] | undefined;
   const finish = (success: boolean, elapsedMs?: number): void => {
-    if (json) printJson({ success, messages, errors, elapsedMs });
+    if (json) printJson({ success, messages, errors, elapsedMs, outdated });
   };
 
   if (!isMiseInstalledFn()) {
@@ -218,6 +229,18 @@ export async function doUpdate(
         log('  No upgradeable tools: everything enabled is pinned to a version.');
       } else {
         log(`  mise up ${targets.join(' ')}${dryRun ? ' (would run)' : ''}`);
+        if (dryRun) {
+          const all = getOutdatedToolsFn(scopeDir);
+          if (all === null) {
+            log('  could not check for newer versions (mise outdated failed)');
+          } else {
+            outdated = all.filter((row) => targets.includes(row.tool));
+            if (outdated.length === 0) log('  all upgradeable tools are up to date');
+            for (const row of outdated) {
+              log('  outdated: ' + row.tool + ' ' + row.current + ' -> ' + row.latest);
+            }
+          }
+        }
         if (!dryRun) {
           // Human mode shows mise's own progress live (it can run for minutes);
           // --json collects everything into the one document instead.
@@ -301,10 +324,19 @@ export async function doUpdate(
     if (dryRun) {
       console.log('\nSkipping watch mode (dry run).');
     } else {
-      console.log('\nWatching mise.toml for changes (Ctrl+C to stop)...');
+      console.log(
+        '\nWatching agentenv.toml (re-applies files + tools) and mise.toml (mise up); Ctrl+C to stop...',
+      );
       const scopeDir = baseDirForConfig(configPath, config.scope ?? 'project');
       const miseTomlPath = miseTomlPathFor(config.scope, scopeDir);
-      watchMiseTomlFn(miseTomlPath, scopeDir, configPath);
+      // A re-apply rewrites mise.toml; the mise watcher must not treat that as an edit.
+      let paused = false;
+      watchMiseTomlFn(miseTomlPath, scopeDir, configPath, undefined, () => paused);
+      watchAgentenvConfigFn(configPath, scopeDir, {
+        onBusy: (busy) => {
+          paused = busy;
+        },
+      });
     }
   }
 }
@@ -331,6 +363,7 @@ export function watchMiseToml(
   scopeDir: string,
   configPath: string,
   debounceMs = 1000,
+  isPaused: () => boolean = () => false,
 ): fs.FSWatcher | undefined {
   const resolvedPath = path.resolve(miseTomlPath);
   // fs.realpathSync.native canonicalizes 8.3-short-name vs. long-name and
@@ -365,12 +398,14 @@ export function watchMiseToml(
       // to mise.toml itself. When the platform can't report a filename,
       // don't filter it out — better an extra check than a missed one.
       if (filename && filename !== watchedName) return;
+      if (isPaused()) return;
 
       if (timeout) clearTimeout(timeout);
       timeout = setTimeout(async () => {
         // An atomic-rename save briefly removes the old path before the
         // new one lands; nothing to do yet if it hasn't landed.
         if (!fs.existsSync(resolvedPath)) return;
+        if (isPaused()) return;
 
         console.log(`\nDetected change in ${resolvedPath}, running mise up...`);
         let config: AgentenvConfig;
@@ -420,13 +455,116 @@ export function watchMiseToml(
   }
 }
 
+export interface WatchAgentenvConfigOptions {
+  debounceMs?: number;
+  /** How long to stay "busy" after an apply finishes, so its own file writes settle. */
+  settleMs?: number;
+  /** Injectable apply; tests never run a real one. */
+  apply?: typeof applyConfiguration;
+  /** Told true before a re-apply starts and false once it has settled. */
+  onBusy?: (busy: boolean) => void;
+}
+
+/**
+ * Watch agentenv.toml and, when it changes, re-apply the generated files and
+ * the tool install (`only: files, tools`). The agent wiring is deliberately
+ * left out: that writes to the user's home directory, and a file save is not a
+ * request to do that again. This is the file people actually edit; mise.toml is
+ * only ever written by apply.
+ *
+ * Watches the directory (editors save via atomic rename, which replaces the
+ * file's inode) and reads the config fresh on every trigger.
+ */
+export function watchAgentenvConfig(
+  configPath: string,
+  baseDir: string,
+  options: WatchAgentenvConfigOptions = {},
+): { close(): void } | undefined {
+  const debounceMs = options.debounceMs ?? 1000;
+  const settleMs = options.settleMs ?? 2000;
+  const apply = options.apply ?? applyConfiguration;
+  const resolvedConfig = path.resolve(configPath);
+  const watchedName = path.basename(resolvedConfig);
+  let watchDir: string;
+  try {
+    watchDir = fs.realpathSync.native(path.dirname(resolvedConfig));
+  } catch {
+    watchDir = path.dirname(resolvedConfig);
+  }
+
+  let timeout: NodeJS.Timeout | null = null;
+  let running = false;
+  try {
+    const watcher = fs.watch(watchDir, (_eventType, filename) => {
+      if (filename && filename !== watchedName) return;
+      if (running) return;
+      if (timeout) clearTimeout(timeout);
+      timeout = setTimeout(async () => {
+        if (!fs.existsSync(resolvedConfig) || running) return;
+        let config: AgentenvConfig;
+        try {
+          config = loadConfig(resolvedConfig, { layerUserConfig: true });
+        } catch (error) {
+          console.error(
+            `  Could not re-read ${resolvedConfig}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+          return;
+        }
+        const report = validateConfig(config);
+        if (report.errors.length > 0) {
+          for (const error of report.errors) console.error(`  error: ${error}`);
+          console.error('  Configuration invalid; not re-applying.');
+          return;
+        }
+
+        running = true;
+        options.onBusy?.(true);
+        console.log(`\nDetected change in ${resolvedConfig}, re-applying files and tools...`);
+        try {
+          const result = await apply(config, baseDir, {
+            only: ['files', 'tools'],
+            skipPrereqMessage: true,
+            fileConfig: config.scope === 'project' ? loadConfig(resolvedConfig) : undefined,
+          });
+          for (const message of result.messages) console.log(`  ${message}`);
+          for (const error of result.errors) console.error(`  ${error}`);
+          if (!result.success)
+            console.error('  Re-apply failed; fix the errors above and save again.');
+        } catch (error) {
+          console.error(
+            `  Re-apply failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        } finally {
+          setTimeout(() => {
+            running = false;
+            options.onBusy?.(false);
+          }, settleMs);
+        }
+      }, debounceMs);
+    });
+    watcher.on('error', (err) => {
+      console.error(`Watch error: ${err instanceof Error ? err.message : String(err)}`);
+    });
+    process.on('SIGINT', () => watcher.close());
+    return { close: () => watcher.close() };
+  } catch (err) {
+    console.error(
+      `Failed to watch ${watchDir}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return undefined;
+  }
+}
+
 export const updateCommand = new Command()
   .name('update')
   .description('Update mise itself and the mise-managed tools in your config (unattended)')
   .option('--self', 'only update the mise binary itself')
   .option('--tools', 'only upgrade mise-managed tools (pinned tools are skipped)')
   .option('--scope <scope>', 'config scope to update: project|user (default: nearest config)')
-  .option('--watch', 'watch mise.toml for changes and auto-run mise up (optional)')
+  .option(
+    '--watch',
+    'keep running: re-apply files + tools when agentenv.toml changes, and run mise up when mise.toml is edited (optional)',
+  )
   .option('--dry-run', 'print the update plan without changing anything')
   .option('--check', 'alias for --dry-run')
   .option('--json', 'emit a machine-readable JSON document on stdout (not with --watch)')

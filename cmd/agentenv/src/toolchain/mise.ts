@@ -280,6 +280,86 @@ export function shimsDirOnPath(): boolean {
   return pathContainsDir(process.env.PATH ?? '', shimsDir());
 }
 
+export interface OutdatedTool {
+  tool: string;
+  current: string;
+  latest: string;
+}
+
+/**
+ * Parse `mise outdated --json` (an object keyed by tool name with `current` and
+ * `latest` versions) into rows. Empty output means nothing is outdated; output
+ * that isn't that object returns null, meaning "couldn't tell".
+ */
+export function parseOutdated(raw: string): OutdatedTool[] | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
+  const rows: OutdatedTool[] = [];
+  for (const [tool, entry] of Object.entries(parsed as Record<string, unknown>)) {
+    const { current, latest } = (entry ?? {}) as { current?: unknown; latest?: unknown };
+    if (typeof current === 'string' && typeof latest === 'string') {
+      rows.push({ tool, current, latest });
+    }
+  }
+  return rows;
+}
+
+/** Ask mise which installed tools have a newer version; null when mise couldn't answer. */
+export function getOutdatedTools(cwd: string): OutdatedTool[] | null {
+  const result = runMiseCaptured(['outdated', '--json'], { cwd, timeoutMs: 60000 });
+  return result.status === 0 ? parseOutdated(result.stdout) : null;
+}
+
+export interface ShadowedShim {
+  binary: string;
+  /** The executable that wins over the mise shim. */
+  shadowedBy: string;
+}
+
+/**
+ * Binaries whose first hit on PATH sits *before* the mise shims dir, i.e. the
+ * agent runs another copy (WinGet, a bundled `rg.exe`, …) instead of the
+ * version agentenv installed. Returns nothing when the shims dir isn't on PATH
+ * at all; shimsDirOnPath() reports that separately.
+ */
+export function findShadowedShims(
+  binaries: string[],
+  opts: {
+    pathEnv: string;
+    shimsDir: string;
+    platform?: NodeJS.Platform;
+    exists?: (file: string) => boolean;
+  },
+): ShadowedShim[] {
+  const win = (opts.platform ?? process.platform) === 'win32';
+  const pathApi = win ? path.win32 : path.posix;
+  const exists = opts.exists ?? fs.existsSync;
+  const norm = (dir: string): string => {
+    const resolved = pathApi.resolve(dir);
+    return win ? resolved.toLowerCase() : resolved;
+  };
+
+  const entries = opts.pathEnv.split(win ? ';' : ':').filter((entry) => entry.trim() !== '');
+  const shimsIndex = entries.findIndex((entry) => norm(entry) === norm(opts.shimsDir));
+  if (shimsIndex < 0) return [];
+  const before = entries.slice(0, shimsIndex);
+  const extensions = win ? ['.exe', '.cmd', '.bat', '.com'] : [''];
+
+  const shadowed: ShadowedShim[] = [];
+  for (const binary of binaries) {
+    const hit = before
+      .flatMap((dir) => extensions.map((ext) => pathApi.join(dir, `${binary}${ext}`)))
+      .find((candidate) => exists(candidate));
+    if (hit) shadowed.push({ binary, shadowedBy: hit });
+  }
+  return shadowed;
+}
+
 /** Runs a PowerShell script with extra env vars; injectable so tests never touch the registry. */
 export type PowerShellRunner = (
   script: string,

@@ -108,7 +108,7 @@ describe('unattended setup pipeline', () => {
       process.env.XDG_CONFIG_HOME = xdgDir;
       process.chdir(dir);
       await unattendedSetup(
-        { yes: true, agents: 'claude_code', superpowers: 'v7.0.0', tier2: false, rtk: false },
+        { yes: true, agents: 'claude_code', superpowers: true, tier2: false, rtk: false },
         {
           misePrereqCheckDeps: { isInstalled: () => true, version: () => '3.2.1' },
           applyConfiguration: stubApply,
@@ -123,45 +123,9 @@ describe('unattended setup pipeline', () => {
     }
 
     assert.equal(saved?.integrations?.superpowers?.enabled, true);
-    assert.equal(saved?.integrations?.superpowers?.ref, 'v7.0.0');
     assert.deepEqual(saved?.integrations?.superpowers?.agents, ['claude_code']);
     const toml = fs.readFileSync(path.join(dir, 'agentenv.toml'), 'utf-8');
     assert.match(toml, /\[integrations\.superpowers\]/);
-  });
-
-  it('enables Superpowers at the default ref for a bare --superpowers flag', async () => {
-    const dir = tempDir('agentenv-setup-');
-    const xdgDir = tempDir('agentenv-xdg-');
-    let saved: import('../config/schema.js').AgentenvConfig | undefined;
-    const stubApply: typeof applyConfiguration = async (config) => {
-      saved = config;
-      return { success: true, messages: [], errors: [] };
-    };
-    const originalLog = console.log;
-    const originalCwd = process.cwd();
-    const originalXdg = process.env.XDG_CONFIG_HOME;
-    console.log = () => {};
-    try {
-      fs.mkdirSync(path.join(xdgDir, 'agentenv'), { recursive: true });
-      process.env.XDG_CONFIG_HOME = xdgDir;
-      process.chdir(dir);
-      // commander passes `true` (not a string) for `--superpowers` with no ref.
-      await unattendedSetup(
-        { yes: true, agents: 'claude_code', superpowers: true, tier2: false, rtk: false },
-        {
-          misePrereqCheckDeps: { isInstalled: () => true, version: () => '3.2.1' },
-          applyConfiguration: stubApply,
-        },
-      );
-    } finally {
-      process.chdir(originalCwd);
-      if (originalXdg === undefined) delete process.env.XDG_CONFIG_HOME;
-      else process.env.XDG_CONFIG_HOME = originalXdg;
-      console.log = originalLog;
-    }
-
-    assert.equal(saved?.integrations?.superpowers?.enabled, true);
-    assert.ok(saved?.integrations?.superpowers?.ref, 'falls back to the default ref');
   });
 
   it('leaves an existing hand-written config byte-identical and applies it in place via --config', async () => {
@@ -305,7 +269,7 @@ describe('unattended setup pipeline', () => {
     try {
       process.chdir(dir);
       await unattendedSetup(
-        { yes: true, agents: 'codex_cli', superpowers: 'v7.0.0', rtk: false, tier2: false },
+        { yes: true, agents: 'codex_cli', superpowers: true, rtk: false, tier2: false },
         {
           misePrereqCheckDeps: { isInstalled: () => true, version: () => '3.2.1' },
           applyConfiguration: stubApply,
@@ -469,5 +433,85 @@ describe('unattendedSetupJson', () => {
     assert.equal(doc.success, true);
     assert.equal(doc.schemaVersion, 1);
     assert.ok(Array.isArray(doc.messages) && Array.isArray(doc.errors));
+  });
+});
+
+describe('unattendedSetupJson — structured result', () => {
+  async function runJson(
+    options: Record<string, unknown>,
+    stubApply: typeof applyConfiguration,
+    fixture: { dir: string; xdgDir: string },
+  ): Promise<Record<string, unknown>> {
+    const stdout: string[] = [];
+    const originalLog = console.log;
+    const originalCwd = process.cwd();
+    const originalXdg = process.env.XDG_CONFIG_HOME;
+    const originalExit = process.exitCode;
+    try {
+      process.env.XDG_CONFIG_HOME = fixture.xdgDir;
+      process.chdir(fixture.dir);
+      console.log = (message?: unknown) => stdout.push(String(message));
+      await unattendedSetupJson(
+        { yes: true, json: true, ...options },
+        {
+          misePrereqCheckDeps: { isInstalled: () => true, version: () => '3.2.1' },
+          applyConfiguration: stubApply,
+        },
+      );
+    } finally {
+      process.chdir(originalCwd);
+      process.exitCode = originalExit;
+      if (originalXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = originalXdg;
+      console.log = originalLog;
+    }
+    assert.equal(stdout.length, 1, `expected one stdout write, got: ${stdout.join(' | ')}`);
+    return JSON.parse(stdout[0]);
+  }
+
+  const fixture = () => {
+    const dir = fs.realpathSync(tempDir('agentenv-setup-json-'));
+    saveConfig(
+      { ...DEFAULT_CONFIG, agents: { claude_code: true } },
+      path.join(dir, 'agentenv.toml'),
+    );
+    return { dir, xdgDir: tempDir('agentenv-setup-json-xdg-') };
+  };
+
+  it("carries the config path and base dir like apply --json, with apply's own messages", async () => {
+    const f = fixture();
+    const doc = await runJson(
+      {},
+      async () => ({ success: true, messages: ['Tools: wrote mise.toml'], errors: [] }),
+      f,
+    );
+    assert.equal(doc.configPath, path.join(f.dir, 'agentenv.toml'));
+    assert.equal(doc.baseDir, f.dir);
+    assert.ok(Array.isArray(doc.warnings));
+    assert.ok((doc.messages as string[]).includes('Tools: wrote mise.toml'));
+  });
+
+  it('reports apply failures as plain errors, without the glyph or the result box', async () => {
+    const f = fixture();
+    const doc = await runJson(
+      {},
+      async () => ({ success: false, messages: [], errors: ['Tier 0: boom'] }),
+      f,
+    );
+    assert.equal(doc.success, false);
+    assert.deepEqual(doc.errors, ['Tier 0: boom']);
+    const all = JSON.stringify(doc);
+    assert.doesNotMatch(all, /\[FAIL\]|✗|┌|Setup failed/);
+  });
+
+  it('routes warnings such as ignored flags into warnings, not messages', async () => {
+    const f = fixture();
+    const doc = await runJson(
+      { agents: 'codex_cli' },
+      async () => ({ success: true, messages: [], errors: [] }),
+      f,
+    );
+    assert.ok((doc.warnings as string[]).some((w) => w.includes('--agents')));
+    assert.ok(!(doc.messages as string[]).some((m) => m.includes('ignoring')));
   });
 });

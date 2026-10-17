@@ -10,6 +10,8 @@ export interface AdapterConfig {
   enabled: boolean;
   baseDir: string;
   rtkEnabled?: boolean;
+  /** The config scope being applied; project-only rtk wiring is skipped in `user` scope. */
+  scope?: 'project' | 'user';
   /** Injectable `rtk init` runner; defaults to the real rtk binary. */
   rtkInit?: RtkInitFn;
   /**

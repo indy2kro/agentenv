@@ -19,7 +19,6 @@ export interface IntegrationAgentState {
 export interface IntegrationResult {
   name: string;
   source?: string;
-  ref?: string;
   scope: 'project' | 'user';
   agents: IntegrationAgentState[];
   changedFiles: string[];

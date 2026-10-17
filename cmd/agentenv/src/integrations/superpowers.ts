@@ -1,8 +1,9 @@
 /**
  * Superpowers Integration Adapter
- * Installs github:obra/superpowers for Claude Code only, via `claude plugin
- * marketplace add` / `claude plugin install` — the only agent with a
- * documented, non-interactive, ref-pinnable installer. See
+ * Installs Superpowers (github:obra/superpowers) for Claude Code only, via
+ * `claude plugin install superpowers@claude-plugins-official` — the only agent
+ * with a documented, non-interactive installer. The configured `ref` is
+ * recorded but not enforced: the official marketplace cannot pin one. See
  * docs/research/superpowers-install-mechanisms.md for the other three
  * agents, which always report `unsupported` and never execute a command.
  */
@@ -17,7 +18,14 @@ import type { AgentKey, IntegrationConfig } from '../config/schema.js';
 import type { IntegrationAdapter, IntegrationAgentState, IntegrationResult } from './base.js';
 
 export const SUPERPOWERS_MARKETPLACE_REPO = 'obra/superpowers-marketplace';
-export const SUPERPOWERS_PLUGIN_ID = 'superpowers@superpowers-marketplace';
+/**
+ * Superpowers from Claude Code's built-in official marketplace: a plain
+ * `claude plugin install` with no `marketplace add`. The third-party
+ * obra/superpowers-marketplace repo this used to add (at `#<ref>`) has no tag
+ * or branch for the plugin's ref, so that command failed with "Remote branch
+ * v6.3.0 not found". The official marketplace cannot pin a ref.
+ */
+export const SUPERPOWERS_PLUGIN_ID = 'superpowers@claude-plugins-official';
 
 const MANUAL_INSTALL_HINTS: Partial<Record<AgentKey, string>> = {
   codex_cli:
@@ -90,7 +98,6 @@ export interface SuperpowersAdapterDeps {
 }
 
 interface SuperpowersMarker {
-  ref: string;
   scope: 'project' | 'user';
   installedAt: string;
 }
@@ -140,10 +147,7 @@ export class SuperpowersAdapter implements IntegrationAdapter {
     this.fsImpl.writeFileSync(file, JSON.stringify(marker, null, 2));
   }
 
-  private detectClaudeCode(
-    baseDir: string,
-    config: IntegrationConfig | undefined,
-  ): IntegrationAgentState {
+  private detectClaudeCode(baseDir: string): IntegrationAgentState {
     const list = this.runClaudeCli(['plugin', 'list'], baseDir);
     if (!list.success && list.exitCode === null) {
       // Spawn failure with no exit code means the `claude` binary itself is
@@ -165,18 +169,10 @@ export class SuperpowersAdapter implements IntegrationAdapter {
     if (!installed) return { agent: 'claude_code', state: 'missing' };
 
     const marker = this.readMarker(baseDir);
-    const requestedRef = config?.ref;
-    if (marker && requestedRef && marker.ref !== requestedRef) {
-      return {
-        agent: 'claude_code',
-        state: 'drifted',
-        detail: `installed at ${marker.ref}, config requests ${requestedRef}`,
-      };
-    }
     return {
       agent: 'claude_code',
       state: 'installed',
-      detail: marker ? `ref ${marker.ref}` : 'installed outside agentenv',
+      detail: marker ? 'installed by agentenv' : 'installed outside agentenv',
     };
   }
 
@@ -188,7 +184,6 @@ export class SuperpowersAdapter implements IntegrationAdapter {
     const result: IntegrationResult = {
       name: this.getName(),
       source: config?.source,
-      ref: config?.ref,
       scope,
       agents: [],
       changedFiles: [],
@@ -202,7 +197,7 @@ export class SuperpowersAdapter implements IntegrationAdapter {
         result.agents.push({ agent, state: 'unsupported', detail: MANUAL_INSTALL_HINTS[agent] });
         continue;
       }
-      result.agents.push(this.detectClaudeCode(baseDir, config));
+      result.agents.push(this.detectClaudeCode(baseDir));
     }
     return result;
   }
@@ -215,9 +210,8 @@ export class SuperpowersAdapter implements IntegrationAdapter {
     const detected = await this.detect(baseDir, config);
     if (!this.isEnabled(config)) return detected;
 
-    const ref = config?.ref;
-    if (!ref || !config?.source) {
-      detected.errors.push('integrations.superpowers.source and .ref must be set to apply');
+    if (!config?.source) {
+      detected.errors.push('integrations.superpowers.source must be set to apply');
       return detected;
     }
 
@@ -233,22 +227,6 @@ export class SuperpowersAdapter implements IntegrationAdapter {
 
       if (agentState.state === 'installed') continue;
 
-      const wasDrifted = agentState.state === 'drifted';
-      const marketplaceArgs = [
-        'plugin',
-        'marketplace',
-        'add',
-        `${SUPERPOWERS_MARKETPLACE_REPO}#${ref}`,
-      ];
-      const marketplaceRun = this.runClaudeCli(marketplaceArgs, baseDir);
-      detected.nativeCommands.push(`claude ${marketplaceArgs.join(' ')}`);
-      if (!marketplaceRun.success) {
-        detected.errors.push(
-          `claude plugin marketplace add failed: ${marketplaceRun.stderr || marketplaceRun.stdout}`,
-        );
-        continue;
-      }
-
       const installArgs = ['plugin', 'install', SUPERPOWERS_PLUGIN_ID, '--scope', detected.scope];
       const installRun = this.runClaudeCli(installArgs, baseDir);
       detected.nativeCommands.push(`claude ${installArgs.join(' ')}`);
@@ -260,14 +238,13 @@ export class SuperpowersAdapter implements IntegrationAdapter {
       }
 
       const marker: SuperpowersMarker = {
-        ref,
         scope: detected.scope,
         installedAt: new Date().toISOString(),
       };
       this.writeMarker(baseDir, marker);
       detected.changedFiles.push(this.markerPath(baseDir));
       agentState.state = 'installed';
-      agentState.detail = wasDrifted ? `updated to ref ${ref}` : `ref ${ref}`;
+      agentState.detail = 'installed from the official marketplace';
     }
 
     if (config.allow_external_requests !== true) {

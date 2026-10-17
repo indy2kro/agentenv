@@ -19,7 +19,13 @@ import {
   validateConfig,
 } from '../config/schema.js';
 import type { AgentKey } from '../config/schema.js';
-import { findConfigPath, userConfigDir } from '../config/scopes.js';
+import {
+  findConfigPath,
+  findConfigPathInScope,
+  parseScopeFlag,
+  userConfigDir,
+} from '../config/scopes.js';
+import type { ScopeValue } from '../config/scopes.js';
 import {
   bashExecutable,
   checkAgentShellConfiguration,
@@ -37,13 +43,17 @@ import {
   getShimsDirValue,
   isMiseInstalled,
   miseGlobalConfigPath,
+  miseTomlPathFor,
   miseInstallInstructions,
   PINNED_TOOL_VERSIONS,
   shimsDir,
   shimsDirOnPath,
+  findShadowedShims,
   toolAvailabilityClassification,
 } from '../toolchain/mise.js';
 import { checkRtkInstallation } from '../toolchain/rtk.js';
+import { requestedInstructionFiles } from '../generate/agentsmd.js';
+import { userScopeInstructionFiles } from './apply.js';
 
 export type DoctorStatus = 'ok' | 'warn' | 'fail';
 
@@ -51,6 +61,8 @@ export interface DoctorItem {
   status: DoctorStatus;
   label: string;
   detail: string;
+  /** A command that fixes this item, for scripts and agents; absent when there isn't one. */
+  fix?: string;
 }
 
 export interface DoctorSection {
@@ -153,6 +165,7 @@ export interface GatherDoctorDeps {
   miseGlobalConfigPath?: typeof miseGlobalConfigPath;
   shimsDir?: typeof shimsDir;
   shimsDirOnPath?: typeof shimsDirOnPath;
+  findShadowedShims?: typeof findShadowedShims;
   findConfigPath?: typeof findConfigPath;
   userConfigDir?: typeof userConfigDir;
   loadConfig?: typeof loadConfig;
@@ -260,6 +273,11 @@ export function agentShellItem(
   return { status: 'ok', label, detail: info.shell };
 }
 
+/** The deps that make `doctor --scope <scope>` inspect that scope; none without a scope. */
+export function scopedDoctorDeps(scope: ScopeValue | undefined): GatherDoctorDeps {
+  return scope ? { findConfigPath: () => findConfigPathInScope(scope) } : {};
+}
+
 export function gatherDoctor(sectionFilter?: string, deps: GatherDoctorDeps = {}): DoctorSection[] {
   const detectShellFn = deps.detectShell ?? detectShell;
   const existsSync = deps.existsSync ?? fs.existsSync;
@@ -269,6 +287,7 @@ export function gatherDoctor(sectionFilter?: string, deps: GatherDoctorDeps = {}
   const miseGlobalConfigPathFn = deps.miseGlobalConfigPath ?? miseGlobalConfigPath;
   const shimsDirFn = deps.shimsDir ?? shimsDir;
   const shimsDirOnPathFn = deps.shimsDirOnPath ?? shimsDirOnPath;
+  const findShadowedShimsFn = deps.findShadowedShims ?? findShadowedShims;
   const findConfigPathFn = deps.findConfigPath ?? findConfigPath;
   const userConfigDirFn = deps.userConfigDir ?? userConfigDir;
   const loadConfigFn = deps.loadConfig ?? loadConfig;
@@ -339,6 +358,7 @@ export function gatherDoctor(sectionFilter?: string, deps: GatherDoctorDeps = {}
       status: 'fail',
       label: 'shims_dir',
       detail: `not set to ${shimsDirFn()} in ${globalConfigPath} — run \`agentenv apply\``,
+      fix: 'agentenv apply',
     });
   }
   miseItems.push({
@@ -417,16 +437,34 @@ export function gatherDoctor(sectionFilter?: string, deps: GatherDoctorDeps = {}
         item.status = 'warn';
         item.detail = 'installed via mise; open a new terminal';
       } else if (status === 'manual') {
-        item.status = 'warn';
-        item.detail = 'not managed by mise; install manually';
+        // Not actionable by agentenv (e.g. tokei, or rga/jless on Windows), so it
+        // must not keep the whole report at 'warn' forever.
+        item.detail = 'not managed by mise; install manually if you want it';
       } else if (status === 'missing') {
         item.status = 'fail';
         item.detail =
           scope === 'user'
             ? 'not on PATH — run `agentenv apply --scope user`'
             : 'not on PATH — run `mise install` in this project';
+        item.fix = scope === 'user' ? 'agentenv apply --scope user' : 'agentenv apply';
       }
       toolItems.push(item);
+    }
+    // mise's own `doctor` warns about this; without it every tool above can read
+    // [ok] while the agent actually runs a different copy of it.
+    const shadowed = findShadowedShimsFn(
+      enabledTools.map((key) => BINARY_MAP[key]),
+      { pathEnv: process.env.PATH ?? '', shimsDir: shimsDirFn() },
+    );
+    if (shadowed.length > 0) {
+      const shown = shadowed.slice(0, 5).map((s) => `${s.binary} → ${s.shadowedBy}`);
+      const more =
+        shadowed.length > shown.length ? `, +${shadowed.length - shown.length} more` : '';
+      toolItems.push({
+        status: 'warn',
+        label: 'PATH order',
+        detail: `${shadowed.length} tool(s) resolve to another copy before the mise shims: ${shown.join('; ')}${more} — move ${shimsDirFn()} earlier in PATH`,
+      });
     }
   }
   sections.push({
@@ -451,6 +489,7 @@ export function gatherDoctor(sectionFilter?: string, deps: GatherDoctorDeps = {}
           status: 'fail',
           label: 'rtk',
           detail: 'not found via `mise which rtk` or on PATH — run `agentenv apply`',
+          fix: 'agentenv apply',
         });
       } else {
         rtkItems.push({ status: 'ok', label: 'rtk', detail: rtkInfo.resolvedPath });
@@ -507,6 +546,73 @@ export function gatherDoctor(sectionFilter?: string, deps: GatherDoctorDeps = {}
         : [{ status: 'warn', label: 'none', detail: 'no agents enabled' }],
   });
 
+  // Generated files — what `apply` wrote and agents actually read. `status`
+  // reports the same drift; agents are pointed at `doctor --json`, so it has
+  // to see a stripped managed block or a missing custom binary too.
+  const baseDir = config.scope === 'user' ? userConfigDirFn() : path.dirname(configPath);
+  const applyFix = config.scope === 'user' ? 'agentenv apply --scope user' : 'agentenv apply';
+  const marker = config.generate?.marker_start ?? '<!-- agentenv-managed-start -->';
+  const generated: Array<{ label: string; file: string; managed: boolean }> = [
+    { label: 'mise.toml', file: miseTomlPathFor(config.scope, baseDir), managed: false },
+    ...requestedInstructionFiles(config).map((name) => ({
+      label: name,
+      file: path.join(baseDir, name),
+      managed: true,
+    })),
+    ...userScopeInstructionFiles(config, baseDir, {}).map((entry) => ({
+      label: entry.path,
+      file: entry.path,
+      managed: true,
+    })),
+  ];
+  sections.push({
+    title: `Generated files (${generated.length})`,
+    items: generated.map(({ label, file, managed }): DoctorItem => {
+      if (!existsSync(file)) {
+        return { status: 'warn', label, detail: `missing — run \`${applyFix}\``, fix: applyFix };
+      }
+      let content = '';
+      try {
+        content = String(readFileSync(file, 'utf-8'));
+      } catch {
+        // Unreadable counts as having no managed block below.
+      }
+      if (managed && !content.includes(marker)) {
+        return {
+          status: 'warn',
+          label,
+          detail: `present but has no agentenv managed block — run \`${applyFix}\``,
+          fix: applyFix,
+        };
+      }
+      return { status: 'ok', label, detail: file };
+    }),
+  });
+
+  const installedCustom = (config.custom_tools ?? []).filter((tool) => tool.already_installed);
+  if (installedCustom.length > 0) {
+    sections.push({
+      title: `Custom tools (${installedCustom.length})`,
+      items: installedCustom.map((tool): DoctorItem => {
+        const where =
+          platform === 'win32'
+            ? tool.path_windows
+            : platform === 'darwin'
+              ? tool.path_macos
+              : tool.path_linux;
+        return where && existsSync(where)
+          ? { status: 'ok', label: tool.name, detail: where }
+          : {
+              status: 'warn',
+              label: tool.name,
+              detail: where
+                ? `not found at ${where}`
+                : `no path configured for ${platform}; set path_${platform === 'win32' ? 'windows' : platform === 'darwin' ? 'macos' : 'linux'}`,
+            };
+      }),
+    });
+  }
+
   return sections;
 }
 
@@ -544,11 +650,17 @@ export const doctorCommand = new Command()
     '--section <index|name>',
     'only run one report section (1-based section index or title prefix)',
   )
-  .action((options: { json?: boolean; section?: string }, command: Command) => {
+  .option('--scope <scope>', 'config scope to inspect: project|user (default: nearest config)')
+  .action((options: { json?: boolean; section?: string; scope?: ScopeValue }, command: Command) => {
+    const scope = parseScopeFlag(options.scope);
+    if (scope.error) {
+      command.error(scope.error);
+      return;
+    }
     const json = options.json === true;
     if (json) setQuietEnabled(true);
 
-    const gathered = gatherDoctor(options.section);
+    const gathered = gatherDoctor(options.section, scopedDoctorDeps(scope.scope));
     const sections =
       options.section === undefined ? gathered : filterDoctorSections(gathered, options.section);
     if (sections === undefined) {

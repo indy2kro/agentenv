@@ -93,8 +93,9 @@ agentenv apply --skip-mise-install
 | `--scope <project\|user>` | Config scope (default `project`). |
 | `--no-tier2` | Skip Tier 2 tools. |
 | `--no-rtk` | Disable rtk command rewriting. |
-| `--superpowers [ref]` | Enable Superpowers; optional tag/branch/commit ref (e.g. `--superpowers v6.3.0`). |
+| `--superpowers` | Enable Superpowers (installed from the official Claude Code marketplace). |
 | `--config <path>` | Apply an existing `agentenv.toml` at that path. |
+| `--json` | One JSON document on stdout, in the same shape as `apply --json`: `success`, `configPath`, `baseDir`, `messages`, `errors`, `warnings`. `configPath`/`baseDir` are `null` when setup stopped before applying. |
 
 ## Commands
 
@@ -119,7 +120,8 @@ The single pipeline all of `setup`/`configure`/`apply` funnel into. Reads
 | Flag | Meaning |
 |---|---|
 | `--skip-mise-install` | Generate files only — no `mise install`, no verification. For CI dry-runs or when mise isn't available. |
-| `--dry-run` | Show what would be written/changed without changing anything: `mise.toml` and each generated file's `[create]`/`[update]`/`[unchanged]` status, plus the per-agent Tier 0 plan on Windows. |
+| `--only <steps>` | Run just some parts, comma-separated: `files` (`mise.toml` + `AGENTS.md`/`CLAUDE.md`), `tools` (declare + `mise install` + verify), `agents` (Tier 0, per-agent wiring, integrations). E.g. `apply --only files` regenerates the instructions without installing anything or touching `~/.claude`, `~/.cursor`, … An unknown step is a usage error (exit `2`). `--dry-run` still shows the whole plan. |
+| `--dry-run` | Show what would be written/changed without changing anything: `mise.toml` and each generated file's `[create]`/`[update]`/`[unchanged]` status, plus the per-agent Tier 0 plan on Windows, and the main file each wired agent will write (`agentFiles` in `--json`) with the ones outside the project flagged, since most agents are wired through files in your home directory. |
 | `--shell-fix <mode>` | Override `[tier0].mode` for this run: `auto` (default; the Windows shell fix only writes files with a TTY), `always` (write even without one — pass this when an AI agent runs `apply`, which never has a TTY), or `never`. |
 | `--scope <scope>` | config scope to apply: `project`\|`user` (default: nearest config), matching `update`/`uninstall`/`setup`. |
 | `--fix-path` | Windows only, opt-in: add the mise shims directory to your *user* PATH (persistent; open a new terminal afterwards). Idempotent. |
@@ -145,6 +147,7 @@ plus the Tier 0 shell block, `gh` auth, and any integrations.
 agentenv status           # full human report
 agentenv status --short   # one line per area
 agentenv status --json    # one JSON document on stdout (machine-readable)
+agentenv status --scope user  # inspect the user-scope config even from inside a project
 ```
 
 Tool markers match what `apply`'s verify step prints:
@@ -172,6 +175,7 @@ config also shows up as `[fail]` — but `doctor` never changes anything.
 agentenv doctor                 # full report
 agentenv doctor --json          # machine-readable
 agentenv doctor --section Tools # only the Tools section (index or prefix)
+agentenv doctor --scope user    # diagnose the user-scope config (project|user)
 ```
 
 Each item is `[ok]` / `[warn]` / `[fail]`. A manual-install tool is `[warn]`
@@ -188,8 +192,10 @@ agentenv update            # mise self-update + mise up for enabled tools
 agentenv update --self     # only the mise binary
 agentenv update --tools    # only the tools
 agentenv update --scope project|user
-agentenv update --dry-run  # plan only (alias: --check)
-agentenv update --watch    # watch mise.toml and auto-run mise up on change
+agentenv update --dry-run  # plan only (alias: --check); lists which tools actually have a newer
+                           # version (`outdated` in --json). Exit stays 0: it reports, it does not gate.
+agentenv update --watch    # re-apply files + tools when agentenv.toml changes (agent wiring is left
+                           # alone), and run mise up when mise.toml is edited
 agentenv update --json     # one JSON document ({success, messages, errors, elapsedMs}); not with --watch
 ```
 
@@ -237,6 +243,7 @@ names. An item already at the target value is a silent no-op.
 
 ```sh
 agentenv add jq claude_code           # enable, then apply
+agentenv add jq@1.7.1                 # enable and pin to that version ([tool_versions]); tools only
 agentenv remove tokei                 # disable, then apply
 agentenv add jq --dry-run             # preview the change, apply nothing
 agentenv add jq --no-apply            # save the change without applying

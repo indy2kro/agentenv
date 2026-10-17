@@ -7,6 +7,7 @@ import type { AgentKey, AgentenvConfig } from '../config/schema.js';
 import { configFilePath, findConfigPath, parseScopeFlag } from '../config/scopes.js';
 import type { ScopeValue } from '../config/scopes.js';
 import { applyConfiguration } from './apply.js';
+import type { ApplyResult } from './apply.js';
 import { runConfigWizard } from './wizard.js';
 import { AGENT_OPTIONS, buildDefaultSimpleConfig, parseAgentsInput } from '../wizard/build.js';
 import {
@@ -68,6 +69,11 @@ export interface SaveAndApplyDeps {
   persistConfig?: AgentenvConfig | null;
   /** JSON mode: don't stream raw mise output onto stdout (it would corrupt the document). */
   json?: boolean;
+  /**
+   * JSON mode: receives apply's structured result (and the config file it ran
+   * against) instead of the human message list and result box being printed.
+   */
+  onApplied?: (result: ApplyResult, file: string) => void;
 }
 
 /**
@@ -124,6 +130,11 @@ export async function saveAndApply(
           },
     }),
   );
+  if (deps.json) {
+    deps.onApplied?.(result, file);
+    if (!result.success) process.exitCode = 1;
+    return;
+  }
   printMessages(result.messages, result.errors, result.timeline);
   const elapsedMs = deps.startedAt === undefined ? result.elapsedMs : Date.now() - deps.startedAt;
   if (!result.success) {
@@ -142,7 +153,7 @@ interface SetupCommandOptions {
   tier2?: boolean;
   rtk?: boolean;
   config?: string;
-  superpowers?: string | boolean;
+  superpowers?: boolean;
   json?: boolean;
 }
 
@@ -286,17 +297,11 @@ export async function unattendedSetup(
 
       const includeTier2 = options.tier2 !== false;
       const rtkEnabled = options.rtk !== false;
-      // A bare `--superpowers` arrives as `true`: enabled, at the default ref ('').
-      const superpowersRef =
-        options.superpowers === undefined
-          ? undefined
-          : typeof options.superpowers === 'string'
-            ? options.superpowers
-            : '';
-      config = buildDefaultSimpleConfig(agents, includeTier2, rtkEnabled, scope, superpowersRef);
+      const superpowers = options.superpowers === true;
+      config = buildDefaultSimpleConfig(agents, includeTier2, rtkEnabled, scope, superpowers);
       console.log(
         `Defaults: agents ${agents.join(', ')}, Tier 2 tools ${includeTier2 ? 'on' : 'off'}, rtk ${rtkEnabled ? 'on' : 'off'}, Superpowers ${
-          superpowersRef === undefined ? 'off' : `on (ref ${superpowersRef || 'default'})`
+          superpowers ? 'on' : 'off'
         }`,
       );
     }
@@ -320,28 +325,48 @@ export async function unattendedSetupJson(
 ): Promise<void> {
   setQuietEnabled(true);
   setColorEnabled(false);
-  const messages: string[] = [];
-  const errors: string[] = [];
+  // Notes the flow prints before/around apply, warnings (e.g. ignored flags),
+  // and errors from steps that stop before apply ever runs (bad config, no
+  // agents). Apply's own messages/errors come from its structured result.
+  const notes: string[] = [];
+  const warnings: string[] = [];
+  const earlyErrors: string[] = [];
   const original = { log: console.log, warn: console.warn, error: console.error };
   const capture = (sink: string[]) => (message?: unknown) => {
     for (const line of String(message ?? '').split(/\r?\n/)) {
       if (line.trim() !== '') sink.push(line);
     }
   };
-  console.log = capture(messages);
-  console.warn = capture(messages);
-  console.error = capture(errors);
+  console.log = capture(notes);
+  console.warn = capture(warnings);
+  console.error = capture(earlyErrors);
   const priorExitCode = process.exitCode;
   process.exitCode = undefined;
+  let applied: { result: ApplyResult; file: string } | undefined;
   try {
-    await unattendedSetup(options, { ...deps, json: true });
+    await unattendedSetup(options, {
+      ...deps,
+      json: true,
+      onApplied: (result, file) => {
+        applied = { result, file };
+        deps.onApplied?.(result, file);
+      },
+    });
   } finally {
     console.log = original.log;
     console.warn = original.warn;
     console.error = original.error;
   }
   const failed = process.exitCode !== undefined && process.exitCode !== 0;
-  printJson({ success: !failed, messages, errors });
+  printJson({
+    success: !failed,
+    configPath: applied?.file ?? null,
+    baseDir: applied ? path.dirname(applied.file) : null,
+    messages: [...notes, ...(applied?.result.messages ?? [])],
+    errors: [...earlyErrors, ...(applied?.result.errors ?? [])],
+    warnings,
+    ...(applied?.result.elapsedMs === undefined ? {} : { elapsedMs: applied.result.elapsedMs }),
+  });
   if (!failed) process.exitCode = priorExitCode;
 }
 
@@ -360,8 +385,8 @@ export const setupCommand = new Command()
   .option('--no-tier2', 'skip Tier 2 tools (unattended)')
   .option('--no-rtk', 'disable rtk command rewriting (unattended)')
   .option(
-    '--superpowers [ref]',
-    'enable the Superpowers integration (unattended); optional github tag/branch/commit ref',
+    '--superpowers',
+    'enable the Superpowers integration (unattended); installed from the official Claude Code marketplace',
   )
   .option('--config <path>', 'path to an existing agentenv.toml to apply (unattended)')
   .option('--json', 'emit one machine-readable JSON document on stdout (requires --yes)')

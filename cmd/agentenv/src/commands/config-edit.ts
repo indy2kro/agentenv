@@ -32,12 +32,22 @@ export function classifyConfigKey(name: string): ConfigEditKind | undefined {
   return undefined;
 }
 
-export interface ConfigEditChange {
+export interface ConfigEditToggle {
   kind: ConfigEditKind;
   key: string;
   from: boolean;
   to: boolean;
 }
+
+/** A `tool@version` pin written to `[tool_versions]`. */
+export interface ConfigEditPin {
+  kind: 'pin';
+  key: string;
+  from: string | null;
+  to: string;
+}
+
+export type ConfigEditChange = ConfigEditToggle | ConfigEditPin;
 
 export interface ConfigEditPlan {
   changes: ConfigEditChange[];
@@ -59,12 +69,23 @@ export function planConfigEdit(
   const unknown: string[] = [];
   const seen = new Set<string>();
   for (const raw of items) {
-    const name = raw.trim();
-    if (!name || seen.has(name)) continue;
-    seen.add(name);
+    const item = raw.trim();
+    if (!item || seen.has(item)) continue;
+    seen.add(item);
+    // `tool@version` enables the tool (if needed) and pins it; only `add`, only tools.
+    const at = item.indexOf('@');
+    const name = at < 0 ? item : item.slice(0, at);
+    const version = at < 0 ? undefined : item.slice(at + 1).trim();
     const kind = classifyConfigKey(name);
-    if (!kind) {
-      unknown.push(name);
+    if (!kind || (version !== undefined && (!enable || kind !== 'tool' || version === ''))) {
+      unknown.push(item);
+      continue;
+    }
+    if (version !== undefined) {
+      const pinned = config.tool_versions?.[name] ?? null;
+      const enabled = (config.tools as Record<string, boolean> | undefined)?.[name] ?? false;
+      if (!enabled) changes.push({ kind: 'tool', key: name, from: false, to: true });
+      if (pinned !== version) changes.push({ kind: 'pin', key: name, from: pinned, to: version });
       continue;
     }
     const current =
@@ -85,6 +106,10 @@ export function applyConfigEdit(config: AgentenvConfig, plan: ConfigEditPlan): A
     tools: { ...config.tools },
   };
   for (const change of plan.changes) {
+    if (change.kind === 'pin') {
+      next.tool_versions = { ...next.tool_versions, [change.key]: change.to };
+      continue;
+    }
     const bucket = (change.kind === 'agent' ? next.agents : next.tools) as Record<string, boolean>;
     bucket[change.key] = change.to;
   }
@@ -92,6 +117,8 @@ export function applyConfigEdit(config: AgentenvConfig, plan: ConfigEditPlan): A
 }
 
 function changeLine(change: ConfigEditChange): string {
+  if (change.kind === 'pin')
+    return `  pin ${change.key}: ${change.from ?? 'unpinned'} -> ${change.to}`;
   return `  ${change.kind} ${change.key}: ${change.from} -> ${change.to}`;
 }
 
@@ -268,7 +295,10 @@ export const addCommand = registerConfigEditFlags(
   new Command()
     .name('add')
     .description('Enable tool(s)/agent(s) in agentenv.toml, then apply (unless --no-apply)')
-    .argument('<items...>', 'tool or agent config keys to enable (e.g. ripgrep, claude_code)'),
+    .argument(
+      '<items...>',
+      'tool or agent config keys to enable (e.g. ripgrep, claude_code); tool@version also pins it (e.g. jq@1.7.1)',
+    ),
 ).action((items: string[], options: ConfigEditOptions, command: Command) => {
   const scope = parseScopeFlag(options.scope);
   if (scope.error) {

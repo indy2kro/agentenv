@@ -18,10 +18,12 @@ import {
   classifyToolResolvability,
   detectEulaPrompt,
   eulaPreflightHint,
+  findShadowedShims,
   miseActivationHint,
   miseGlobalConfigDir,
   miseGlobalConfigPath,
   miseTomlPathFor,
+  parseOutdated,
   miseInstallInstructions,
   miseInstallOutcome,
   miseSpawnOptions,
@@ -768,5 +770,107 @@ describe('summarizeMiseFailures', () => {
       ['jq@1 — boom'],
     );
     assert.deepEqual(summarizeMiseFailures('mise ✓ jq@1.8.2  1.0s'), []);
+  });
+});
+
+describe('findShadowedShims', () => {
+  const winPath = [
+    String.raw`C:\Windows\system32`,
+    String.raw`C:\Users\me\AppData\Local\Microsoft\WinGet\Links`,
+    String.raw`C:\Program Files\php85`,
+    String.raw`C:\Users\me\.local\bin`,
+  ].join(';');
+  const present = new Set([
+    String.raw`C:\Users\me\AppData\Local\Microsoft\WinGet\Links\jq.exe`,
+    String.raw`C:\Program Files\php85\rg.exe`,
+    String.raw`C:\Users\me\.local\bin\fd.exe`,
+  ]);
+  const exists = (file: string): boolean => present.has(file);
+
+  it('reports a binary whose first PATH hit comes before the shims dir', () => {
+    const shadowed = findShadowedShims(['jq', 'rg', 'fd', 'bat'], {
+      pathEnv: winPath,
+      shimsDir: String.raw`C:\Users\me\.local\bin`,
+      platform: 'win32',
+      exists,
+    });
+    assert.deepEqual(shadowed, [
+      {
+        binary: 'jq',
+        shadowedBy: String.raw`C:\Users\me\AppData\Local\Microsoft\WinGet\Links\jq.exe`,
+      },
+      { binary: 'rg', shadowedBy: String.raw`C:\Program Files\php85\rg.exe` },
+    ]);
+  });
+
+  it('matches the shims dir case-insensitively and with a trailing separator on Windows', () => {
+    const shadowed = findShadowedShims(['rg'], {
+      pathEnv: winPath.replace(
+        String.raw`C:\Users\me\.local\bin`,
+        String.raw`c:\users\ME\.local\bin` + '\\',
+      ),
+      shimsDir: String.raw`C:\Users\me\.local\bin`,
+      platform: 'win32',
+      exists,
+    });
+    assert.equal(shadowed.length, 1);
+  });
+
+  it('finds nothing when the shims dir is not on PATH (a different check owns that)', () => {
+    assert.deepEqual(
+      findShadowedShims(['jq'], {
+        pathEnv: String.raw`C:\Windows\system32`,
+        shimsDir: String.raw`C:\Users\me\.local\bin`,
+        platform: 'win32',
+        exists,
+      }),
+      [],
+    );
+  });
+
+  it('uses the POSIX delimiter and bare names off Windows', () => {
+    const shadowed = findShadowedShims(['jq'], {
+      pathEnv: '/usr/local/bin:/home/me/.local/bin',
+      shimsDir: '/home/me/.local/bin',
+      platform: 'linux',
+      exists: (file) => file === '/usr/local/bin/jq',
+    });
+    assert.deepEqual(shadowed, [{ binary: 'jq', shadowedBy: '/usr/local/bin/jq' }]);
+  });
+});
+
+describe('parseOutdated', () => {
+  const real = JSON.stringify({
+    direnv: {
+      name: 'direnv',
+      requested: 'latest',
+      current: '2.37.1',
+      bump: null,
+      latest: '2.38.2',
+    },
+    node: { name: 'node', requested: '24', current: '24.21.0', bump: null, latest: '24.22.0' },
+  });
+
+  it('reads mise outdated --json into tool/current/latest rows', () => {
+    assert.deepEqual(parseOutdated(real), [
+      { tool: 'direnv', current: '2.37.1', latest: '2.38.2' },
+      { tool: 'node', current: '24.21.0', latest: '24.22.0' },
+    ]);
+  });
+
+  it('treats an empty report as nothing outdated, and unreadable output as unknown', () => {
+    assert.deepEqual(parseOutdated('{}'), []);
+    assert.equal(parseOutdated(''), null);
+    assert.equal(parseOutdated('not json'), null);
+    assert.equal(parseOutdated('[1, 2]'), null);
+  });
+
+  it('skips entries that lack a current or latest version', () => {
+    assert.deepEqual(
+      parseOutdated(
+        JSON.stringify({ a: { name: 'a', latest: '2' }, b: { current: '1', latest: '2' } }),
+      ),
+      [{ tool: 'b', current: '1', latest: '2' }],
+    );
   });
 });

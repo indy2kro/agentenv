@@ -45,7 +45,6 @@ describe('integration rendering', () => {
     const result: IntegrationResult = {
       name: 'Superpowers',
       source: 'github:obra/superpowers',
-      ref: 'v6.3.0',
       scope: 'project',
       agents: [
         { agent: 'claude_code', state: 'installed', detail: 'ref v6.3.0' },

@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import * as os from 'os';
 import * as path from 'path';
 import {
   AGENT_CONFIG_FILES,
@@ -166,7 +167,6 @@ describe('computeStatusExitCode', () => {
       key: 'superpowers',
       enabled: true,
       source: null,
-      ref: null,
       scope: 'project',
       agents: [],
       states: [],
@@ -585,5 +585,124 @@ describe('renderStatus agent lines', () => {
       noLine.indexOf('configured:'),
       'configured column must align regardless of yes/no',
     );
+  });
+});
+
+describe('gatherStatus — user-scope instruction files', () => {
+  it("checks the per-agent files apply writes (e.g. Claude's own CLAUDE.md), not only the config dir copies", async () => {
+    const home = path.join(os.tmpdir(), 'agentenv-status-home');
+    const saved = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
+    const savedClaude = process.env.CLAUDE_CONFIG_DIR;
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    delete process.env.CLAUDE_CONFIG_DIR;
+    try {
+      const checked: string[] = [];
+      const report = await gatherStatus({
+        findConfigPath: () => path.join(home, '.config', 'agentenv', 'agentenv.toml'),
+        loadConfig: () =>
+          ({ ...noopConfig, scope: 'user', agents: { claude_code: true } }) as never,
+        resolveScopeDir: () => path.join(home, '.config', 'agentenv'),
+        validateConfig: () => ({ errors: [], warnings: [] }),
+        getEnabledAgents: () => ['claude_code'],
+        detectShell: () =>
+          ({
+            isWindows: false,
+            isPosixCompatible: true,
+            currentShell: 'bash',
+            missingUtilities: [],
+          }) as never,
+        isAgentInstalled: () => true,
+        fileExists: (file) => {
+          checked.push(file);
+          return true;
+        },
+        hasManagedMarker: () => true,
+      });
+
+      const claudeFile = path.join(home, '.claude', 'CLAUDE.md');
+      assert.ok(checked.includes(claudeFile), `expected ${claudeFile} among ${checked.join(', ')}`);
+      assert.ok(
+        report.generated.some(
+          (entry) => entry.label.endsWith('CLAUDE.md') && entry.label.includes('.claude'),
+        ),
+      );
+    } finally {
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      if (savedClaude !== undefined) process.env.CLAUDE_CONFIG_DIR = savedClaude;
+    }
+  });
+});
+
+describe('gatherStatus — fix commands on drift', () => {
+  const run = (scope: 'project' | 'user', installed: boolean) =>
+    gatherStatus({
+      findConfigPath: () => '/tmp/agentenv.toml',
+      loadConfig: () =>
+        ({ ...noopConfig, scope, agents: { claude_code: true }, rtk: { enabled: true } }) as never,
+      resolveScopeDir: () => '/tmp',
+      validateConfig: () => ({ errors: [], warnings: [] }),
+      getEnabledAgents: () => ['claude_code'],
+      detectShell: () =>
+        ({
+          isWindows: false,
+          isPosixCompatible: true,
+          currentShell: 'bash',
+          missingUtilities: [],
+        }) as never,
+      isAgentInstalled: () => installed,
+      fileExists: () => false,
+      hasManagedMarker: () => false,
+    });
+
+  it('tells a drifting entry which command fixes it, scope-aware', async () => {
+    const project = await run('project', true);
+    assert.equal(project.agents[0]?.drift, true);
+    assert.equal(project.agents[0]?.fix, 'agentenv apply');
+    assert.ok(project.generated.every((entry) => entry.fix === 'agentenv apply'));
+
+    const user = await run('user', true);
+    assert.equal(user.agents[0]?.fix, 'agentenv apply --scope user');
+  });
+
+  it('adds no fix to an entry that is not drifting', async () => {
+    const report = await run('project', false);
+    assert.equal(report.agents[0]?.drift, false);
+    assert.equal('fix' in (report.agents[0] ?? {}), false);
+  });
+});
+
+describe('gatherStatus — project-only rtk wiring in user scope', () => {
+  const run = (scope: 'project' | 'user') =>
+    gatherStatus({
+      findConfigPath: () => '/tmp/agentenv.toml',
+      loadConfig: () =>
+        ({ ...noopConfig, scope, agents: { codex_cli: true }, rtk: { enabled: true } }) as never,
+      resolveScopeDir: () => '/tmp',
+      validateConfig: () => ({ errors: [], warnings: [] }),
+      getEnabledAgents: () => ['codex_cli'],
+      detectShell: () =>
+        ({
+          isWindows: false,
+          isPosixCompatible: true,
+          currentShell: 'bash',
+          missingUtilities: [],
+        }) as never,
+      isAgentInstalled: () => true,
+      fileExists: () => false,
+      hasManagedMarker: () => true,
+    });
+
+  it('is not drift in user scope: apply deliberately skips that wiring there', async () => {
+    const report = await run('user');
+    assert.equal(report.agents[0]?.configured, false);
+    assert.equal(report.agents[0]?.drift, false);
+  });
+
+  it('is still drift in project scope', async () => {
+    assert.equal((await run('project')).agents[0]?.drift, true);
   });
 });

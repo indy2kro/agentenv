@@ -22,6 +22,16 @@ export interface RtkInitResult {
 export type RtkInitFn = (args: string[], cwd: string) => RtkInitResult;
 
 /** rtk init args per agent, verified against real `rtk init` in smoke:real. */
+/**
+ * The note for an agent whose `rtk init` only works inside a project (it writes
+ * RTK.md, .github/, .clinerules or .windsurfrules into the working directory).
+ * In user scope that directory is ~/.config/agentenv, which no agent reads, so
+ * the init is skipped instead of litter being written there.
+ */
+export function projectOnlyRtkSkipMessage(label: string): string {
+  return `${label}: rtk wiring only works inside a project (rtk has no global install for it), so it was skipped in user scope; run \`agentenv apply\` in a project to set it up`;
+}
+
 export const RTK_INIT_FLAGS: Record<string, string[]> = {
   claude_code: ['--claude'],
   codex_cli: ['--codex'],
