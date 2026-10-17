@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { EventEmitter } from 'node:events';
+import { Readable } from 'node:stream';
 import {
   ensureDirOnWindowsUserPath,
   MISE_TOOL_NAMES,
@@ -25,6 +27,7 @@ import {
   miseSpawnOptions,
   pathContainsDir,
   platformUnsupportedHint,
+  runMiseUpgrade,
   shimsDir,
   shimsDirOnPath,
   trustMiseToml,
@@ -689,5 +692,53 @@ describe('ensureDirOnWindowsUserPath', () => {
     }));
     assert.equal(result.success, false);
     assert.match(result.message, /access denied/);
+  });
+});
+
+describe('runMiseUpgrade', () => {
+  /** A fake `mise up` child that emits the given chunks, then closes with `code`. */
+  function fakeSpawn(chunks: string[], code: number | null, record: string[][] = []) {
+    return ((_cmd: string, args: readonly string[]) => {
+      record.push([...args]);
+      const child = new EventEmitter() as EventEmitter & { stdout: Readable; stderr: Readable };
+      child.stdout = new Readable({ read() {} });
+      child.stderr = new Readable({ read() {} });
+      setImmediate(() => {
+        for (const chunk of chunks) child.stdout.push(chunk);
+        child.stdout.push(null);
+        child.stderr.push(null);
+        setImmediate(() => child.emit('close', code));
+      });
+      return child;
+    }) as unknown as typeof import('node:child_process').spawn;
+  }
+
+  it('streams mise output as it arrives and returns the collected result', async () => {
+    const seen: string[] = [];
+    const calls: string[][] = [];
+    const result = await runMiseUpgrade(
+      ['jq', 'fd'],
+      '.',
+      (chunk) => seen.push(chunk),
+      fakeSpawn(['upgrading jq\n', 'upgrading fd\n'], 0, calls),
+    );
+
+    assert.deepEqual(calls, [['up', 'jq', 'fd']]);
+    assert.deepEqual(seen, ['upgrading jq\n', 'upgrading fd\n']);
+    assert.equal(result.success, true);
+    assert.equal(result.stdout, 'upgrading jq\nupgrading fd\n');
+    assert.equal(result.exitCode, 0);
+  });
+
+  it('reports a non-zero exit as a failure with its code', async () => {
+    const result = await runMiseUpgrade(['jq'], '.', undefined, fakeSpawn([], 3));
+    assert.equal(result.success, false);
+    assert.equal(result.exitCode, 3);
+  });
+
+  it('has no fixed time limit, so a slow but working upgrade is not killed at 2 minutes', () => {
+    const source = fs.readFileSync(path.join(import.meta.dirname, 'mise.js'), 'utf-8');
+    const body = source.slice(source.indexOf('async function runMiseUpgrade'));
+    assert.doesNotMatch(body.slice(0, body.indexOf('\n}\n')), /timeout:\s*120000/);
   });
 });

@@ -218,9 +218,23 @@ export async function doUpdate(
       } else {
         log(`  mise up ${targets.join(' ')}${dryRun ? ' (would run)' : ''}`);
         if (!dryRun) {
-          const upgrade = await runMiseUpgradeFn(targets, scopeDir);
+          // Human mode shows mise's own progress live (it can run for minutes);
+          // --json collects everything into the one document instead.
+          let streamed = false;
+          const upgrade = await runMiseUpgradeFn(
+            targets,
+            scopeDir,
+            json
+              ? undefined
+              : (chunk) => {
+                  streamed = true;
+                  process.stdout.write(chunk);
+                },
+          );
           if (upgrade.success) {
-            log(`  ${(upgrade.stdout || upgrade.stderr || '').trim() || 'all tools up to date'}`);
+            if (!streamed) {
+              log(`  ${(upgrade.stdout || upgrade.stderr || '').trim() || 'all tools up to date'}`);
+            }
           } else {
             logErr(
               `  mise up failed (exit ${upgrade.exitCode ?? 'null'}): ${normalizeOutput(upgrade.stderr || upgrade.stdout).trim()}`,
