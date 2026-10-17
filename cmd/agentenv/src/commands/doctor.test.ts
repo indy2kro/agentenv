@@ -601,3 +601,18 @@ describe('gatherDoctor — missing tool hint', () => {
     assert.doesNotMatch(detail, /in this project/);
   });
 });
+
+describe('gatherDoctor — tools mise does not manage', () => {
+  it('does not warn about a manual-install tool: agentenv cannot fix it and it never will', () => {
+    const sections = gatherDoctor(
+      undefined,
+      baseDeps({
+        loadConfig: () => ({ ...DEFAULT_CONFIG, agents: {}, tools: { tokei: true } }),
+        toolAvailabilityClassification: () => 'manual',
+      }),
+    );
+    const item = section(sections, 'Tools')?.items.find((i) => i.label.startsWith('tokei'));
+    assert.equal(item?.status, 'ok');
+    assert.match(item?.detail ?? '', /install manually/);
+  });
+});

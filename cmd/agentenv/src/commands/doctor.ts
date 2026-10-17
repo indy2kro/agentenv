@@ -417,8 +417,9 @@ export function gatherDoctor(sectionFilter?: string, deps: GatherDoctorDeps = {}
         item.status = 'warn';
         item.detail = 'installed via mise; open a new terminal';
       } else if (status === 'manual') {
-        item.status = 'warn';
-        item.detail = 'not managed by mise; install manually';
+        // Not actionable by agentenv (e.g. tokei, or rga/jless on Windows), so it
+        // must not keep the whole report at 'warn' forever.
+        item.detail = 'not managed by mise; install manually if you want it';
       } else if (status === 'missing') {
         item.status = 'fail';
         item.detail =
