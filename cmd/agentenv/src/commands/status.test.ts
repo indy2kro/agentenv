@@ -459,6 +459,47 @@ describe('gatherStatus', () => {
   });
 });
 
+describe('gatherStatus — Superpowers base dir', () => {
+  it("checks a project integration in the config file's directory, not the cwd", async () => {
+    const seen: string[] = [];
+    await gatherStatus({
+      findConfigPath: () => path.join('/repo', 'agentenv.toml'),
+      loadConfig: () =>
+        ({
+          ...noopConfig,
+          scope: 'project',
+          integrations: { superpowers: { enabled: true, scope: 'project' } },
+        }) as never,
+      // What a run from /repo/src would resolve 'project' to.
+      resolveScopeDir: () => path.join('/repo', 'src'),
+      validateConfig: () => ({ errors: [], warnings: [] }),
+      getEnabledAgents: () => [],
+      detectShell: () =>
+        ({
+          isWindows: false,
+          isPosixCompatible: true,
+          currentShell: 'bash',
+          missingUtilities: [],
+        }) as never,
+      fileExists: () => true,
+      hasManagedMarker: () => true,
+      superpowersStatus: async (baseDir) => {
+        seen.push(baseDir);
+        return {
+          name: 'Superpowers',
+          scope: 'project',
+          agents: [],
+          changedFiles: [],
+          nativeCommands: [],
+          warnings: [],
+          errors: [],
+        };
+      },
+    });
+    assert.deepEqual(seen, [path.join('/repo')]);
+  });
+});
+
 describe('renderStatusShort', () => {
   const clean = (): StatusReport => ({
     ...base(),

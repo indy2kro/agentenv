@@ -465,7 +465,11 @@ export async function gatherStatus(deps: StatusDeps = {}): Promise<StatusReport>
     // AgentenvConfig, so it can't fall back to the top-level scope itself
     // (see the matching resolution in apply.ts).
     const scope = resolveIntegrationScope(config, superpowersConfig);
-    const result = await (deps.superpowersStatus ?? defaultSuperpowersStatus)(resolveDir(scope), {
+    // A project integration lives where the config was found (apply installs
+    // relative to baseDir), not wherever the command happens to run.
+    const integrationDir =
+      scope === 'project' && config.scope !== 'user' ? baseDir : resolveDir(scope);
+    const result = await (deps.superpowersStatus ?? defaultSuperpowersStatus)(integrationDir, {
       ...superpowersConfig,
       scope,
     });
