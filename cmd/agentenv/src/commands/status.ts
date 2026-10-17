@@ -14,7 +14,14 @@ import {
   validateConfig,
 } from '../config/schema.js';
 import type { AgentKey, AgentenvConfig, CustomTool } from '../config/schema.js';
-import { findConfigPath, resolveScopeDir, userConfigDir } from '../config/scopes.js';
+import {
+  findConfigPath,
+  findConfigPathInScope,
+  parseScopeFlag,
+  resolveScopeDir,
+  userConfigDir,
+} from '../config/scopes.js';
+import type { ScopeValue } from '../config/scopes.js';
 import { checkAgentShellConfiguration, detectShell } from '../shell/detector.js';
 import type { ShellInfo } from '../shell/detector.js';
 import { requestedInstructionFiles } from '../generate/agentsmd.js';
@@ -811,21 +818,31 @@ export const statusCommand = new Command()
   .description('Show current configuration and environment status')
   .option('--json', 'emit a machine-readable JSON document on stdout')
   .option('--short', 'collapsed one-line-per-area report (no per-item detail)')
-  .action(async (options: { json?: boolean; short?: boolean }) => {
-    const json = options.json === true;
-    const short = options.short === true;
-    if (json) setQuietEnabled(true);
+  .option('--scope <scope>', 'config scope to inspect: project|user (default: nearest config)')
+  .action(
+    async (options: { json?: boolean; short?: boolean; scope?: ScopeValue }, command: Command) => {
+      const scope = parseScopeFlag(options.scope);
+      if (scope.error) {
+        command.error(scope.error);
+        return;
+      }
+      const json = options.json === true;
+      const short = options.short === true;
+      if (json) setQuietEnabled(true);
 
-    renderLogo();
-    const report = await gatherStatus();
+      renderLogo();
+      const report = await gatherStatus(
+        scope.scope ? { findConfigPath: () => findConfigPathInScope(scope.scope) } : {},
+      );
 
-    if (json) {
-      console.log(JSON.stringify(statusToJson(report), null, 2));
-    } else {
-      process.stdout.write(short ? renderStatusShort(report) : renderStatus(report));
-      const summary = statusSummary(report);
-      console.log(resolveResultLine(summary));
-    }
+      if (json) {
+        console.log(JSON.stringify(statusToJson(report), null, 2));
+      } else {
+        process.stdout.write(short ? renderStatusShort(report) : renderStatus(report));
+        const summary = statusSummary(report);
+        console.log(resolveResultLine(summary));
+      }
 
-    if (report.exitCode === 1) process.exitCode = 1;
-  });
+      if (report.exitCode === 1) process.exitCode = 1;
+    },
+  );

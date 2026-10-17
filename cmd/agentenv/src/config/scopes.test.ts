@@ -7,6 +7,7 @@ import {
   baseDirForConfig,
   configFilePath,
   findConfigPath,
+  findConfigPathInScope,
   parseScopeFlag,
   resolveScopeDir,
   userConfigDir,
@@ -148,5 +149,55 @@ describe('baseDirForConfig', () => {
 
   it('uses the user config dir for user scope', () => {
     assert.equal(baseDirForConfig('/anywhere/agentenv.toml', 'user'), userConfigDir());
+  });
+});
+
+describe('findConfigPathInScope', () => {
+  const makeEnv = () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-scope-home-'));
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-scope-project-'));
+    fs.mkdirSync(path.join(home, 'agentenv'), { recursive: true });
+    fs.writeFileSync(path.join(home, 'agentenv', 'agentenv.toml'), 'scope = "user"\n');
+    fs.writeFileSync(path.join(project, 'agentenv.toml'), 'scope = "project"\n');
+    return { xdg: home, project };
+  };
+  const withXdg = <T>(xdg: string, run: () => T): T => {
+    const prior = process.env.XDG_CONFIG_HOME;
+    process.env.XDG_CONFIG_HOME = xdg;
+    try {
+      return run();
+    } finally {
+      if (prior === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = prior;
+    }
+  };
+
+  it('returns the requested scope even when the other one is nearer', () => {
+    const { xdg, project } = makeEnv();
+    withXdg(xdg, () => {
+      assert.equal(
+        findConfigPathInScope('user', project),
+        path.join(xdg, 'agentenv', 'agentenv.toml'),
+      );
+      assert.equal(findConfigPathInScope('project', project), path.join(project, 'agentenv.toml'));
+    });
+  });
+
+  it('is undefined (not a fallback to the other scope) when that scope has no config', () => {
+    const { xdg } = makeEnv();
+    const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-scope-bare-'));
+    withXdg(xdg, () => {
+      assert.equal(findConfigPathInScope('project', bare), undefined);
+    });
+    withXdg(path.join(xdg, 'nowhere'), () => {
+      assert.equal(findConfigPathInScope('user', bare), undefined);
+    });
+  });
+
+  it('falls back to nearest-config resolution when no scope is given', () => {
+    const { xdg, project } = makeEnv();
+    withXdg(xdg, () => {
+      assert.equal(findConfigPathInScope(undefined, project), findConfigPath(project));
+    });
   });
 });

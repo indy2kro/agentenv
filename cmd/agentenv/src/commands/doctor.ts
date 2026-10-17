@@ -19,7 +19,13 @@ import {
   validateConfig,
 } from '../config/schema.js';
 import type { AgentKey } from '../config/schema.js';
-import { findConfigPath, userConfigDir } from '../config/scopes.js';
+import {
+  findConfigPath,
+  findConfigPathInScope,
+  parseScopeFlag,
+  userConfigDir,
+} from '../config/scopes.js';
+import type { ScopeValue } from '../config/scopes.js';
 import {
   bashExecutable,
   checkAgentShellConfiguration,
@@ -564,11 +570,20 @@ export const doctorCommand = new Command()
     '--section <index|name>',
     'only run one report section (1-based section index or title prefix)',
   )
-  .action((options: { json?: boolean; section?: string }, command: Command) => {
+  .option('--scope <scope>', 'config scope to inspect: project|user (default: nearest config)')
+  .action((options: { json?: boolean; section?: string; scope?: ScopeValue }, command: Command) => {
+    const scope = parseScopeFlag(options.scope);
+    if (scope.error) {
+      command.error(scope.error);
+      return;
+    }
     const json = options.json === true;
     if (json) setQuietEnabled(true);
 
-    const gathered = gatherDoctor(options.section);
+    const gathered = gatherDoctor(
+      options.section,
+      scope.scope ? { findConfigPath: () => findConfigPathInScope(scope.scope) } : {},
+    );
     const sections =
       options.section === undefined ? gathered : filterDoctorSections(gathered, options.section);
     if (sections === undefined) {

@@ -70,6 +70,23 @@ function findUpward(startDir: string, filename: string): string | undefined {
 }
 
 /**
+ * The existing config for one explicit scope, for read-only commands'
+ * `--scope`: project searches upward from `cwd` like findConfigPath does, user
+ * looks in the user config dir. Never falls back to the other scope — asking
+ * for one scope and silently getting the other would answer the wrong question.
+ * Without a scope this is plain nearest-config resolution.
+ */
+export function findConfigPathInScope(
+  scope: ScopeValue | undefined,
+  cwd: string = process.cwd(),
+): string | undefined {
+  if (scope === undefined) return findConfigPath(cwd);
+  if (scope === 'project') return findUpward(cwd, 'agentenv.toml');
+  const user = path.join(userConfigDir(), 'agentenv.toml');
+  return fs.existsSync(user) ? user : undefined;
+}
+
+/**
  * Locate an existing agentenv.toml: project config first — searching `cwd`
  * and its parent directories, so `agentenv status` from `repo/src` still
  * finds `repo/agentenv.toml` — then user/global. Returns the first match, or

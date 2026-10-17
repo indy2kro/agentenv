@@ -145,6 +145,7 @@ plus the Tier 0 shell block, `gh` auth, and any integrations.
 agentenv status           # full human report
 agentenv status --short   # one line per area
 agentenv status --json    # one JSON document on stdout (machine-readable)
+agentenv status --scope user  # inspect the user-scope config even from inside a project
 ```
 
 Tool markers match what `apply`'s verify step prints:
@@ -172,6 +173,7 @@ config also shows up as `[fail]` — but `doctor` never changes anything.
 agentenv doctor                 # full report
 agentenv doctor --json          # machine-readable
 agentenv doctor --section Tools # only the Tools section (index or prefix)
+agentenv doctor --scope user    # diagnose the user-scope config (project|user)
 ```
 
 Each item is `[ok]` / `[warn]` / `[fail]`. A manual-install tool is `[warn]`

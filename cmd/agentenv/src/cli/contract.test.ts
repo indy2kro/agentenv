@@ -712,6 +712,41 @@ direnv = false
     );
   });
 
+  it('status and doctor --scope inspect the requested scope, not just the nearest config', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-scope-home-'));
+    const userDir = path.join(home, '.config', 'agentenv');
+    fs.mkdirSync(userDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(userDir, 'agentenv.toml'),
+      'scope = "user"\n[agents]\ncopilot = true\n',
+    );
+    const scopeEnv: NodeJS.ProcessEnv = { ...process.env, HOME: home, USERPROFILE: home };
+    delete scopeEnv.XDG_CONFIG_HOME;
+    const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-scope-project-'));
+    fs.writeFileSync(path.join(projectDir, 'agentenv.toml'), 'scope = "project"\n');
+
+    const nearest = JSON.parse(run(['status', '--json'], projectDir, scopeEnv).stdout);
+    assert.equal(nearest.config, path.join(projectDir, 'agentenv.toml'));
+
+    const user = JSON.parse(
+      run(['status', '--json', '--scope', 'user'], projectDir, scopeEnv).stdout,
+    );
+    assert.equal(user.config, path.join(userDir, 'agentenv.toml'));
+    assert.equal(user.scope, 'user');
+
+    const doctor = run(
+      ['doctor', '--json', '--scope', 'user', '--section', 'Config'],
+      projectDir,
+      scopeEnv,
+    );
+    assert.match(doctor.stdout, /user scope/);
+  });
+
+  it('rejects an invalid --scope on status and doctor as a usage error', () => {
+    assert.equal(run(['status', '--scope', 'nope'], clean).status, 2);
+    assert.equal(run(['doctor', '--scope', 'nope'], clean).status, 2);
+  });
+
   it('exits 1 for uninstall with no config (operational failure)', () => {
     const missing = run(['uninstall'], empty, shellEnv);
     assert.equal(missing.status, 1);
