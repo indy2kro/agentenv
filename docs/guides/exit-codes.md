@@ -73,6 +73,12 @@ quiet mode. The process exit code still applies — it is set by the same logic
 as the human path and is mirrored inside the document as `exitCode` — so a
 consumer can branch on both the code and the structured body.
 
+Where a command knows how to repair a problem it says so in a `fix` field: on
+`doctor` items, and on `status` agents, tools and generated files that have
+drifted (for example `"fix": "agentenv apply"`, or
+`agentenv apply --scope user` for a user-scope config). The field is absent
+when there is nothing to run, so check for its presence rather than a value.
+
 `shell-fix --json` prints the recorded Tier 0 manifest (or an empty one) and is
 show-only: combining `--json` with the mutating `--revert` is a usage error and
 exits `2`.

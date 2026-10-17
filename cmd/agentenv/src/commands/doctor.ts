@@ -58,6 +58,8 @@ export interface DoctorItem {
   status: DoctorStatus;
   label: string;
   detail: string;
+  /** A command that fixes this item, for scripts and agents; absent when there isn't one. */
+  fix?: string;
 }
 
 export interface DoctorSection {
@@ -348,6 +350,7 @@ export function gatherDoctor(sectionFilter?: string, deps: GatherDoctorDeps = {}
       status: 'fail',
       label: 'shims_dir',
       detail: `not set to ${shimsDirFn()} in ${globalConfigPath} — run \`agentenv apply\``,
+      fix: 'agentenv apply',
     });
   }
   miseItems.push({
@@ -435,6 +438,7 @@ export function gatherDoctor(sectionFilter?: string, deps: GatherDoctorDeps = {}
           scope === 'user'
             ? 'not on PATH — run `agentenv apply --scope user`'
             : 'not on PATH — run `mise install` in this project';
+        item.fix = scope === 'user' ? 'agentenv apply --scope user' : 'agentenv apply';
       }
       toolItems.push(item);
     }
@@ -477,6 +481,7 @@ export function gatherDoctor(sectionFilter?: string, deps: GatherDoctorDeps = {}
           status: 'fail',
           label: 'rtk',
           detail: 'not found via `mise which rtk` or on PATH — run `agentenv apply`',
+          fix: 'agentenv apply',
         });
       } else {
         rtkItems.push({ status: 'ok', label: 'rtk', detail: rtkInfo.resolvedPath });

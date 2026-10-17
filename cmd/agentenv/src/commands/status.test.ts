@@ -637,3 +637,41 @@ describe('gatherStatus — user-scope instruction files', () => {
     }
   });
 });
+
+describe('gatherStatus — fix commands on drift', () => {
+  const run = (scope: 'project' | 'user', installed: boolean) =>
+    gatherStatus({
+      findConfigPath: () => '/tmp/agentenv.toml',
+      loadConfig: () =>
+        ({ ...noopConfig, scope, agents: { claude_code: true }, rtk: { enabled: true } }) as never,
+      resolveScopeDir: () => '/tmp',
+      validateConfig: () => ({ errors: [], warnings: [] }),
+      getEnabledAgents: () => ['claude_code'],
+      detectShell: () =>
+        ({
+          isWindows: false,
+          isPosixCompatible: true,
+          currentShell: 'bash',
+          missingUtilities: [],
+        }) as never,
+      isAgentInstalled: () => installed,
+      fileExists: () => false,
+      hasManagedMarker: () => false,
+    });
+
+  it('tells a drifting entry which command fixes it, scope-aware', async () => {
+    const project = await run('project', true);
+    assert.equal(project.agents[0]?.drift, true);
+    assert.equal(project.agents[0]?.fix, 'agentenv apply');
+    assert.ok(project.generated.every((entry) => entry.fix === 'agentenv apply'));
+
+    const user = await run('user', true);
+    assert.equal(user.agents[0]?.fix, 'agentenv apply --scope user');
+  });
+
+  it('adds no fix to an entry that is not drifting', async () => {
+    const report = await run('project', false);
+    assert.equal(report.agents[0]?.drift, false);
+    assert.equal('fix' in (report.agents[0] ?? {}), false);
+  });
+});

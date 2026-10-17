@@ -92,6 +92,8 @@ export interface StatusAgent {
   installed: boolean;
   configured: boolean;
   drift: boolean;
+  /** The command that fixes this drift; present only when `drift` is true. */
+  fix?: string;
 }
 export interface StatusTool {
   key: string;
@@ -105,6 +107,8 @@ export interface StatusTool {
   pinned: string | null;
   /** Best-match installed version from `mise ls --json`, or `null` when moot/unknown. */
   installed: string | null;
+  /** The command that fixes this drift; present only when `drift` is true. */
+  fix?: string;
 }
 export interface StatusCustomTool {
   name: string;
@@ -115,6 +119,8 @@ export interface StatusGenerated {
   label: string;
   exists: boolean;
   managed: boolean;
+  /** The command that regenerates it; present only when it is missing or unmanaged. */
+  fix?: string;
 }
 export interface StatusIntegrationAgent {
   agent: string;
@@ -363,6 +369,8 @@ export async function gatherStatus(deps: StatusDeps = {}): Promise<StatusReport>
 
   const resolveDir = deps.resolveScopeDir ?? resolveScopeDir;
   const baseDir = resolveBaseDir(configPath, config.scope, resolveDir);
+  // What a script (or an agent) should run to repair any drift reported below.
+  const applyFix = config.scope === 'user' ? 'agentenv apply --scope user' : 'agentenv apply';
   const validation = (deps.validateConfig ?? validateConfig)(config);
   const shell = (deps.detectShell ?? detectShell)();
   const enabledAgents = (deps.getEnabledAgents ?? getEnabledAgents)(config) as AgentKey[];
@@ -387,6 +395,7 @@ export async function gatherStatus(deps: StatusDeps = {}): Promise<StatusReport>
     const configured =
       exists(configFile) &&
       (meta.contains === undefined || fileContains(configFile, meta.contains));
+    const drift = installed && !configured && rtkEnabled;
     return {
       key: agent,
       label: meta.label,
@@ -395,7 +404,8 @@ export async function gatherStatus(deps: StatusDeps = {}): Promise<StatusReport>
       // With rtk rewriting off, apply() never writes any of these
       // rtk-owned files for this agent by design — a missing one isn't
       // drift, it's the intended state.
-      drift: installed && !configured && rtkEnabled,
+      drift,
+      ...(drift ? { fix: applyFix } : {}),
     };
   });
 
@@ -438,6 +448,7 @@ export async function gatherStatus(deps: StatusDeps = {}): Promise<StatusReport>
       drift: resolution === 'missing' || versionDrift,
       pinned,
       installed,
+      ...(resolution === 'missing' || versionDrift ? { fix: applyFix } : {}),
     };
   });
 
@@ -473,7 +484,12 @@ export async function gatherStatus(deps: StatusDeps = {}): Promise<StatusReport>
     const managed =
       generatedExists &&
       (markerCheck ? (deps.hasManagedMarker ?? hasManagedMarker)(file, config) : true);
-    return { label, exists: generatedExists, managed };
+    return {
+      label,
+      exists: generatedExists,
+      managed,
+      ...(!generatedExists || !managed ? { fix: applyFix } : {}),
+    };
   });
 
   const integrations: StatusIntegration[] = [];

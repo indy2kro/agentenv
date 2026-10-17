@@ -649,3 +649,34 @@ describe('gatherDoctor — shadowed mise shims', () => {
     );
   });
 });
+
+describe('gatherDoctor — machine-readable fix commands', () => {
+  it('gives a missing tool the command to run, scope-aware', () => {
+    const missing = (configPath: string) =>
+      section(
+        gatherDoctor(
+          undefined,
+          baseDeps({
+            findConfigPath: () => configPath,
+            toolAvailabilityClassification: () => 'missing',
+          }),
+        ),
+        'Tools',
+      )?.items[0];
+    assert.equal(missing('/fake/project/agentenv.toml')?.fix, 'agentenv apply');
+    assert.equal(
+      missing('/fake/home/.config/agentenv/agentenv.toml')?.fix,
+      'agentenv apply --scope user',
+    );
+  });
+
+  it('gives an unset shims_dir the command to run and leaves healthy items without a fix', () => {
+    const sections = gatherDoctor(
+      undefined,
+      baseDeps({ readFileSync: (() => '') as unknown as typeof import('fs').readFileSync }),
+    );
+    const mise = section(sections, 'Mise');
+    assert.equal(mise?.items.find((i) => i.label === 'shims_dir')?.fix, 'agentenv apply');
+    assert.equal(mise?.items.find((i) => i.label === 'mise')?.fix, undefined);
+  });
+});
