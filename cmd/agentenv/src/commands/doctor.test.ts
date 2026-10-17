@@ -616,3 +616,36 @@ describe('gatherDoctor — tools mise does not manage', () => {
     assert.match(item?.detail ?? '', /install manually/);
   });
 });
+
+describe('gatherDoctor — shadowed mise shims', () => {
+  const toolsConfig = () => ({
+    ...DEFAULT_CONFIG,
+    agents: {},
+    tools: { ripgrep: true, jq: true },
+  });
+  const tools = (deps: Partial<GatherDoctorDeps>) =>
+    section(gatherDoctor(undefined, baseDeps({ loadConfig: toolsConfig, ...deps })), 'Tools');
+
+  it('warns, naming each shadowing executable, when other copies win over the shims', () => {
+    const asked: string[][] = [];
+    const item = tools({
+      findShadowedShims: (binaries) => {
+        asked.push(binaries);
+        return [{ binary: 'rg', shadowedBy: '/opt/php/rg' }];
+      },
+    })?.items.find((i) => i.label === 'PATH order');
+
+    assert.equal(item?.status, 'warn');
+    assert.match(item?.detail ?? '', /rg → \/opt\/php\/rg/);
+    assert.match(item?.detail ?? '', /\/fake\/shims/);
+    assert.deepEqual(asked[0].sort(), ['jq', 'rg']);
+  });
+
+  it('adds no item when nothing is shadowed', () => {
+    const items = tools({ findShadowedShims: () => [] })?.items ?? [];
+    assert.equal(
+      items.some((i) => i.label === 'PATH order'),
+      false,
+    );
+  });
+});

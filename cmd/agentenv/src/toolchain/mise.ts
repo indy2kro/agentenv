@@ -280,6 +280,51 @@ export function shimsDirOnPath(): boolean {
   return pathContainsDir(process.env.PATH ?? '', shimsDir());
 }
 
+export interface ShadowedShim {
+  binary: string;
+  /** The executable that wins over the mise shim. */
+  shadowedBy: string;
+}
+
+/**
+ * Binaries whose first hit on PATH sits *before* the mise shims dir, i.e. the
+ * agent runs another copy (WinGet, a bundled `rg.exe`, …) instead of the
+ * version agentenv installed. Returns nothing when the shims dir isn't on PATH
+ * at all; shimsDirOnPath() reports that separately.
+ */
+export function findShadowedShims(
+  binaries: string[],
+  opts: {
+    pathEnv: string;
+    shimsDir: string;
+    platform?: NodeJS.Platform;
+    exists?: (file: string) => boolean;
+  },
+): ShadowedShim[] {
+  const win = (opts.platform ?? process.platform) === 'win32';
+  const pathApi = win ? path.win32 : path.posix;
+  const exists = opts.exists ?? fs.existsSync;
+  const norm = (dir: string): string => {
+    const resolved = pathApi.resolve(dir);
+    return win ? resolved.toLowerCase() : resolved;
+  };
+
+  const entries = opts.pathEnv.split(win ? ';' : ':').filter((entry) => entry.trim() !== '');
+  const shimsIndex = entries.findIndex((entry) => norm(entry) === norm(opts.shimsDir));
+  if (shimsIndex < 0) return [];
+  const before = entries.slice(0, shimsIndex);
+  const extensions = win ? ['.exe', '.cmd', '.bat', '.com'] : [''];
+
+  const shadowed: ShadowedShim[] = [];
+  for (const binary of binaries) {
+    const hit = before
+      .flatMap((dir) => extensions.map((ext) => pathApi.join(dir, `${binary}${ext}`)))
+      .find((candidate) => exists(candidate));
+    if (hit) shadowed.push({ binary, shadowedBy: hit });
+  }
+  return shadowed;
+}
+
 /** Runs a PowerShell script with extra env vars; injectable so tests never touch the registry. */
 export type PowerShellRunner = (
   script: string,

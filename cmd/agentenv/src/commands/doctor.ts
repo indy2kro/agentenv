@@ -41,6 +41,7 @@ import {
   PINNED_TOOL_VERSIONS,
   shimsDir,
   shimsDirOnPath,
+  findShadowedShims,
   toolAvailabilityClassification,
 } from '../toolchain/mise.js';
 import { checkRtkInstallation } from '../toolchain/rtk.js';
@@ -153,6 +154,7 @@ export interface GatherDoctorDeps {
   miseGlobalConfigPath?: typeof miseGlobalConfigPath;
   shimsDir?: typeof shimsDir;
   shimsDirOnPath?: typeof shimsDirOnPath;
+  findShadowedShims?: typeof findShadowedShims;
   findConfigPath?: typeof findConfigPath;
   userConfigDir?: typeof userConfigDir;
   loadConfig?: typeof loadConfig;
@@ -269,6 +271,7 @@ export function gatherDoctor(sectionFilter?: string, deps: GatherDoctorDeps = {}
   const miseGlobalConfigPathFn = deps.miseGlobalConfigPath ?? miseGlobalConfigPath;
   const shimsDirFn = deps.shimsDir ?? shimsDir;
   const shimsDirOnPathFn = deps.shimsDirOnPath ?? shimsDirOnPath;
+  const findShadowedShimsFn = deps.findShadowedShims ?? findShadowedShims;
   const findConfigPathFn = deps.findConfigPath ?? findConfigPath;
   const userConfigDirFn = deps.userConfigDir ?? userConfigDir;
   const loadConfigFn = deps.loadConfig ?? loadConfig;
@@ -428,6 +431,22 @@ export function gatherDoctor(sectionFilter?: string, deps: GatherDoctorDeps = {}
             : 'not on PATH — run `mise install` in this project';
       }
       toolItems.push(item);
+    }
+    // mise's own `doctor` warns about this; without it every tool above can read
+    // [ok] while the agent actually runs a different copy of it.
+    const shadowed = findShadowedShimsFn(
+      enabledTools.map((key) => BINARY_MAP[key]),
+      { pathEnv: process.env.PATH ?? '', shimsDir: shimsDirFn() },
+    );
+    if (shadowed.length > 0) {
+      const shown = shadowed.slice(0, 5).map((s) => `${s.binary} → ${s.shadowedBy}`);
+      const more =
+        shadowed.length > shown.length ? `, +${shadowed.length - shown.length} more` : '';
+      toolItems.push({
+        status: 'warn',
+        label: 'PATH order',
+        detail: `${shadowed.length} tool(s) resolve to another copy before the mise shims: ${shown.join('; ')}${more} — move ${shimsDirFn()} earlier in PATH`,
+      });
     }
   }
   sections.push({
