@@ -743,7 +743,11 @@ direnv = false
     );
     const scopeEnv: NodeJS.ProcessEnv = { ...process.env, HOME: home, USERPROFILE: home };
     delete scopeEnv.XDG_CONFIG_HOME;
-    const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-scope-project-'));
+    // realpath: on macOS os.tmpdir() is under /var, a symlink to /private/var, and
+    // the CLI reports the resolved cwd.
+    const projectDir = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-scope-project-')),
+    );
     fs.writeFileSync(path.join(projectDir, 'agentenv.toml'), 'scope = "project"\n');
 
     const nearest = JSON.parse(run(['status', '--json'], projectDir, scopeEnv).stdout);
