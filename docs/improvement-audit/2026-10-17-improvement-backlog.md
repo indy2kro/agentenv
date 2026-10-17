@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-10-17
 
-Target: 40 · Found: 39 deduplicated items (37 audited + 2 from user feedback) · Completed: 22/39
+Target: 40 · Found: 39 deduplicated items (37 audited + 2 from user feedback) · Completed: 28/39
 
 > **How to use this document — read before implementing anything.**
 > As you finish each item, change `- [ ]` to `- [x]`, append ` ✅ <commit-sha>`,
@@ -81,7 +81,7 @@ Themes this round:
   A developer whose personal config enables `jq` can't make the shared project require it with `add`, so teammates without that user config never get it. Plan against the unlayered project file. Do this together with SWEEP-01.
 - [ ] **BUG-08** The Superpowers ref is appended to the marketplace repo (`obra/superpowers-marketplace#v6.3.0`), which has no such tag — `src/integrations/superpowers.ts:237-243`, `config/schema.ts:226` · effort M · impact med
   `git ls-remote --tags` shows the marketplace repo only has `v1.0.12`, while `v6.3.0` is an `obra/superpowers` tag. So the default ref either fails `claude plugin marketplace add`, or (with a valid catalog ref) pins the catalog, not the plugin. Re-check the pinning design in `docs/research/superpowers-install-mechanisms.md` against a real `claude` CLI before changing the code.
-- [ ] **BUG-09** In user scope, `status` checks `~/.config/agentenv/AGENTS.md`/`CLAUDE.md` instead of the per-agent files apply actually manages (`~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, …) — `src/commands/status.ts:441-455`, `commands/apply.ts:299-310` · effort M · impact med
+- [x] **BUG-09** In user scope, `status` checks `~/.config/agentenv/AGENTS.md`/`CLAUDE.md` instead of the per-agent files apply actually manages (`~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, …) — `src/commands/status.ts:441-455`, `commands/apply.ts:299-310` · effort M · impact med ✅ b3fb09b
   A removed or stale managed block in the file Claude/Codex actually load is never reported as drift for user-scope installs. Reuse `userScopeInstructionFiles()` for the check.
 - [x] **BUG-10** `agentenv update` runs `mise up` synchronously with a 120 s timeout and no output. Upgrading a full tool list gets killed and is reported as `failed (exit null): ` — `src/toolchain/mise.ts:610-640`, `commands/update.ts:219-229` · effort M · impact med ✅ bfef4a3
   `spawnSync` freezes the spinner, and ~30 `latest` tools routinely take longer than 2 minutes. When it times out, the error message is empty. Stream the output with the async spawn that `runMiseInstall` uses, and report a timeout as a timeout.
@@ -98,7 +98,7 @@ Themes this round:
 
 ## UX & affordances   (UX-NN)
 
-- [ ] **UX-01** `setup --yes --json` scrapes console output instead of reusing apply's structured result — `src/commands/setup.ts:301-330` · effort M · impact med
+- [x] **UX-01** `setup --yes --json` scrapes console output instead of reusing apply's structured result — `src/commands/setup.ts:301-330` · effort M · impact med ✅ 23bcc1c
   There is no `configPath`/`baseDir`/`warnings`, errors carry the `✗`/`[FAIL]` glyph, warnings are mixed into `messages`, and the result-box text ends up in the document. Have `saveAndApply` return the `ApplyResult` and build the document with `buildApplyJsonResult`, as `add --json` does. Follows up FEAT-02 (2026-10-15).
 - [x] **UX-02** Apply's success line says "everything is configured and verified" even with `--skip-mise-install`, when nothing was installed or verified — `src/commands/apply.ts:671-676` · effort S · impact low ✅ 46dcd58
   CI setups that skip installs get a false verification claim. Say "files written; tools not installed (--skip-mise-install)" instead.
@@ -117,7 +117,7 @@ Themes this round:
 - [ ] **UX-09** Warn before `uninstall` removes tool versions from the shared mise store that other configs still declare — `src/commands/uninstall.ts:673-695` · effort M · impact low
   `mise uninstall --all` affects the whole store. Cleaning one project can break the user-scope config and every other project that uses the same tool. At least name the user-scope config when it also enables a target.
 
-- [ ] **UX-10** Stop counting "not managed by mise; install manually" tools as `doctor` warnings — `src/commands/doctor.ts:416-421` · effort S · impact low
+- [x] **UX-10** Stop counting "not managed by mise; install manually" tools as `doctor` warnings — `src/commands/doctor.ts:416-421` · effort S · impact low ✅ 41e05a4
   From a real run on Windows: `tokei`, `rga` and `jless` can never be installed through mise there, yet each is a `[warn]`, so the box says "8 warnings" and never turns green. Show them as informational (or list them once, collapsed), and keep `warn` for things the user can act on. Same for `status`, which prints them as `-`.
 
 ## Accessibility   (A11Y-NN)
@@ -127,9 +127,9 @@ Themes this round:
 
 ## New functionality   (FEAT-NN)
 
-- [ ] **FEAT-01** Add `--scope` to `status` and `doctor` — `src/commands/status.ts:794-795`, `commands/doctor.ts:539-543` · effort S · impact med
+- [x] **FEAT-01** Add `--scope` to `status` and `doctor` — `src/commands/status.ts:794-795`, `commands/doctor.ts:539-543` · effort S · impact med ✅ 54aec59
   apply/update/uninstall/add/remove accept `--scope`, but the read-only checks only use the nearest config. From inside a project there is no way to inspect the user-scope setup.
-- [ ] **FEAT-02** Add a `fix` command field to status drift entries and doctor items in `--json` — `src/commands/status.ts:81-127`, `commands/doctor.ts:50-54` · effort M · impact med
+- [x] **FEAT-02** Add a `fix` command field to status drift entries and doctor items in `--json` — `src/commands/status.ts:81-127`, `commands/doctor.ts:50-54` · effort M · impact med ✅ 2f4081e
   The generated instructions send agents to `doctor --json`/`status --json` (FEAT-01, 2026-10-15), but the remediation is only free text in `detail`. An agent has to guess which command to run.
 - [ ] **FEAT-03** Make `update --check` report which tools actually have newer versions (`mise outdated --json`), and say so in the JSON and the exit code — `src/commands/update.ts:151,194-244` · effort M · impact med
   Today `--check` only prints the `mise up <list>` it would run. Neither a person nor an agent can tell whether an update is pending.
@@ -144,7 +144,7 @@ Themes this round:
 - [ ] **FEAT-08** Make `update --watch` watch `agentenv.toml` and re-apply, instead of watching the generated `mise.toml` — `src/commands/update.ts:283-383` · effort M · impact low
   Users edit `agentenv.toml`. The only writer of `mise.toml` is `apply`, which already installs, so the current watch almost never does useful work.
 
-- [ ] **FEAT-09** Make `doctor` check that the mise shims are not shadowed by other executables earlier on PATH — `src/commands/doctor.ts:344-350`, `toolchain/mise.ts` (`shimsDirOnPath`) · effort M · impact med
+- [x] **FEAT-09** Make `doctor` check that the mise shims are not shadowed by other executables earlier on PATH — `src/commands/doctor.ts:344-350`, `toolchain/mise.ts` (`shimsDirOnPath`) · effort M · impact med ✅ 2cfaf08
   From a real run: `agentenv doctor` said "shims on PATH — ok" and every tool `[ok]`, while `mise doctor` warned that ast-grep, bat, delta, fd, fzf, gh, jq, node and rg all resolve to other copies first (WinGet Links, `C:Program Filesphp85g.exe`, …) because `~/.local/bin` comes late. The agent then runs a different version than the one agentenv pinned. Compare each enabled tool's first PATH hit with its shim, and tell the user to move the shims dir earlier. Do this together with FEAT-02.
 
 ---
