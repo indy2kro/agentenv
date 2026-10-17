@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Command, CommanderError } from 'commander';
-import { exitCodeForCommanderError, installExitOverride } from './exit.js';
+import { exitCodeForCommanderError, installExitOverride, isPromptCancellation } from './exit.js';
 
 describe('exitCodeForCommanderError', () => {
   it('maps help and version to 0', () => {
@@ -75,5 +75,19 @@ describe('installExitOverride', () => {
     await program.parseAsync(['node', 'agentenv', 'add', 'jq']);
     assert.equal(process.exitCode, undefined);
     process.exitCode = saved;
+  });
+});
+
+describe('isPromptCancellation', () => {
+  it("recognizes inquirer's ExitPromptError (Ctrl+C at a prompt)", () => {
+    const error = new Error('User force closed the prompt with SIGINT');
+    error.name = 'ExitPromptError';
+    assert.equal(isPromptCancellation(error), true);
+  });
+
+  it('does not treat ordinary failures as a cancel', () => {
+    assert.equal(isPromptCancellation(new Error('boom')), false);
+    assert.equal(isPromptCancellation('ExitPromptError'), false);
+    assert.equal(isPromptCancellation(undefined), false);
   });
 });

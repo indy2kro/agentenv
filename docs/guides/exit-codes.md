@@ -13,6 +13,7 @@ banner chrome while keeping the data lines.
 | `0` | Success / clean — the requested operation completed and the environment satisfies it |
 | `1` | Operational issue — a command failed, or `status`/`doctor` detected real drift or failure |
 | `2` | Usage error — invalid or missing arguments/flags |
+| `130` | Cancelled — Ctrl+C at an interactive prompt (the wizard, an uninstall confirmation) |
 
 `2` applies across every command: an unknown command/option or a missing
 required argument exits `2` (the contract is enforced at the commander
