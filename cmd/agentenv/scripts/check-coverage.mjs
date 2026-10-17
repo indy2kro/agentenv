@@ -29,10 +29,10 @@ const DEFAULT_FLOOR = { lines: 80, branches: 75, functions: 70 };
 const OVERRIDES = {
   'index.js': { lines: 76, branches: 49 },
   'adapters/base.js': { functions: 66 },
-  'commands/apply.js': { lines: 79, branches: 63 },
+  'commands/apply.js': { lines: 79, branches: 69 },
   'commands/setup.js': { branches: 67 },
-  'commands/status.js': { branches: 69 },
-  'commands/uninstall.js': { lines: 75, branches: 68 },
+  'commands/status.js': { branches: 70 },
+  'commands/uninstall.js': { lines: 75, branches: 72 },
   'commands/update.js': { branches: 68 },
   'commands/wizard.js': { branches: 73 },
   'integrations/superpowers.js': { lines: 78 },
