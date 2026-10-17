@@ -1,6 +1,6 @@
 # Improvement Backlog — 2026-10-17
 
-Target: 40 · Found: 39 deduplicated items (37 audited + 2 from user feedback) · Completed: 28/39
+Target: 40 · Found: 39 deduplicated items (37 audited + 2 from user feedback) · Completed: 30/39
 
 > **How to use this document — read before implementing anything.**
 > As you finish each item, change `- [ ]` to `- [x]`, append ` ✅ <commit-sha>`,
@@ -137,9 +137,9 @@ Themes this round:
   Regenerating `AGENTS.md` today also runs `mise install` and every `rtk init`, several of them global. `--skip-mise-install` still re-wires every agent.
 - [ ] **FEAT-05** Make `apply --dry-run` list the files each agent adapter will touch, and flag global (`-g`) writes made from a project-scope apply — `src/commands/apply.ts:588-631`, `toolchain/rtk.ts:29-38` · effort M · impact med
   A project apply runs `rtk init -g` for opencode/gemini/cursor/windsurf/vibe, and cursor's also registers the Claude Code hook. Users can't preview that the agent config in their home directory will change. Do this after SWEEP-01.
-- [ ] **FEAT-06** Make `doctor` check `custom_tools`, Superpowers and the managed instruction blocks, as `status` does — `src/commands/doctor.ts:398-508` · effort M · impact low
+- [x] **FEAT-06** Make `doctor` check `custom_tools`, Superpowers and the managed instruction blocks, as `status` does — `src/commands/doctor.ts:398-508` · effort M · impact low ✅ 4bb9e82
   Agents are told to diagnose with `doctor --json`, but a missing custom binary or a stripped managed block doesn't show up there.
-- [ ] **FEAT-07** Support version pins and custom tools from the CLI (`agentenv add jq@1.7.1`, `agentenv add --custom …`) — `src/commands/config-edit.ts:161-195` · effort M · impact low
+- [x] **FEAT-07** Support version pins and custom tools from the CLI (`agentenv add jq@1.7.1`, `agentenv add --custom …`) — `src/commands/config-edit.ts:161-195` · effort M · impact low ✅ 66a95ec
   `add`/`remove` only toggle boolean keys. `tool_versions` and `custom_tools` need a hand edit or the wizard, and the wizard drops them (BUG-01).
 - [ ] **FEAT-08** Make `update --watch` watch `agentenv.toml` and re-apply, instead of watching the generated `mise.toml` — `src/commands/update.ts:283-383` · effort M · impact low
   Users edit `agentenv.toml`. The only writer of `mise.toml` is `apply`, which already installs, so the current watch almost never does useful work.
