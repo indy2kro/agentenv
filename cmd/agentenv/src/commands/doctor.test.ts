@@ -680,3 +680,70 @@ describe('gatherDoctor — machine-readable fix commands', () => {
     assert.equal(mise?.items.find((i) => i.label === 'mise')?.fix, undefined);
   });
 });
+
+describe('gatherDoctor — generated files and custom tools', () => {
+  const MARKER = '<!-- agentenv-managed-start -->';
+  const files = (deps: Partial<GatherDoctorDeps>) =>
+    section(gatherDoctor(undefined, baseDeps(deps)), 'Generated files');
+
+  it('is ok when every generated file exists with its managed block', () => {
+    const items = files({
+      readFileSync: (() => `${MARKER}\n[settings]\nshims_dir = "/fake/shims"\n`) as never,
+    })?.items;
+    assert.ok(items && items.length >= 2);
+    assert.ok(
+      items.every((item) => item.status === 'ok'),
+      JSON.stringify(items),
+    );
+  });
+
+  it('warns, with the command to regenerate it, when a generated file is missing', () => {
+    const items = files({ existsSync: (file) => !String(file).endsWith('AGENTS.md') })?.items;
+    const agents = items?.find((item) => item.label === 'AGENTS.md');
+    assert.equal(agents?.status, 'warn');
+    assert.match(agents?.detail ?? '', /missing/);
+    assert.equal(agents?.fix, 'agentenv apply');
+  });
+
+  it('warns when an instruction file exists but has lost its managed block', () => {
+    const items = files({
+      readFileSync: (() => '[settings]\nshims_dir = "/fake/shims"\n') as never,
+    })?.items;
+    const agents = items?.find((item) => item.label === 'AGENTS.md');
+    assert.equal(agents?.status, 'warn');
+    assert.match(agents?.detail ?? '', /no agentenv managed block/);
+  });
+
+  it('checks already-installed custom binaries for this OS and stays absent when there are none', () => {
+    const withCustom = (exists: boolean) =>
+      section(
+        gatherDoctor(
+          undefined,
+          baseDeps({
+            existsSync: (file) => (String(file).includes('corp-cli') ? exists : true),
+            loadConfig: () => ({
+              ...DEFAULT_CONFIG,
+              agents: {},
+              tools: {},
+              custom_tools: [
+                {
+                  name: 'corp-cli',
+                  description: 'x',
+                  already_installed: true,
+                  path_windows: '/opt/corp-cli',
+                  path_macos: '/opt/corp-cli',
+                  path_linux: '/opt/corp-cli',
+                },
+              ],
+            }),
+          }),
+        ),
+        'Custom tools',
+      )?.items[0];
+    assert.equal(withCustom(true)?.status, 'ok');
+    assert.equal(withCustom(false)?.status, 'warn');
+    assert.match(withCustom(false)?.detail ?? '', /\/opt\/corp-cli/);
+
+    assert.equal(section(gatherDoctor(undefined, baseDeps()), 'Custom tools'), undefined);
+  });
+});

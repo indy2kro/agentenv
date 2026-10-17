@@ -43,6 +43,7 @@ import {
   getShimsDirValue,
   isMiseInstalled,
   miseGlobalConfigPath,
+  miseTomlPathFor,
   miseInstallInstructions,
   PINNED_TOOL_VERSIONS,
   shimsDir,
@@ -51,6 +52,8 @@ import {
   toolAvailabilityClassification,
 } from '../toolchain/mise.js';
 import { checkRtkInstallation } from '../toolchain/rtk.js';
+import { requestedInstructionFiles } from '../generate/agentsmd.js';
+import { userScopeInstructionFiles } from './apply.js';
 
 export type DoctorStatus = 'ok' | 'warn' | 'fail';
 
@@ -537,6 +540,73 @@ export function gatherDoctor(sectionFilter?: string, deps: GatherDoctorDeps = {}
         ? agentItems
         : [{ status: 'warn', label: 'none', detail: 'no agents enabled' }],
   });
+
+  // Generated files — what `apply` wrote and agents actually read. `status`
+  // reports the same drift; agents are pointed at `doctor --json`, so it has
+  // to see a stripped managed block or a missing custom binary too.
+  const baseDir = config.scope === 'user' ? userConfigDirFn() : path.dirname(configPath);
+  const applyFix = config.scope === 'user' ? 'agentenv apply --scope user' : 'agentenv apply';
+  const marker = config.generate?.marker_start ?? '<!-- agentenv-managed-start -->';
+  const generated: Array<{ label: string; file: string; managed: boolean }> = [
+    { label: 'mise.toml', file: miseTomlPathFor(config.scope, baseDir), managed: false },
+    ...requestedInstructionFiles(config).map((name) => ({
+      label: name,
+      file: path.join(baseDir, name),
+      managed: true,
+    })),
+    ...userScopeInstructionFiles(config, baseDir, {}).map((entry) => ({
+      label: entry.path,
+      file: entry.path,
+      managed: true,
+    })),
+  ];
+  sections.push({
+    title: `Generated files (${generated.length})`,
+    items: generated.map(({ label, file, managed }): DoctorItem => {
+      if (!existsSync(file)) {
+        return { status: 'warn', label, detail: `missing — run \`${applyFix}\``, fix: applyFix };
+      }
+      let content = '';
+      try {
+        content = String(readFileSync(file, 'utf-8'));
+      } catch {
+        // Unreadable counts as having no managed block below.
+      }
+      if (managed && !content.includes(marker)) {
+        return {
+          status: 'warn',
+          label,
+          detail: `present but has no agentenv managed block — run \`${applyFix}\``,
+          fix: applyFix,
+        };
+      }
+      return { status: 'ok', label, detail: file };
+    }),
+  });
+
+  const installedCustom = (config.custom_tools ?? []).filter((tool) => tool.already_installed);
+  if (installedCustom.length > 0) {
+    sections.push({
+      title: `Custom tools (${installedCustom.length})`,
+      items: installedCustom.map((tool): DoctorItem => {
+        const where =
+          platform === 'win32'
+            ? tool.path_windows
+            : platform === 'darwin'
+              ? tool.path_macos
+              : tool.path_linux;
+        return where && existsSync(where)
+          ? { status: 'ok', label: tool.name, detail: where }
+          : {
+              status: 'warn',
+              label: tool.name,
+              detail: where
+                ? `not found at ${where}`
+                : `no path configured for ${platform}; set path_${platform === 'win32' ? 'windows' : platform === 'darwin' ? 'macos' : 'linux'}`,
+            };
+      }),
+    });
+  }
 
   return sections;
 }
