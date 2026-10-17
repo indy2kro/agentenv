@@ -450,3 +450,34 @@ describe('generateAgentsMd — custom tools', () => {
     assert.ok(md.includes('/opt/corp/bin/corp'));
   });
 });
+
+describe('generateAgentsMd — honesty about what is installed and wired', () => {
+  const base: AgentenvConfig = {
+    scope: 'project',
+    agents: { claude_code: true },
+    tools: { ripgrep: true, tokei: true },
+    rtk: { enabled: true },
+  };
+
+  it('marks tokei as a manual install, since agentenv never installs it', () => {
+    const line = generateAgentsMd(base)
+      .split('\n')
+      .find((l) => l.includes('**tokei**'));
+    assert.ok(line, 'tokei is still listed');
+    assert.match(line, /install manually/);
+  });
+
+  it('does not claim transparent rewriting for agents that have no rtk hook', () => {
+    const hookless = generateAgentsMd({ ...base, agents: { claude_code: true, windsurf: true } });
+    assert.match(hookless, /Windsurf.*prefix.*`rtk`/i);
+
+    const hooked = generateAgentsMd(base);
+    assert.doesNotMatch(hooked, /no rewrite hook/);
+  });
+
+  it('says inside the managed block that edits there are overwritten', () => {
+    const md = generateAgentsMd(base);
+    const block = md.slice(md.indexOf(start), md.indexOf(end));
+    assert.match(block, /overwritten on apply/);
+  });
+});
