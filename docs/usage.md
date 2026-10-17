@@ -95,6 +95,7 @@ agentenv apply --skip-mise-install
 | `--no-rtk` | Disable rtk command rewriting. |
 | `--superpowers [ref]` | Enable Superpowers; optional tag/branch/commit ref (e.g. `--superpowers v6.3.0`). |
 | `--config <path>` | Apply an existing `agentenv.toml` at that path. |
+| `--json` | One JSON document on stdout, in the same shape as `apply --json`: `success`, `configPath`, `baseDir`, `messages`, `errors`, `warnings`. `configPath`/`baseDir` are `null` when setup stopped before applying. |
 
 ## Commands
 
