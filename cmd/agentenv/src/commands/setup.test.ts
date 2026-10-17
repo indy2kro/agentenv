@@ -108,7 +108,7 @@ describe('unattended setup pipeline', () => {
       process.env.XDG_CONFIG_HOME = xdgDir;
       process.chdir(dir);
       await unattendedSetup(
-        { yes: true, agents: 'claude_code', superpowers: 'v7.0.0', tier2: false, rtk: false },
+        { yes: true, agents: 'claude_code', superpowers: true, tier2: false, rtk: false },
         {
           misePrereqCheckDeps: { isInstalled: () => true, version: () => '3.2.1' },
           applyConfiguration: stubApply,
@@ -123,45 +123,9 @@ describe('unattended setup pipeline', () => {
     }
 
     assert.equal(saved?.integrations?.superpowers?.enabled, true);
-    assert.equal(saved?.integrations?.superpowers?.ref, 'v7.0.0');
     assert.deepEqual(saved?.integrations?.superpowers?.agents, ['claude_code']);
     const toml = fs.readFileSync(path.join(dir, 'agentenv.toml'), 'utf-8');
     assert.match(toml, /\[integrations\.superpowers\]/);
-  });
-
-  it('enables Superpowers at the default ref for a bare --superpowers flag', async () => {
-    const dir = tempDir('agentenv-setup-');
-    const xdgDir = tempDir('agentenv-xdg-');
-    let saved: import('../config/schema.js').AgentenvConfig | undefined;
-    const stubApply: typeof applyConfiguration = async (config) => {
-      saved = config;
-      return { success: true, messages: [], errors: [] };
-    };
-    const originalLog = console.log;
-    const originalCwd = process.cwd();
-    const originalXdg = process.env.XDG_CONFIG_HOME;
-    console.log = () => {};
-    try {
-      fs.mkdirSync(path.join(xdgDir, 'agentenv'), { recursive: true });
-      process.env.XDG_CONFIG_HOME = xdgDir;
-      process.chdir(dir);
-      // commander passes `true` (not a string) for `--superpowers` with no ref.
-      await unattendedSetup(
-        { yes: true, agents: 'claude_code', superpowers: true, tier2: false, rtk: false },
-        {
-          misePrereqCheckDeps: { isInstalled: () => true, version: () => '3.2.1' },
-          applyConfiguration: stubApply,
-        },
-      );
-    } finally {
-      process.chdir(originalCwd);
-      if (originalXdg === undefined) delete process.env.XDG_CONFIG_HOME;
-      else process.env.XDG_CONFIG_HOME = originalXdg;
-      console.log = originalLog;
-    }
-
-    assert.equal(saved?.integrations?.superpowers?.enabled, true);
-    assert.ok(saved?.integrations?.superpowers?.ref, 'falls back to the default ref');
   });
 
   it('leaves an existing hand-written config byte-identical and applies it in place via --config', async () => {
@@ -305,7 +269,7 @@ describe('unattended setup pipeline', () => {
     try {
       process.chdir(dir);
       await unattendedSetup(
-        { yes: true, agents: 'codex_cli', superpowers: 'v7.0.0', rtk: false, tier2: false },
+        { yes: true, agents: 'codex_cli', superpowers: true, rtk: false, tier2: false },
         {
           misePrereqCheckDeps: { isInstalled: () => true, version: () => '3.2.1' },
           applyConfiguration: stubApply,

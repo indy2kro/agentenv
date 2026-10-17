@@ -167,7 +167,6 @@ describe('computeStatusExitCode', () => {
       key: 'superpowers',
       enabled: true,
       source: null,
-      ref: null,
       scope: 'project',
       agents: [],
       states: [],

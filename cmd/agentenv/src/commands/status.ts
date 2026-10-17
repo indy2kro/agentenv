@@ -150,7 +150,6 @@ export interface StatusIntegration {
   key: string;
   enabled: boolean;
   source: string | null;
-  ref: string | null;
   scope: string | null;
   agents: string[];
   states: StatusIntegrationAgent[];
@@ -534,7 +533,6 @@ export async function gatherStatus(deps: StatusDeps = {}): Promise<StatusReport>
       key: integrationKey,
       enabled: true,
       source: result.source ?? null,
-      ref: result.ref ?? null,
       scope: result.scope,
       agents: superpowersConfig.agents ?? [],
       states: result.agents.map(({ agent, state, detail }) => ({
@@ -555,7 +553,6 @@ export async function gatherStatus(deps: StatusDeps = {}): Promise<StatusReport>
       key: integrationKey,
       enabled: false,
       source: null,
-      ref: null,
       scope: null,
       agents: [],
       states: [],
@@ -828,7 +825,6 @@ export function renderStatus(report: StatusReport): string {
     }
     chunks.push('    enabled: yes');
     chunks.push(`    source: ${integration.source ?? '(unset)'}`);
-    chunks.push(`    ref: ${integration.ref ?? '(unset)'}`);
     chunks.push(`    scope: ${integration.scope}`);
     for (const agentState of integration.states) {
       const label = AGENT_CONFIG_FILES[agentState.agent as AgentKey]?.label ?? agentState.agent;

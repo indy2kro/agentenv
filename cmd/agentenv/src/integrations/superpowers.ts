@@ -98,7 +98,6 @@ export interface SuperpowersAdapterDeps {
 }
 
 interface SuperpowersMarker {
-  ref: string;
   scope: 'project' | 'user';
   installedAt: string;
 }
@@ -169,14 +168,11 @@ export class SuperpowersAdapter implements IntegrationAdapter {
     const installed = list.stdout.toLowerCase().includes('superpowers');
     if (!installed) return { agent: 'claude_code', state: 'missing' };
 
-    // No ref-based "drift": the official marketplace installs its current
-    // release whatever ref is configured, so a different recorded ref is not
-    // something a reinstall could fix.
     const marker = this.readMarker(baseDir);
     return {
       agent: 'claude_code',
       state: 'installed',
-      detail: marker ? `ref ${marker.ref}` : 'installed outside agentenv',
+      detail: marker ? 'installed by agentenv' : 'installed outside agentenv',
     };
   }
 
@@ -188,7 +184,6 @@ export class SuperpowersAdapter implements IntegrationAdapter {
     const result: IntegrationResult = {
       name: this.getName(),
       source: config?.source,
-      ref: config?.ref,
       scope,
       agents: [],
       changedFiles: [],
@@ -215,9 +210,8 @@ export class SuperpowersAdapter implements IntegrationAdapter {
     const detected = await this.detect(baseDir, config);
     if (!this.isEnabled(config)) return detected;
 
-    const ref = config?.ref;
-    if (!ref || !config?.source) {
-      detected.errors.push('integrations.superpowers.source and .ref must be set to apply');
+    if (!config?.source) {
+      detected.errors.push('integrations.superpowers.source must be set to apply');
       return detected;
     }
 
@@ -244,17 +238,13 @@ export class SuperpowersAdapter implements IntegrationAdapter {
       }
 
       const marker: SuperpowersMarker = {
-        ref,
         scope: detected.scope,
         installedAt: new Date().toISOString(),
       };
       this.writeMarker(baseDir, marker);
       detected.changedFiles.push(this.markerPath(baseDir));
       agentState.state = 'installed';
-      agentState.detail = `ref ${ref} (recorded, not enforced)`;
-      detected.warnings.push(
-        `integrations.superpowers.ref (${ref}) is recorded but not enforced: the official marketplace installs its current Superpowers release`,
-      );
+      agentState.detail = 'installed from the official marketplace';
     }
 
     if (config.allow_external_requests !== true) {

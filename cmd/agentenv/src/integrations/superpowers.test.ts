@@ -51,7 +51,6 @@ function fakeFs(initial: Record<string, string> = {}) {
 const enabledConfig: IntegrationConfig = {
   enabled: true,
   source: 'github:obra/superpowers',
-  ref: 'v6.3.0',
   scope: 'project',
   agents: ['claude_code', 'codex_cli', 'copilot', 'opencode'],
   allow_hooks: true,
@@ -107,7 +106,7 @@ describe('SuperpowersAdapter', () => {
     assert.equal(result.agents[0].detail, 'spawn claude ENOENT');
   });
 
-  it('detects "installed" when listed and the marker ref matches the config ref', async () => {
+  it('detects "installed" when the plugin is listed', async () => {
     const { runner } = fakeRunner(() => ({
       success: true,
       exitCode: 0,
@@ -116,7 +115,6 @@ describe('SuperpowersAdapter', () => {
     }));
     const fs = fakeFs({
       '/base/.agentenv-state/integrations/superpowers.json': JSON.stringify({
-        ref: 'v6.3.0',
         scope: 'project',
         installedAt: '2026-09-14T00:00:00.000Z',
       }),
@@ -124,31 +122,6 @@ describe('SuperpowersAdapter', () => {
     const adapter = new SuperpowersAdapter({ runClaudeCli: runner, fs });
 
     const result = await adapter.detect('/base', { ...enabledConfig, agents: ['claude_code'] });
-
-    assert.equal(result.agents[0].state, 'installed');
-  });
-
-  it('still detects "installed" when the marker ref differs: the official marketplace cannot pin a ref', async () => {
-    const { runner } = fakeRunner(() => ({
-      success: true,
-      exitCode: 0,
-      stdout: 'superpowers@claude-plugins-official',
-      stderr: '',
-    }));
-    const fs = fakeFs({
-      '/base/.agentenv-state/integrations/superpowers.json': JSON.stringify({
-        ref: 'v5.0.0',
-        scope: 'project',
-        installedAt: '2026-09-14T00:00:00.000Z',
-      }),
-    });
-    const adapter = new SuperpowersAdapter({ runClaudeCli: runner, fs });
-
-    const result = await adapter.detect('/base', {
-      ...enabledConfig,
-      agents: ['claude_code'],
-      ref: 'v6.3.0',
-    });
 
     assert.equal(result.agents[0].state, 'installed');
   });
@@ -210,18 +183,6 @@ describe('SuperpowersAdapter', () => {
     assert.ok(fs.files.has('/base/.agentenv-state/integrations/superpowers.json'));
   });
 
-  it('apply() says the configured ref is recorded but not enforced', async () => {
-    const { runner } = fakeRunner(() => ({ success: true, exitCode: 0, stdout: '', stderr: '' }));
-    const adapter = new SuperpowersAdapter({ runClaudeCli: runner, fs: fakeFs() });
-
-    const result = await adapter.apply('/base', { ...enabledConfig, agents: ['claude_code'] });
-
-    assert.ok(
-      result.warnings.some((w) => w.includes('v6.3.0') && /not enforced/.test(w)),
-      `expected a ref warning, got ${JSON.stringify(result.warnings)}`,
-    );
-  });
-
   it('apply() records an error and does not write a marker when the install fails', async () => {
     const { runner } = fakeRunner((call) =>
       call.args[1] === 'install'
@@ -245,7 +206,6 @@ describe('SuperpowersAdapter', () => {
     );
     const fs = fakeFs({
       '/base/.agentenv-state/integrations/superpowers.json': JSON.stringify({
-        ref: 'v6.3.0',
         scope: 'project',
         installedAt: '2026-09-14T00:00:00.000Z',
       }),
@@ -257,36 +217,6 @@ describe('SuperpowersAdapter', () => {
     assert.equal(result.agents[0].state, 'installed');
     assert.equal(calls.filter((call) => call.args.includes('marketplace')).length, 0);
     assert.equal(calls.filter((call) => call.args[1] === 'install').length, 0);
-  });
-
-  it('apply() does not reinstall when only the recorded ref differs: reinstalling would not change the version', async () => {
-    const { runner, calls } = fakeRunner((call) =>
-      call.args[0] === 'plugin' && call.args[1] === 'list'
-        ? { success: true, exitCode: 0, stdout: 'superpowers@claude-plugins-official', stderr: '' }
-        : { success: true, exitCode: 0, stdout: '', stderr: '' },
-    );
-    const fs = fakeFs({
-      '/base/.agentenv-state/integrations/superpowers.json': JSON.stringify({
-        ref: 'v5.0.0',
-        scope: 'project',
-        installedAt: '2026-09-14T00:00:00.000Z',
-      }),
-    });
-    const adapter = new SuperpowersAdapter({ runClaudeCli: runner, fs });
-
-    const result = await adapter.apply('/base', {
-      ...enabledConfig,
-      agents: ['claude_code'],
-      ref: 'v6.3.0',
-    });
-
-    assert.equal(result.agents[0].state, 'installed');
-    assert.equal(calls.filter((call) => call.args[1] === 'install').length, 0);
-    assert.equal(
-      JSON.parse(fs.files.get('/base/.agentenv-state/integrations/superpowers.json')!).ref,
-      'v5.0.0',
-      'the marker is left alone',
-    );
   });
 
   it('never attempts anything network/external, and warns when allow_external_requests is not explicitly true', async () => {

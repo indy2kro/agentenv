@@ -160,7 +160,7 @@ describe('wizard build helpers', () => {
   });
 
   it('passes through an integrations selection unchanged', () => {
-    const integrations = { superpowers: { enabled: true, ref: 'v6.3.0' as const } };
+    const integrations = { superpowers: { enabled: true } };
     const config = buildConfigFromSelections({
       agents: ['claude_code'],
       tools: [],

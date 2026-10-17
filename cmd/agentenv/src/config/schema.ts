@@ -66,7 +66,6 @@ export interface AdvancedConfig {
 export interface IntegrationConfig {
   enabled?: boolean;
   source?: string;
-  ref?: string;
   scope?: 'project' | 'user';
   agents?: string[];
   allow_hooks?: boolean;
@@ -223,7 +222,6 @@ export const DEFAULT_CONFIG: AgentenvConfig = {
     superpowers: {
       enabled: false,
       source: 'github:obra/superpowers',
-      ref: 'v6.3.0',
       agents: ['claude_code', 'codex_cli', 'copilot', 'opencode'],
       allow_hooks: false,
       allow_external_requests: false,
@@ -612,7 +610,6 @@ export function configToToml(config: AgentenvConfig): string {
     lines.push('\n[integrations.superpowers]');
     if (superpowers.enabled !== undefined) lines.push(`enabled = ${superpowers.enabled}`);
     if (superpowers.source) lines.push(`source = ${tomlString(superpowers.source)}`);
-    if (superpowers.ref) lines.push(`ref = ${tomlString(superpowers.ref)}`);
     if (superpowers.scope) lines.push(`scope = ${tomlString(superpowers.scope)}`);
     if (superpowers.agents)
       lines.push(`agents = [${superpowers.agents.map(tomlString).join(', ')}]`);
@@ -785,7 +782,6 @@ function mergeWithDefaults(
               config.integrations.superpowers.enabled ?? base.integrations?.superpowers?.enabled,
             source:
               config.integrations.superpowers.source ?? base.integrations?.superpowers?.source,
-            ref: config.integrations.superpowers.ref ?? base.integrations?.superpowers?.ref,
             scope: config.integrations.superpowers.scope ?? base.integrations?.superpowers?.scope,
             agents:
               config.integrations.superpowers.agents ?? base.integrations?.superpowers?.agents,
@@ -807,7 +803,7 @@ function mergeWithDefaults(
       copyUnknownKeys(
         config.integrations.superpowers,
         result.integrations.superpowers as unknown as Record<string, unknown>,
-        ['enabled', 'source', 'ref', 'scope', 'agents', 'allow_hooks', 'allow_external_requests'],
+        ['enabled', 'source', 'scope', 'agents', 'allow_hooks', 'allow_external_requests'],
       );
     }
   }
@@ -1086,18 +1082,13 @@ export function validateConfig(config: AgentenvConfig): {
     if (superpowers.source !== undefined && superpowers.source.trim() === '') {
       errors.push('integrations.superpowers.source must not be empty');
     }
-    if (superpowers.ref !== undefined) {
-      if (superpowers.ref.trim() === '') {
-        errors.push('integrations.superpowers.ref must not be empty');
-      } else if (!/^[A-Za-z0-9._/-]+$/.test(superpowers.ref)) {
-        errors.push(
-          `integrations.superpowers.ref "${superpowers.ref}" contains characters that are not valid in a git ref`,
-        );
-      } else if (['main', 'master', 'HEAD'].includes(superpowers.ref)) {
-        warnings.push(
-          `integrations.superpowers.ref "${superpowers.ref}" is a floating branch; pin to a tag or commit for reproducibility`,
-        );
-      }
+    // `ref` used to pin the plugin version, but the official marketplace it is
+    // installed from cannot pin one, so the key does nothing. Older configs
+    // still carry it: say so instead of silently ignoring or rejecting it.
+    if ('ref' in superpowers) {
+      warnings.push(
+        'integrations.superpowers.ref is no longer used (the official marketplace cannot pin a version) and is ignored; remove it from agentenv.toml',
+      );
     }
   }
 
@@ -1238,11 +1229,6 @@ export function diffConfigs(
         'integrations.superpowers.source',
         oldConfig.integrations?.superpowers?.source,
         newConfig.integrations?.superpowers?.source,
-      ],
-      [
-        'integrations.superpowers.ref',
-        oldConfig.integrations?.superpowers?.ref,
-        newConfig.integrations?.superpowers?.ref,
       ],
       [
         'integrations.superpowers.scope',

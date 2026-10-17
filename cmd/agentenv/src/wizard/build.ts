@@ -126,7 +126,7 @@ export function buildDefaultSimpleConfig(
   includeTier2: boolean,
   rtkEnabled: boolean,
   scope: 'project' | 'user',
-  superpowersRef?: string,
+  superpowers = false,
 ): AgentenvConfig {
   return buildConfigFromSelections({
     agents,
@@ -134,20 +134,18 @@ export function buildDefaultSimpleConfig(
     customTools: [],
     scope,
     rtkEnabled,
-    integrations:
-      superpowersRef !== undefined
-        ? {
-            superpowers: {
-              enabled: true,
-              source: 'github:obra/superpowers',
-              ref: superpowersRef || DEFAULT_CONFIG.integrations?.superpowers?.ref,
-              scope,
-              agents: ['claude_code'],
-              allow_hooks: true,
-              allow_external_requests: false,
-            },
-          }
-        : undefined,
+    integrations: superpowers
+      ? {
+          superpowers: {
+            enabled: true,
+            source: 'github:obra/superpowers',
+            scope,
+            agents: ['claude_code'],
+            allow_hooks: true,
+            allow_external_requests: false,
+          },
+        }
+      : undefined,
   });
 }
 

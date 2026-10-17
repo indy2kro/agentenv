@@ -243,7 +243,6 @@ describe('runConfigWizard — Superpowers integration', () => {
     const { deps } = fakePrompts({
       ...HAPPY_PATH_ANSWERS,
       'Enable the optional Superpowers integration for Claude Code? (installs a third-party plugin via `claude plugin install`)': true,
-      'Superpowers ref to record (informational, not enforced):': 'v1.2.3',
       'Allow Superpowers to register its SessionStart hook for Claude Code?': true,
       'Allow the optional Superpowers visual companion to make external requests?': false,
       'Confirm enabling Superpowers with these settings?': true,
@@ -258,7 +257,6 @@ describe('runConfigWizard — Superpowers integration', () => {
     assert.deepEqual(savedConfig?.integrations?.superpowers, {
       enabled: true,
       source: 'github:obra/superpowers',
-      ref: 'v1.2.3',
       scope: 'project',
       agents: ['claude_code'],
       allow_hooks: true,
@@ -269,12 +267,11 @@ describe('runConfigWizard — Superpowers integration', () => {
   it('falls back to the existing integrations when the final Superpowers confirmation is declined', async () => {
     const existing: AgentenvConfig = {
       ...DEFAULT_CONFIG,
-      integrations: { superpowers: { enabled: false, source: 'x', ref: 'v1', scope: 'project' } },
+      integrations: { superpowers: { enabled: false, source: 'x', scope: 'project' } },
     };
     const { deps } = fakePrompts({
       ...HAPPY_PATH_ANSWERS,
       'Enable the optional Superpowers integration for Claude Code? (installs a third-party plugin via `claude plugin install`)': true,
-      'Superpowers ref to record (informational, not enforced):': 'v1.2.3',
       'Allow Superpowers to register its SessionStart hook for Claude Code?': false,
       'Allow the optional Superpowers visual companion to make external requests?': false,
       'Confirm enabling Superpowers with these settings?': false,
@@ -300,7 +297,6 @@ describe('runConfigWizard — Superpowers integration', () => {
         superpowers: {
           enabled: true,
           source: 'github:obra/superpowers',
-          ref: 'v1.0.0',
           scope: 'project',
           agents: ['claude_code'],
         },

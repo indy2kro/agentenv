@@ -244,7 +244,7 @@ export async function runConfigWizard(deps: WizardDeps = {}): Promise<void> {
   console.log('\nStep 6/7: Optional integrations');
   const existingSuperpowers = existing.integrations?.superpowers;
   console.log(
-    `  Superpowers (${DEFAULT_CONFIG.integrations?.superpowers?.source}, default ref ${DEFAULT_CONFIG.integrations?.superpowers?.ref}) — currently ${
+    `  Superpowers (${DEFAULT_CONFIG.integrations?.superpowers?.source}) — currently ${
       existingSuperpowers?.enabled ? 'enabled' : 'disabled'
     }`,
   );
@@ -257,18 +257,10 @@ export async function runConfigWizard(deps: WizardDeps = {}): Promise<void> {
   let integrations: AgentenvConfig['integrations'] = existing.integrations;
   if (wantsSuperpowers) {
     console.log('\n  Superpowers — enabling this installs a third-party Claude Code plugin:');
-    console.log(
-      `    - source: github:obra/superpowers, default ref ${DEFAULT_CONFIG.integrations?.superpowers?.ref ?? 'latest'}`,
-    );
+    console.log('    - source: github:obra/superpowers, from the official Claude Code marketplace');
     console.log('    - it can register a SessionStart hook in the Claude Code setup');
     console.log('    - the optional visual companion can make external requests');
-    console.log('  The next prompts record the ref (the official marketplace installs its current');
-    console.log('  release, so it is not enforced) and set the two permissions below.\n');
-    const ref = await inputFn({
-      message: 'Superpowers ref to record (informational, not enforced):',
-      default:
-        existingSuperpowers?.ref ?? DEFAULT_CONFIG.integrations?.superpowers?.ref ?? 'v6.3.0',
-    });
+    console.log('  The next prompts set the two permissions below.\n');
     const allowHooks = await confirmFn({
       message: 'Allow Superpowers to register its SessionStart hook for Claude Code?',
       default: existingSuperpowers?.allow_hooks === true,
@@ -278,7 +270,7 @@ export async function runConfigWizard(deps: WizardDeps = {}): Promise<void> {
       default: existingSuperpowers?.allow_external_requests === true,
     });
     console.log(
-      `  Review: source=github:obra/superpowers, ref=${ref}, scope=${scope}, agents=claude_code, hooks=${allowHooks}, external_requests=${allowExternalRequests}`,
+      `  Review: source=github:obra/superpowers, scope=${scope}, agents=claude_code, hooks=${allowHooks}, external_requests=${allowExternalRequests}`,
     );
     const confirmIntegration = await confirmFn({
       message: 'Confirm enabling Superpowers with these settings?',
@@ -289,7 +281,6 @@ export async function runConfigWizard(deps: WizardDeps = {}): Promise<void> {
           superpowers: {
             enabled: true,
             source: 'github:obra/superpowers',
-            ref,
             scope,
             agents: ['claude_code'],
             allow_hooks: allowHooks,

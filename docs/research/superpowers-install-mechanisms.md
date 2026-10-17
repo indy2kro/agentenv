@@ -39,7 +39,7 @@ invent CLI flags.
 > found in upstream origin"), so `#<ref>` can only pin the *catalog*. agentenv now
 > runs only `claude plugin install superpowers@claude-plugins-official`, from
 > Claude Code's built-in official marketplace; that cannot pin a ref, so the
-> configured `ref` is recorded but not enforced.
+> `ref` config key was removed (a stale one is ignored with a warning).
 
 ### Claude Code — fully documented, non-interactive, ref-pinnable ✅
 

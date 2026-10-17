@@ -377,7 +377,6 @@ describe('apply pipeline', () => {
         superpowers: {
           enabled: true,
           source: 'github:obra/superpowers',
-          ref: 'v6.3.0',
           allow_hooks: true,
         },
       },
@@ -426,7 +425,6 @@ describe('apply pipeline', () => {
         superpowers: {
           enabled: true,
           source: 'github:obra/superpowers',
-          ref: 'v6.3.0',
           allow_hooks: false,
         },
       },

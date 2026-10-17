@@ -407,11 +407,10 @@ describe('configuration diff', () => {
 });
 
 describe('integrations config', () => {
-  it('defaults Superpowers to disabled with the documented source/ref', () => {
+  it('defaults Superpowers to disabled with the documented source', () => {
     const config = loadConfig(undefined);
     assert.equal(config.integrations?.superpowers?.enabled, false);
     assert.equal(config.integrations?.superpowers?.source, 'github:obra/superpowers');
-    assert.equal(config.integrations?.superpowers?.ref, 'v6.3.0');
     assert.equal(config.integrations?.superpowers?.allow_hooks, false);
     assert.equal(config.integrations?.superpowers?.allow_external_requests, false);
     assert.deepEqual(config.integrations?.superpowers?.agents, [
@@ -430,7 +429,6 @@ describe('integrations config', () => {
         superpowers: {
           enabled: true,
           source: 'github:obra/superpowers',
-          ref: 'v7.0.0',
           scope: 'user',
           agents: ['claude_code'],
           allow_hooks: true,
@@ -442,7 +440,6 @@ describe('integrations config', () => {
 
     const loaded = loadConfig(configPath);
     assert.equal(loaded.integrations?.superpowers?.enabled, true);
-    assert.equal(loaded.integrations?.superpowers?.ref, 'v7.0.0');
     assert.equal(loaded.integrations?.superpowers?.scope, 'user');
     assert.deepEqual(loaded.integrations?.superpowers?.agents, ['claude_code']);
     assert.equal(loaded.integrations?.superpowers?.allow_hooks, true);
@@ -473,15 +470,28 @@ describe('integrations config', () => {
     assert.ok(report.errors.some((error) => error.includes('integrations.superpowers.scope')));
   });
 
-  it('rejects an empty ref and warns (not errors) on a floating ref', () => {
-    const empty = validateConfig({ integrations: { superpowers: { enabled: true, ref: '' } } });
-    assert.ok(empty.errors.some((error) => error.includes('ref')));
+  it('warns once that a stale ref is ignored, never errors, and drops it on the next save', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-config-'));
+    const configPath = path.join(directory, 'agentenv.toml');
+    fs.writeFileSync(
+      configPath,
+      [
+        '[integrations.superpowers]',
+        'enabled = true',
+        'ref = "v6.3.0"',
+        'allow_hooks = true',
+        '',
+      ].join(os.EOL),
+    );
 
-    const floating = validateConfig({
-      integrations: { superpowers: { enabled: true, ref: 'main' } },
-    });
-    assert.equal(floating.errors.length, 0);
-    assert.ok(floating.warnings.some((warning) => warning.includes('floating')));
+    const loaded = loadConfig(configPath);
+    const report = validateConfig(loaded);
+
+    assert.equal(report.errors.length, 0, report.errors.join('; '));
+    const refWarnings = report.warnings.filter((warning) => warning.includes('superpowers.ref'));
+    assert.equal(refWarnings.length, 1, JSON.stringify(report.warnings));
+    assert.match(refWarnings[0], /no longer used/);
+    assert.doesNotMatch(configToToml(loaded), /^ref = /m);
   });
 
   it('reports a diff entry when integrations.superpowers.enabled flips', () => {

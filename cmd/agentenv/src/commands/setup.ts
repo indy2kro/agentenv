@@ -153,7 +153,7 @@ interface SetupCommandOptions {
   tier2?: boolean;
   rtk?: boolean;
   config?: string;
-  superpowers?: string | boolean;
+  superpowers?: boolean;
   json?: boolean;
 }
 
@@ -297,17 +297,11 @@ export async function unattendedSetup(
 
       const includeTier2 = options.tier2 !== false;
       const rtkEnabled = options.rtk !== false;
-      // A bare `--superpowers` arrives as `true`: enabled, at the default ref ('').
-      const superpowersRef =
-        options.superpowers === undefined
-          ? undefined
-          : typeof options.superpowers === 'string'
-            ? options.superpowers
-            : '';
-      config = buildDefaultSimpleConfig(agents, includeTier2, rtkEnabled, scope, superpowersRef);
+      const superpowers = options.superpowers === true;
+      config = buildDefaultSimpleConfig(agents, includeTier2, rtkEnabled, scope, superpowers);
       console.log(
         `Defaults: agents ${agents.join(', ')}, Tier 2 tools ${includeTier2 ? 'on' : 'off'}, rtk ${rtkEnabled ? 'on' : 'off'}, Superpowers ${
-          superpowersRef === undefined ? 'off' : `on (ref ${superpowersRef || 'default'})`
+          superpowers ? 'on' : 'off'
         }`,
       );
     }
@@ -391,8 +385,8 @@ export const setupCommand = new Command()
   .option('--no-tier2', 'skip Tier 2 tools (unattended)')
   .option('--no-rtk', 'disable rtk command rewriting (unattended)')
   .option(
-    '--superpowers [ref]',
-    'enable the Superpowers integration (unattended); optional github tag/branch/commit ref',
+    '--superpowers',
+    'enable the Superpowers integration (unattended); installed from the official Claude Code marketplace',
   )
   .option('--config <path>', 'path to an existing agentenv.toml to apply (unattended)')
   .option('--json', 'emit one machine-readable JSON document on stdout (requires --yes)')
