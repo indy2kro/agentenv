@@ -42,8 +42,10 @@ import {
   getMiseVersion,
   getShimsDirValue,
   isMiseInstalled,
+  MISE_TOOL_NAMES,
   miseGlobalConfigPath,
   miseTomlPathFor,
+  runMiseCaptured,
   miseInstallInstructions,
   PINNED_TOOL_VERSIONS,
   shimsDir,
@@ -166,6 +168,8 @@ export interface GatherDoctorDeps {
   shimsDir?: typeof shimsDir;
   shimsDirOnPath?: typeof shimsDirOnPath;
   findShadowedShims?: typeof findShadowedShims;
+  /** Whether `mise which <binary>` resolves, i.e. the install really provides an executable. */
+  miseProvidesExecutable?: (binary: string, cwd: string) => boolean;
   findConfigPath?: typeof findConfigPath;
   userConfigDir?: typeof userConfigDir;
   loadConfig?: typeof loadConfig;
@@ -288,6 +292,10 @@ export function gatherDoctor(sectionFilter?: string, deps: GatherDoctorDeps = {}
   const shimsDirFn = deps.shimsDir ?? shimsDir;
   const shimsDirOnPathFn = deps.shimsDirOnPath ?? shimsDirOnPath;
   const findShadowedShimsFn = deps.findShadowedShims ?? findShadowedShims;
+  const miseProvidesExecutableFn =
+    deps.miseProvidesExecutable ??
+    ((binary: string, cwd: string): boolean =>
+      runMiseCaptured(['which', binary], { cwd }).status === 0);
   const findConfigPathFn = deps.findConfigPath ?? findConfigPath;
   const userConfigDirFn = deps.userConfigDir ?? userConfigDir;
   const loadConfigFn = deps.loadConfig ?? loadConfig;
@@ -435,7 +443,16 @@ export function gatherDoctor(sectionFilter?: string, deps: GatherDoctorDeps = {}
       const item: DoctorItem = { status: 'ok', label: `${binary} (${key})`, detail: '' };
       if (status === 'needs-new-terminal') {
         item.status = 'warn';
-        item.detail = 'installed via mise; open a new terminal';
+        if (miseProvidesExecutableFn(binary, path.dirname(configPath))) {
+          item.detail = 'installed via mise; open a new terminal';
+        } else {
+          // mise lists it as installed but `mise which` finds nothing to run (e.g. an
+          // upstream package whose Windows asset has no .exe), so a new terminal
+          // would never fix it.
+          const miseName = MISE_TOOL_NAMES[key] || key;
+          item.detail = `mise lists it as installed but provides no executable (\`mise which ${binary}\` fails), so a new terminal will not help; reinstall with \`mise install --force ${miseName}\`, and if that fails too the package is broken for this platform: \`agentenv remove ${key}\``;
+          item.fix = `mise install --force ${miseName}`;
+        }
       } else if (status === 'manual') {
         // Not actionable by agentenv (e.g. tokei, or rga/jless on Windows), so it
         // must not keep the whole report at 'warn' forever.

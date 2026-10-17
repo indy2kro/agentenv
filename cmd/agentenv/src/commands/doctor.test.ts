@@ -170,6 +170,8 @@ function baseDeps(overrides: Partial<GatherDoctorDeps> = {}): GatherDoctorDeps {
     platform: 'linux',
     readPersistentPath: () => undefined,
     checkAgentShellConfiguration: () => ({ isConfigured: false, needsFix: true }),
+    // Never spawn a real `mise which` from a unit test.
+    miseProvidesExecutable: () => true,
     ...overrides,
   };
 }
@@ -780,5 +782,36 @@ describe('scopedDoctorDeps', () => {
       if (prior === undefined) delete process.env.XDG_CONFIG_HOME;
       else process.env.XDG_CONFIG_HOME = prior;
     }
+  });
+});
+
+describe('gatherDoctor — installed but nothing to run', () => {
+  const direnv = (providesExecutable: boolean) =>
+    section(
+      gatherDoctor(
+        undefined,
+        baseDeps({
+          loadConfig: () => ({ ...DEFAULT_CONFIG, agents: {}, tools: { direnv: true } }),
+          toolAvailabilityClassification: () => 'needs-new-terminal',
+          miseProvidesExecutable: () => providesExecutable,
+        }),
+      ),
+      'Tools',
+    )?.items.find((item) => item.label.startsWith('direnv'));
+
+  it("still says 'open a new terminal' when mise can resolve the executable", () => {
+    const item = direnv(true);
+    assert.equal(item?.status, 'warn');
+    assert.match(item?.detail ?? '', /open a new terminal/);
+    assert.equal(item?.fix, undefined);
+  });
+
+  it("doesn't tell the user to open a new terminal when mise installed no runnable binary", () => {
+    const item = direnv(false);
+    assert.equal(item?.status, 'warn');
+    assert.doesNotMatch(item?.detail ?? '', /open a new terminal/);
+    assert.match(item?.detail ?? '', /no executable/);
+    assert.match(item?.detail ?? '', /agentenv remove direnv/);
+    assert.equal(item?.fix, 'mise install --force direnv');
   });
 });
