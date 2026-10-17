@@ -711,6 +711,10 @@ function mergeWithDefaults(
     result.tools = Object.fromEntries(
       TOOL_KEYS.map((key) => [key, config.tools?.[key] ?? base.tools?.[key]]),
     ) as NonNullable<AgentenvConfig['tools']>;
+    // Keep a key that isn't a catalog tool (a typo like `rpgrep`): dropping it
+    // here meant validateConfig's "Unknown tool" error could never fire and the
+    // tool was silently ignored. `[agents]` already behaves this way.
+    copyUnknownKeys(config.tools, result.tools as unknown as Record<string, unknown>, TOOL_KEYS);
   }
 
   // Merge custom_tools
@@ -909,6 +913,12 @@ function didYouMean(key: string, known: readonly string[]): string | undefined {
     : undefined;
 }
 
+/** ` (did you mean "x"?)` when `key` is close to a known name, else nothing. */
+function suggestionSuffix(key: string, known: readonly string[]): string {
+  const suggestion = didYouMean(key, known);
+  return suggestion === undefined ? '' : ` (did you mean "${suggestion}"?)`;
+}
+
 /** Warn (with a did-you-mean suggestion where one is close) for any key of `obj` not in `known`. */
 function warnUnknownKeys(
   obj: object | undefined,
@@ -961,14 +971,14 @@ export function validateConfig(config: AgentenvConfig): {
   const agents = config.agents ?? {};
   for (const key of Object.keys(agents)) {
     if (!(AGENT_KEYS as readonly string[]).includes(key)) {
-      errors.push(`Unknown agent "${key}"`);
+      errors.push(`Unknown agent "${key}"${suggestionSuffix(key, AGENT_KEYS)}`);
     }
   }
 
   const tools = (config.tools ?? {}) as Record<string, boolean | undefined>;
   for (const key of Object.keys(tools)) {
     if (!(TOOL_KEYS as readonly string[]).includes(key)) {
-      errors.push(`Unknown tool "${key}"`);
+      errors.push(`Unknown tool "${key}"${suggestionSuffix(key, TOOL_KEYS)}`);
     }
   }
 

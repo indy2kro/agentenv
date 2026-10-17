@@ -1020,3 +1020,35 @@ describe('configToToml — advanced table', () => {
     assert.equal(parsed.advanced?.show_diff_preview, false);
   });
 });
+
+describe('a misspelled key under [tools] or [agents]', () => {
+  const load = (toml: string): AgentenvConfig => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-typo-'));
+    const configPath = path.join(directory, 'agentenv.toml');
+    fs.writeFileSync(configPath, toml);
+    return loadConfig(configPath);
+  };
+
+  it('survives loading, so validation can reject it instead of silently dropping it', () => {
+    const report = validateConfig(load(['[tools]', 'rpgrep = true', ''].join(os.EOL)));
+    assert.ok(
+      report.errors.some((error) => error.includes('Unknown tool "rpgrep"')),
+      JSON.stringify(report.errors),
+    );
+  });
+
+  it('suggests the closest real name when one is near', () => {
+    const tool = validateConfig(load(['[tools]', 'rpgrep = true', ''].join(os.EOL)));
+    assert.ok(tool.errors.some((error) => error.includes('did you mean "ripgrep"')));
+    const agent = validateConfig(load(['[agents]', 'claude_cod = true', ''].join(os.EOL)));
+    assert.ok(agent.errors.some((error) => error.includes('did you mean "claude_code"')));
+  });
+
+  it('gives no suggestion for a name nothing is close to, and is gone after the next save', () => {
+    const config = load(['[tools]', 'wget = true', ''].join(os.EOL));
+    const report = validateConfig(config);
+    assert.ok(report.errors.some((error) => error.includes('Unknown tool "wget"')));
+    assert.ok(!report.errors.some((error) => error.includes('did you mean')));
+    assert.doesNotMatch(configToToml(config), /wget/);
+  });
+});
