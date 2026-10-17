@@ -419,3 +419,34 @@ describe('backup reporting', () => {
     }
   });
 });
+
+describe('generateAgentsMd — custom tools', () => {
+  const config: AgentenvConfig = {
+    scope: 'project',
+    agents: { claude_code: true },
+    tools: { ripgrep: true },
+    custom_tools: [
+      { name: 'my-lint', description: 'Project linter', mise_source: 'github:acme/my-lint' },
+      {
+        name: 'corp-cli',
+        description: 'Internal deploy CLI',
+        already_installed: true,
+        path_windows: String.raw`C:\tools\corp.exe`,
+        path_linux: '/opt/corp/bin/corp',
+      },
+    ],
+  };
+
+  it("lists each custom tool with its own description instead of 'Available via agentenv'", () => {
+    const md = generateAgentsMd(config);
+    assert.match(md, /- \*\*my-lint\*\* \(binary: `my-lint`\): Project linter/);
+    assert.doesNotMatch(md, /my-lint.*Available via agentenv/);
+  });
+
+  it('lists already-installed custom binaries with their per-OS paths', () => {
+    const md = generateAgentsMd(config);
+    assert.match(md, /\*\*corp-cli\*\*.*Internal deploy CLI/);
+    assert.ok(md.includes(String.raw`C:\tools\corp.exe`));
+    assert.ok(md.includes('/opt/corp/bin/corp'));
+  });
+});

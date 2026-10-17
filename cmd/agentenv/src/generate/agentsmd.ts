@@ -144,6 +144,14 @@ export function generateAgentsMd(config: AgentenvConfig): string {
     }
   }
 
+  const customLines = customToolLines(config);
+  if (customLines.length > 0) {
+    lines.push('### Custom Tools');
+    lines.push('');
+    lines.push(...customLines);
+    lines.push('');
+  }
+
   // A single rtk section (catalog entry + usage notes combined, rather than
   // repeating the same "rewrites commands to save tokens" claim twice under
   // two separate headings).
@@ -259,6 +267,30 @@ function platformCaveat(tool: string): string {
 }
 
 /**
+ * The "Custom Tools" bullets: each declared custom binary with its own
+ * description. Mise-sourced ones are on PATH by name; already-installed ones
+ * are listed with their per-OS paths (a committed file is read on several OSes).
+ */
+function customToolLines(config: AgentenvConfig): string[] {
+  const lines: string[] = [];
+  for (const tool of config.custom_tools ?? []) {
+    const description = tool.description?.trim() || 'Custom tool';
+    if (tool.already_installed) {
+      const paths = [
+        tool.path_windows && `Windows: \`${tool.path_windows}\``,
+        tool.path_macos && `macOS: \`${tool.path_macos}\``,
+        tool.path_linux && `Linux: \`${tool.path_linux}\``,
+      ].filter(Boolean);
+      const where = paths.length > 0 ? ` — ${paths.join(', ')}` : '';
+      lines.push(`- **${tool.name}** (installed${where}): ${description}`);
+    } else if (tool.mise_source) {
+      lines.push(`- **${tool.name}** (binary: \`${tool.name}\`): ${description}`);
+    }
+  }
+  return lines;
+}
+
+/**
  * Categorize tools by their category
  */
 function categorizeTools(tools: string[]): Record<string, string[]> {
@@ -287,15 +319,6 @@ function getEnabledToolsForOutput(config: AgentenvConfig): string[] {
   for (const key of toolKeys) {
     if (tools[key]) {
       enabled.push(key);
-    }
-  }
-
-  // Add custom tools that are installable via mise
-  if (config.custom_tools) {
-    for (const ct of config.custom_tools) {
-      if (ct.mise_source) {
-        enabled.push(ct.name);
-      }
     }
   }
 
