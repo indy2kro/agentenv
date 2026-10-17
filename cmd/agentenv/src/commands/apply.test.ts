@@ -7,6 +7,7 @@ import {
   applyConfiguration,
   buildApplyDryRunPlan,
   buildApplyJsonResult,
+  parseOnly,
   applySuccessSummary,
   resolveTier0WriteFiles,
   shouldRunMiseInstall,
@@ -806,5 +807,78 @@ describe('applySuccessSummary', () => {
     assert.match(applySuccessSummary(false), /verified/);
     assert.doesNotMatch(applySuccessSummary(true), /verified/);
     assert.match(applySuccessSummary(true), /--skip-mise-install/);
+  });
+});
+
+describe('apply --only', () => {
+  const setup = () => {
+    const home = tempDir('agentenv-home-');
+    const base = tempDir('agentenv-base-');
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    delete process.env.XDG_CONFIG_HOME;
+    return { home, base, rtk: fakeRtkInit() };
+  };
+  const has = (dir: string, ...names: string[]): boolean[] =>
+    names.map((name) => fs.existsSync(path.join(dir, name)));
+
+  it('files: writes mise.toml and the instruction files only; no wiring, no install', async () => {
+    const { home, base, rtk } = setup();
+    const result = await applyConfiguration(CONFIG, base, {
+      skipMiseInstall: true,
+      rtkInit: rtk.fn,
+      only: ['files'],
+    });
+    assert.equal(result.success, true, result.errors.join('; '));
+    assert.deepEqual(has(base, 'mise.toml', 'AGENTS.md', 'CLAUDE.md'), [true, true, true]);
+    assert.equal(rtk.calls.length, 0, 'no rtk init');
+    assert.equal(fs.existsSync(path.join(home, '.claude', 'settings.json')), false);
+  });
+
+  it('agents: wires the agents only; no mise.toml, no instruction files', async () => {
+    const { home, base, rtk } = setup();
+    const result = await applyConfiguration(CONFIG, base, {
+      skipMiseInstall: true,
+      rtkInit: rtk.fn,
+      only: ['agents'],
+    });
+    assert.equal(result.success, true, result.errors.join('; '));
+    assert.ok(rtk.calls.length > 0, 'rtk init ran');
+    assert.ok(fs.existsSync(path.join(home, '.claude', 'settings.json')));
+    assert.deepEqual(has(base, 'mise.toml', 'AGENTS.md', 'CLAUDE.md'), [false, false, false]);
+  });
+
+  it('tools: declares the tools in mise.toml but writes no instruction files and wires nothing', async () => {
+    const { base, rtk } = setup();
+    const result = await applyConfiguration(CONFIG, base, {
+      skipMiseInstall: true,
+      rtkInit: rtk.fn,
+      only: ['tools'],
+    });
+    assert.equal(result.success, true, result.errors.join('; '));
+    assert.deepEqual(has(base, 'mise.toml', 'AGENTS.md'), [true, false]);
+    assert.equal(rtk.calls.length, 0);
+  });
+
+  it('without --only everything still runs', async () => {
+    const { base, rtk } = setup();
+    await applyConfiguration(CONFIG, base, { skipMiseInstall: true, rtkInit: rtk.fn });
+    assert.deepEqual(has(base, 'mise.toml', 'AGENTS.md'), [true, true]);
+    assert.ok(rtk.calls.length > 0);
+  });
+});
+
+describe('parseOnly', () => {
+  it('accepts one or several steps and dedupes', () => {
+    assert.deepEqual(parseOnly('files'), { steps: ['files'] });
+    assert.deepEqual(parseOnly('files, agents,files'), { steps: ['files', 'agents'] });
+  });
+
+  it('is absent when the flag is, and an error naming the valid steps otherwise', () => {
+    assert.deepEqual(parseOnly(undefined), {});
+    const bad = parseOnly('files,bogus');
+    assert.match(bad.error ?? '', /bogus/);
+    assert.match(bad.error ?? '', /files, tools, agents/);
+    assert.ok(parseOnly('').error);
   });
 });

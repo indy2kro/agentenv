@@ -791,6 +791,12 @@ direnv = false
     );
   });
 
+  it('rejects an unknown apply --only step as a usage error', () => {
+    const result = run(['apply', '--only', 'bogus', '--skip-mise-install'], clean);
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /files, tools, agents/);
+  });
+
   it('exits 1 for uninstall with no config (operational failure)', () => {
     const missing = run(['uninstall'], empty, shellEnv);
     assert.equal(missing.status, 1);
