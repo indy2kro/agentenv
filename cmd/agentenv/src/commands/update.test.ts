@@ -405,3 +405,57 @@ describe('watchMiseToml', () => {
     }
   });
 });
+
+describe('watchMiseToml — user-scope layout', () => {
+  it('watches the directory of the mise file (conf.d), not the agentenv config directory', async () => {
+    const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-watch-user-')));
+    const confD = path.join(dir, 'conf.d');
+    fs.mkdirSync(confD);
+    const configPath = path.join(dir, 'agentenv.toml');
+    const miseTomlPath = path.join(confD, 'agentenv.toml');
+    const emptyHome = fs.mkdtempSync(path.join(os.tmpdir(), 'agentenv-watch-user-home-'));
+    const saved = { ...process.env };
+    process.env.HOME = emptyHome;
+    process.env.USERPROFILE = emptyHome;
+    process.env.XDG_CONFIG_HOME = path.join(emptyHome, 'xdg');
+    fs.writeFileSync(
+      configPath,
+      [
+        'scope = "project"',
+        '[tools]',
+        ...['ripgrep', 'fd', 'jq', 'rtk', 'ast_grep', 'git_delta', 'gh', 'difftastic'].map(
+          (tool) => `${tool} = false`,
+        ),
+        '',
+      ].join('\n'),
+    );
+    fs.writeFileSync(miseTomlPath, '[tools]\n');
+
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (message?: unknown) => logs.push(String(message));
+    const watcher = watchMiseToml(miseTomlPath, dir, configPath, 50);
+    try {
+      assert.ok(watcher, 'watchMiseToml should return a live watcher');
+      // Editing the agentenv config itself must not trigger an upgrade run...
+      fs.writeFileSync(configPath, fs.readFileSync(configPath, 'utf-8') + '\n# touched\n');
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      assert.equal(
+        logs.some((line) => line.includes('Detected change')),
+        false,
+        'an agentenv.toml edit must not look like a mise file change',
+      );
+      // ...while a change to the generated mise file in conf.d must.
+      const trigger = (): void => fs.writeFileSync(miseTomlPath, '[tools]\n# regenerated\n');
+      trigger();
+      await waitFor(() => logs.some((line) => line.includes('Detected change')), 8000, trigger);
+    } finally {
+      watcher?.close();
+      console.log = originalLog;
+      for (const key of ['HOME', 'USERPROFILE', 'XDG_CONFIG_HOME']) {
+        if (saved[key] === undefined) delete process.env[key];
+        else process.env[key] = saved[key];
+      }
+    }
+  });
+});

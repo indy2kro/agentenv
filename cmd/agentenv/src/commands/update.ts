@@ -331,13 +331,22 @@ export function watchMiseToml(
   } catch {
     resolvedDir = path.resolve(scopeDir);
   }
+  // The watch target is the directory the mise file really lives in. In user
+  // scope that is <mise config>/conf.d, not the agentenv config directory
+  // (scopeDir), where a file with the same name is agentenv's own config.
+  let watchDir: string;
+  try {
+    watchDir = fs.realpathSync.native(path.dirname(resolvedPath));
+  } catch {
+    watchDir = path.dirname(resolvedPath);
+  }
   const watchedName = path.basename(resolvedPath);
 
   let timeout: NodeJS.Timeout | null = null;
 
   try {
-    const watcher = fs.watch(resolvedDir, (_eventType, filename) => {
-      // A directory watch fires for every file in resolvedDir; only react
+    const watcher = fs.watch(watchDir, (_eventType, filename) => {
+      // A directory watch fires for every file in watchDir; only react
       // to mise.toml itself. When the platform can't report a filename,
       // don't filter it out — better an extra check than a missed one.
       if (filename && filename !== watchedName) return;
@@ -390,7 +399,7 @@ export function watchMiseToml(
     return watcher;
   } catch (err) {
     console.error(
-      `Failed to watch ${resolvedDir}: ${err instanceof Error ? err.message : String(err)}`,
+      `Failed to watch ${watchDir}: ${err instanceof Error ? err.message : String(err)}`,
     );
     return undefined;
   }
