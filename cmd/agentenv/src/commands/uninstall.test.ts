@@ -7,6 +7,7 @@ import { DEFAULT_CONFIG, type AgentenvConfig } from '../config/schema.js';
 import {
   buildUnwirePlan,
   calculateUninstallTargets,
+  describeCleanup,
   executeUnwire,
   parseAgentList,
   resolveToolArgs,
@@ -268,6 +269,42 @@ describe('executeUnwire', () => {
     assert.ok(result.messages.some((m) => m.includes('Deleted') && m.includes('mise.toml')));
   });
 
+  it('reports a mise.toml that is already gone as nothing to delete', async () => {
+    const dir = tempDir('agentenv-unwire-exec-');
+    const plan = buildUnwirePlan(DEFAULT_CONFIG, dir, 'project', ['codex_cli'], true, true);
+
+    const result = await executeUnwire(dir, plan, { rtkInit: stubRtkInit });
+
+    assert.equal(result.success, true);
+    assert.ok(result.messages.some((m) => m.includes('does not exist; nothing to delete')));
+  });
+
+  it('reports a mise.toml it cannot delete as an error', async () => {
+    const dir = tempDir('agentenv-unwire-exec-');
+    // A directory at the path exists but cannot be unlinked as a file.
+    fs.mkdirSync(path.join(dir, 'mise.toml'));
+    const plan = buildUnwirePlan(DEFAULT_CONFIG, dir, 'project', ['codex_cli'], true, true);
+
+    const result = await executeUnwire(dir, plan, { rtkInit: stubRtkInit });
+
+    assert.equal(result.success, false);
+    assert.ok(result.errors.some((e) => e.startsWith('Failed to delete')));
+  });
+
+  it('points at the backup of a stripped file so the original can be restored', async () => {
+    const dir = tempDir('agentenv-unwire-exec-');
+    const agentsMd = path.join(dir, 'AGENTS.md');
+    fs.writeFileSync(agentsMd, `${start}\nmanaged\n${end}\n`);
+    fs.writeFileSync(`${agentsMd}.agentenv-backup`, 'original\n');
+    const plan = buildUnwirePlan(DEFAULT_CONFIG, dir, 'project', ['codex_cli'], true, false);
+
+    const result = await executeUnwire(dir, plan, { rtkInit: stubRtkInit });
+
+    assert.ok(
+      result.messages.some((m) => m.includes('was backed up at') && m.includes('agentenv-backup')),
+    );
+  });
+
   it('removes the Claude Code hook via adapter cleanup()', async () => {
     const dir = tempDir('agentenv-unwire-exec-');
     const claudeHome = tempDir('agentenv-unwire-claude-home-');
@@ -294,6 +331,19 @@ describe('executeUnwire', () => {
       assert.equal(settings.hooks.PreToolUse.length, 0);
     } finally {
       delete process.env.CLAUDE_CONFIG_DIR;
+    }
+  });
+});
+
+describe('describeCleanup', () => {
+  it('names the Claude Code settings file the hook is removed from', () => {
+    assert.match(describeCleanup('claude_code'), /would remove the rtk hook from .*settings\.json/);
+  });
+
+  it('describes a scoped rtk uninstall, or says rtk cannot remove the agent alone', () => {
+    const lines = (['codex_cli', 'copilot', 'cline', 'windsurf'] as const).map(describeCleanup);
+    for (const line of lines) {
+      assert.match(line, /^would run `rtk init .* --uninstall`$|^no automatic rtk removal/);
     }
   });
 });
