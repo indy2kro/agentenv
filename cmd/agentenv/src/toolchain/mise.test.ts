@@ -48,6 +48,14 @@ describe('mise.toml generation', () => {
     assert.match(output, /rtk = "0\.49\.0"/);
   });
 
+  it('pins duckdb below 2.0.0 (renamed release assets broke the aqua backend)', () => {
+    const output = generateMiseToml(
+      { ...DEFAULT_CONFIG, tools: { ...DEFAULT_CONFIG.tools, duckdb: true } },
+      [],
+    );
+    assert.match(output, /^duckdb = "1\.5\.6"$/m);
+  });
+
   it('is deterministic for an identical config', () => {
     const first = generateMiseToml(DEFAULT_CONFIG, []);
     const second = generateMiseToml(DEFAULT_CONFIG, []);

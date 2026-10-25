@@ -96,6 +96,12 @@ export const PINNED_TOOL_VERSIONS: Record<string, string> = {
   // installable release (phase0 research docs). Unpin when upstream fixes
   // the asset naming or mise resolves it for us.
   difftastic: '0.70.0',
+  // duckdb 2.0.0 renamed its CLI release assets from `duckdb_cli-<os>-<arch>.zip`
+  // to `duckdb-cli-<os>-<arch>.tar.gz` on every platform, which the aqua
+  // registry's asset template does not match — `mise install` fails with
+  // "no asset found: duckdb_cli-linux-amd64.zip". 1.5.6 is the last release
+  // with the old naming. Unpin when the aqua registry catches up.
+  duckdb: '1.5.6',
 };
 
 /**
