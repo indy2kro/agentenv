@@ -27,7 +27,7 @@ jobs:
         with:
           fetch-depth: 0 # gitleaks scans full history
       - name: Setup mise
-        uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
+        uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
       - name: Install actionlint, shellcheck, gitleaks
         run: mise use -g actionlint@1.7.12 shellcheck@0.11.0 gitleaks@8.30.1
       - name: actionlint (also shellchecks embedded `run:` scripts)
@@ -161,7 +161,7 @@ jobs:
           cache: npm
           cache-dependency-path: cmd/agentenv/package-lock.json
       - name: Setup mise
-        uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
+        uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
       - name: Install node deps + build CLI
         working-directory: cmd/agentenv
         run: npm ci && npm run build
